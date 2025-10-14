@@ -4,7 +4,7 @@ from typing import List, Tuple, Dict, Any
 import pandas as pd
 
 from cube_metric import CubeMetric
-from decision_trees_ensemble import DecisionTreeNode
+from woodelf.decision_trees_ensemble import DecisionTreeNode
 
 
 class PBFunction:

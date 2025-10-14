@@ -7,8 +7,8 @@ import shap
 import xgboost as xgb
 import pandas as pd
 
-from cube_metric import ShapleyValues, ShapleyInteractionValues
-from simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
+from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
+from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
 
 RESOURCES_PATH = os.path.join(__file__, "..", "resources")
 TOLERANCE = 0.00001

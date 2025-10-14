@@ -3,12 +3,15 @@ import pytest
 import shap
 import xgboost as xgb
 
-from cube_metric import BanzahfValues, BanzhafInteractionValues, ShapleyInteractionValues, ShapleyValues, CubeMetric
-from direct_computation import BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation, \
+from woodelf.cube_metric import (
+    BanzahfValues, BanzhafInteractionValues, ShapleyInteractionValues, ShapleyValues, CubeMetric
+)
+from woodelf.direct_computation import (
+    BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation,
     ShapleyDirectComputation, DirectComputation, BackgroundModelCF, PathDependentModelCF
-from parse_models import load_decision_tree_ensamble_model
-from simple_woodelf import calculate_background_metric
-from simple_woodelf import calculate_path_dependent_metric
+)
+from woodelf.parse_models import load_decision_tree_ensamble_model
+from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
 
 
 class BackgroundXGBoostCF(BackgroundModelCF):

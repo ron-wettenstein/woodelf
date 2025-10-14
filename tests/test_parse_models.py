@@ -2,7 +2,7 @@ import pytest
 import shap
 import numpy as np
 
-from parse_models import load_decision_tree_ensamble_model
+from woodelf.parse_models import load_decision_tree_ensamble_model
 
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, AdaBoostRegressor
 

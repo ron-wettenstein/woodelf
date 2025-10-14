@@ -2,7 +2,7 @@ from typing import List
 import numpy as np
 import scipy
 
-from cube_metric import CubeMetric
+from woodelf.cube_metric import CubeMetric
 
 
 class PathToMatricesAbstractCls:

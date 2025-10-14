@@ -1,6 +1,6 @@
 from itertools import combinations
 
-from direct_computation import Cube, WDNF
+from woodelf.direct_computation import Cube, WDNF
 
 # My cubes
 SIMPLE_WDNF = [(3, Cube([], [1])), (5, Cube([1], [3])), (3, Cube([2,3], [1]))]

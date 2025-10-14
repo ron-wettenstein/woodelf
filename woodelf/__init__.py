@@ -1,6 +1,6 @@
-import cube_metric
-import decision_trees_ensemble
-import direct_computation
-import parse_models
-import path_to_matrices
-import simple_woodelf
+import woodelf.cube_metric
+import woodelf.decision_trees_ensemble
+import woodelf.direct_computation
+import woodelf.parse_models
+import woodelf.path_to_matrices
+import woodelf.simple_woodelf

@@ -1,5 +1,5 @@
-from decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode
-from utils import safe_isinstance
+from woodelf.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode
+from woodelf.utils import safe_isinstance
 
 MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     "sklearn.ensemble.RandomForestRegressor": DecisionTreeNode,

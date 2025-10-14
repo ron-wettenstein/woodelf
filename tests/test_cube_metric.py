@@ -1,8 +1,12 @@
 import pytest
 
-from cube_metric import BanzhafInteractionValues, BanzahfValues, CubeMetric, ShapleyInteractionValues, ShapleyValues
-from direct_computation import BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation, \
+from woodelf.cube_metric import (
+    BanzhafInteractionValues, BanzahfValues, CubeMetric, ShapleyInteractionValues, ShapleyValues
+)
+from woodelf.direct_computation import (
+    BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation,
     ShapleyDirectComputation, DirectComputation
+)
 from tests.wdnfs import ALL_WDNFs
 
 TOLERANCE = 1e-7
