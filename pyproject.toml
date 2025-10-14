@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "woodelf"
+version = "0.1.0"
+description = "Fast explainability algorithms for tree ensembles"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Ron Wettenstein", email = "ron-wettenstein@gmail.com" }
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "shap"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "xgboost>=2.0",
+    "scikit-learn",
+    "shap"
+]
+
+gpu = [
+  "cupy",
+]
+
+
+[project.urls]
+Homepage = "https://github.com/ron-wettenstein/woodelf"
