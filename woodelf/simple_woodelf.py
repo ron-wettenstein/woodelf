@@ -273,7 +273,7 @@ def calculate_background_metric(model, consumer_data: pd.DataFrame, background_d
     )
     return values
 
-def path_dependend_frequencies(tree: DecisionTreeNode, depth):
+def path_dependent_frequencies(tree: DecisionTreeNode):
     """
     Estimate the frequencies of the training data using the tree cover property.
     Implement Formula 9 of the article for all the leaves in the provided tree.
@@ -306,12 +306,11 @@ def path_dependend_frequencies(tree: DecisionTreeNode, depth):
     return leaves_freq_dict
 
 
-def fast_preprocess_path_dependent(tree: DecisionTreeNode, path_to_matrixes_calculator: PathToMatricesAbstractCls,
-                                   depth=6):
+def fast_preprocess_path_dependent(tree: DecisionTreeNode, path_to_matrixes_calculator: PathToMatricesAbstractCls):
     """
     Implement the preprocssing needed for Path-Dependent WOODELF
     """
-    freq = path_dependend_frequencies(tree, depth)
+    freq = path_dependent_frequencies(tree)
     for leaf, features_in_path in tree.get_all_leaves_with_path_to_root():
         leaf.feature_contribution_replacement_values = path_to_matrixes_calculator.get_s_matrices(features_in_path,
                                                                                                   freq[leaf.index],
