@@ -3,7 +3,7 @@ from math import factorial
 from typing import List, Tuple, Dict, Any
 import pandas as pd
 
-from cube_metric import CubeMetric
+from woodelf.cube_metric import CubeMetric
 from woodelf.decision_trees_ensemble import DecisionTreeNode
 
 
