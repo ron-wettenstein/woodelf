@@ -20,4 +20,3 @@ def test_metric(metric: CubeMetric, direct_computation: DirectComputation):
         values_using_direct_computation = direct_computation.compute(wdnf)
         for v in values_using_metric:
             assert abs(values_using_metric[v] - values_using_direct_computation[v]) < TOLERANCE
-
