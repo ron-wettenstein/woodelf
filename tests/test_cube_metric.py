@@ -1,7 +1,7 @@
 import pytest
 
 from cube_metric import BanzhafInteractionValues, BanzahfValues, CubeMetric, ShapleyInteractionValues, ShapleyValues
-from tests.direct_metric_computation import BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation, \
+from direct_computation import BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation, \
     ShapleyDirectComputation, DirectComputation
 from tests.wdnfs import ALL_WDNFs
 
