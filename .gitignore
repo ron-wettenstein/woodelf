@@ -1,3 +1,13 @@
 *.venv
 *.idea
 __pycache__/
+*.egg-info/
+*.egg
+env/
+venv/
+ENV/
+build/
+dist/
+*.py[cod]
+*.pyo
+*.pyd
