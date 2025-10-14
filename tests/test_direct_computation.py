@@ -10,7 +10,7 @@ from woodelf.direct_computation import (
     BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation,
     ShapleyDirectComputation, DirectComputation, BackgroundModelCF, PathDependentModelCF
 )
-from woodelf.parse_models import load_decision_tree_ensamble_model
+from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
 
 
@@ -61,7 +61,7 @@ def test_background_metric_computation_xgboost(metric: CubeMetric, direct_comput
 ], ids=["BanzahfValues", "BanzhafInteractionValues", "ShapleyInteractionValues", "ShapleyValues"])
 def test_path_dependent_metric_computation_xgboost(metric: CubeMetric, direct_computation: DirectComputation):
     X_test, X_train, model = train_xgboost(n_cols=5)
-    model_obj = load_decision_tree_ensamble_model(model, list(X_train.columns))
+    model_obj = load_decision_tree_ensemble_model(model, list(X_train.columns))
     woodelf_values = calculate_path_dependent_metric(model, consumer_data=X_test,metric=metric)
 
     i = 0

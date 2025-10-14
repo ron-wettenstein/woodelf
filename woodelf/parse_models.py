@@ -1,3 +1,5 @@
+from typing import List
+
 from woodelf.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode
 from woodelf.utils import safe_isinstance
 
@@ -58,7 +60,7 @@ def find_the_right_decision_tree_class(model):
             return MODEL_CLASS_TO_DECISION_TREE_CLASS[class_name]
     return DecisionTreeNode
 
-def load_decision_tree_ensamble_model(model, features):
+def load_decision_tree_ensemble_model(model, features) -> List[DecisionTreeNode]:
     """
     Load an XGBoost regressor tree (utilizing the shap python package parsing object)
     """

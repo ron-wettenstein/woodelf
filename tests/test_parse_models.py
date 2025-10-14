@@ -2,7 +2,7 @@ import pytest
 import shap
 import numpy as np
 
-from woodelf.parse_models import load_decision_tree_ensamble_model
+from woodelf.parse_models import load_decision_tree_ensemble_model
 
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, AdaBoostRegressor
 
@@ -30,7 +30,7 @@ def test_load_and_predict_xgboost():
     X, y = shap.datasets.california(n_points=100)
     base_score =  0.5
     model = xgboost.train({"learning_rate": 0.01, "base_score": base_score}, xgboost.DMatrix(X, label=y), 10)
-    tree_ensemble = load_decision_tree_ensamble_model(model=model, features=list(X.columns))
+    tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
     assert_predictions_equal(
         original_pred=model.predict(xgboost.DMatrix(X)),
         loaded_model_pred=predict_of_loaded_model(tree_ensemble,X),
@@ -49,7 +49,7 @@ def test_load_and_predict_sklearn_regressor_model(model_type, params, base_score
     X, y = shap.datasets.california(n_points=100)
     model = model_type(**params)
     model.fit(X, y)
-    tree_ensemble = load_decision_tree_ensamble_model(model=model, features=list(X.columns))
+    tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
     print(base_score_func(model))
     assert_predictions_equal(
         original_pred=model.predict(X),

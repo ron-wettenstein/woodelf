@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 from woodelf.cube_metric import CubeMetric
 from woodelf.decision_trees_ensemble import DecisionTreeNode
-from woodelf.parse_models import load_decision_tree_ensamble_model
+from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import PathToMatricesAbstractCls, SimplePathToMatrices
 
 import numpy as np
@@ -234,12 +234,16 @@ def calculation_given_preprocessed_tree_ensemble(
 
     # Improvement 4 of Sec. 9.1
     if iv_one_sized:
-        all_keys = list(values.keys())
-        for f1, f2 in all_keys:  # TODO support more the length 2 subsets...
-            assert (f2, f1) not in values
-            values[(f2, f1)] = values[(f1, f2)]
+        fill_mirror_pairs(values)
 
     return values
+
+
+def fill_mirror_pairs(values):
+    all_keys = list(values.keys())
+    for f1, f2 in all_keys:  # TODO support more the length 2 subsets...
+        assert (f2, f1) not in values
+        values[(f2, f1)] = values[(f1, f2)]
 
 
 def calculate_background_metric(model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
@@ -253,7 +257,7 @@ def calculate_background_metric(model, consumer_data: pd.DataFrame, background_d
     background data for size m and a desired metric to calculate.
     Compute the desired metric in O(n+m)
     """
-    model_objs = load_decision_tree_ensamble_model(model, list(consumer_data.columns))
+    model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrixes_calculator is None:
         path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
     if GPU:
@@ -325,7 +329,7 @@ def calculate_path_dependent_metric(model, consumer_data, metric: CubeMetric, gl
 
     Given a model, a consumer data and a desired metric compute the metric under the Path-Dependent assumptions.
     """
-    model_objs = load_decision_tree_ensamble_model(model, list(consumer_data.columns))
+    model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrixes_calculator is None:
         path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
     if GPU:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "woodelf_explainer" # The PyPi package name
-version = "0.1.1"
+dynamic = ["version"]
 description = "Fast explainability algorithms for tree ensembles"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -18,6 +18,9 @@ dependencies = [
     "scipy",
     "shap"
 ]
+
+[tool.setuptools.dynamic]
+version = { attr = "woodelf.__version__" }
 
 [project.optional-dependencies]
 test = [
