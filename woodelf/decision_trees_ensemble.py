@@ -33,7 +33,6 @@ class DecisionTreeNode:
         self.left = left
         self.nan_go_left = nan_go_left
         self.cover = cover
-        self.consumer_pattern_to_characteristic_wdnf = None
         self.pc_pb_to_cube = None
         self.feature_contribution_replacement_values = feature_contribution_replacement_values
         self.parent = -1

@@ -84,16 +84,19 @@ class WoodelfExplainer:
         if include_interaction_with_itself:
             print("""Compute also shapley values in order to find the interactions of features with themselves. 
             The interaction of a feature with itself is its shapley value minus all the shapley 
-            interaction values it has with other features.""")
+            interaction values it has with other features (when it is the first feature in the pair).
+            a.k.a:
+            shap_(i,i) = shap_i - \\sum_(j!=i) shap_(i,j) """)
+            shap_metric_name = "path_dependent_shap" if self.is_path_dependent else "background_shap"
             shapley_values = self.calc_metric(
-                consumer_data, ShapleyValues(), metric_name, tree_limit, as_df=True,
+                consumer_data, ShapleyValues(), shap_metric_name, tree_limit, as_df=True,
                 exclude_zero_contribution_features=exclude_zero_contribution_features,
                 path_to_matrices_calculator=path_to_matrices_calculator, verbose=verbose
             )
             zeros_series = pd.Series(0, index=consumer_data.index)
             for feature in consumer_data.columns:
                 shap_value = shapley_values[feature] if feature in shapley_values.columns else zeros_series
-                interactions_with_feature = [pair for pair in shapley_ivs.columns if feature in pair]
+                interactions_with_feature = [pair for pair in shapley_ivs.columns if feature == pair[0]]
                 sum_interactions = shapley_ivs[interactions_with_feature].sum(axis=1)
                 shapley_ivs[(feature, feature)] = shap_value - sum_interactions
 
@@ -140,18 +143,26 @@ class WoodelfExplainer:
         if self.GPU:
             consumer_data = get_cupy_data(self.model_objs, consumer_data)
 
-        if self.use_cache() and (tree_limit is not None):
+        if self.use_cache() and tree_limit is None:
+            preprocessed_trees = []
             if metric_name in self.cache:
-                preprocessed_trees = self.cache[metric_name]
+                print("Skipped preprocessing - used cache")
+                for tree, replacement_values_lst in zip(self.model_objs, self.cache[metric_name]):
+                    for leaf, replacement_values in zip(tree.get_all_leaves(), replacement_values_lst):
+                        leaf.feature_contribution_replacement_values = replacement_values
+                    preprocessed_trees.append(tree)
             else:
-                preprocessed_trees = []
+                self.cache[metric_name] = []
                 for tree in tqdm(self.model_objs, desc="Preprocessing the trees", disable=not verbose):
-                    preprocessed_trees.append(self._preprocess_tree(tree, path_to_matrices_calculator))
-                self.cache[metric_name] = preprocessed_trees
+                    preprocessed_tree = self._preprocess_tree(tree, path_to_matrices_calculator)
+                    preprocessed_trees.append(preprocessed_tree)
+                    self.cache[metric_name].append([
+                        leaf.feature_contribution_replacement_values.copy() for leaf in preprocessed_tree.get_all_leaves()
+                    ])
 
             woodelf_values = calculation_given_preprocessed_tree_ensemble(
                 preprocessed_trees, consumer_data, global_importance=False,
-                iv_one_sized=metric.INTERACTION_VALUES_RETURN_ALL_SUBSET_PERMUTATIONS, GPU=self.GPU
+                iv_one_sized=not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE, GPU=self.GPU
             )
         else:
             woodelf_values = {}
@@ -163,7 +174,7 @@ class WoodelfExplainer:
                 )
 
             # Improvement 4 of Sec. 9.1
-            if metric.INTERACTION_VALUES_RETURN_ALL_SUBSET_PERMUTATIONS:
+            if not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE:
                 fill_mirror_pairs(woodelf_values)
 
         return self._output_formatting(
