@@ -135,8 +135,10 @@ def test_path_dependent_shap_iv_using_shap_package_is_same_as_using_woodelf(trai
 @pytest.mark.parametrize("model_type, params", [
     (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42)),
     (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42)),
-    (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42))
-], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor", "RandomForestRegressor"])
+    (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42)),
+    (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6, random_state=42, learning_rate=0.01))
+], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor",
+        "RandomForestRegressor", "xgb.sklearn.XGBRegressor"])
 def test_woodelf_against_shap_on_sklearn_regressor_model(model_type, params):
     X, y = shap.datasets.california(n_points=110)
     X_train = X.head(100)

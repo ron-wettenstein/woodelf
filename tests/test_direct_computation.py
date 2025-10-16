@@ -78,9 +78,11 @@ def test_path_dependent_metric_computation_xgboost(metric: CubeMetric, direct_co
 @pytest.mark.parametrize("model_type, params", [
     (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42)),
     (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42)),
-    (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42)) # TODO fix RandomForrest
-], ids=["RandomForestRegressor"]) # "HistGradientBoostingRegressor", "GradientBoostingRegressor",
-def test_background_shap_computation_sklearn(model_type, params):
+    (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42)), # TODO fix RandomForrest
+    (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6,random_state=42, learning_rate=0.01))
+], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor",
+        "RandomForestRegressor", "xgb.sklearn.XGBRegressor"])
+def test_background_shap_direct_computation_sklearn(model_type, params):
     X, y = shap.datasets.california(n_points=110)
     columns_to_focus_on = list(X.columns)[:4]
     X = X[columns_to_focus_on]

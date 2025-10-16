@@ -1,6 +1,7 @@
 import pytest
 import shap
 import numpy as np
+import xgboost as xgb
 
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
@@ -26,13 +27,12 @@ def assert_predictions_equal(original_pred, loaded_model_pred, base_score):
 
 
 def test_load_and_predict_xgboost():
-    xgboost = pytest.importorskip("xgboost")
     X, y = shap.datasets.california(n_points=100)
     base_score =  0.5
-    model = xgboost.train({"learning_rate": 0.01, "base_score": base_score}, xgboost.DMatrix(X, label=y), 10)
+    model = xgb.train({"learning_rate": 0.01, "base_score": base_score}, xgb.DMatrix(X, label=y), 10)
     tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
     assert_predictions_equal(
-        original_pred=model.predict(xgboost.DMatrix(X)),
+        original_pred=model.predict(xgb.DMatrix(X)),
         loaded_model_pred=predict_of_loaded_model(tree_ensemble,X),
         base_score=base_score
     )
@@ -42,14 +42,15 @@ def test_load_and_predict_xgboost():
      lambda m: m._baseline_prediction[0][0]),
     (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42),
      lambda m: m.init_.constant_[0][0]),
+    (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6,random_state=42, learning_rate=0.01, base_score=0.5),
+     lambda m: 0.5)
     # (AdaBoostRegressor, dict(n_estimators=10, random_state=42), lambda m: 0) TODO
-], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor"])
+], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor", "xgb.sklearn.XGBRegressor"])
 def test_load_and_predict_sklearn_regressor_model(model_type, params, base_score_func):
     X, y = shap.datasets.california(n_points=10000)
     model = model_type(**params)
     model.fit(X, y)
     tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
-    tree_ensemble[0].pretty_print()
     assert_predictions_equal(
         original_pred=model.predict(X),
         loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
