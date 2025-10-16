@@ -259,7 +259,8 @@ def calculate_background_metric(model, consumer_data: pd.DataFrame, background_d
     """
     model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrixes_calculator is None:
-        path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
+        max_depth = max([t.depth for t in model_objs])
+        path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=max_depth, GPU=GPU)
     if GPU:
         consumer_data = get_cupy_data(model_objs, consumer_data)
         background_data = get_cupy_data(model_objs, background_data)

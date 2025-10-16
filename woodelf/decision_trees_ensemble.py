@@ -122,6 +122,13 @@ class DecisionTreeNode:
             return f"{self.index} (cover: {self.cover}): leaf with value {self.value}"
         return f"{self.index} (cover: {self.cover}): {self.feature_name} < {self.value}"
 
+    def pretty_print(self, tabs: str = ""):
+        print(tabs + "|--- " + str(self))
+        if not self.is_leaf():
+            self.left.pretty_print(tabs + "|    ")
+            print(tabs + "|--- NOT( " + str(self) + " )")
+            self.right.pretty_print(tabs + "|    ")
+
 
 class LeftIsSmallerEqualDecisionTreeNode(DecisionTreeNode):
     """
@@ -137,3 +144,15 @@ class LeftIsSmallerEqualDecisionTreeNode(DecisionTreeNode):
             return ~(row[self.feature_name] > self.value)
         else:
             return row[self.feature_name] <= self.value
+
+    def __repr__(self):
+        if self.is_leaf():
+            return f"{self.index} (cover: {self.cover}): leaf with value {self.value}"
+        return f"{self.index} (cover: {self.cover}): {self.feature_name} <= {self.value}"
+
+
+# class RandomForrestRegressorDecisionTreeNode(LeftIsSmallerEqualDecisionTreeNode):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         # thresholds have up to 5 digits after the decimal point, drop all numbers after that
+#         self.value = math.floor(self.value * 10**1) / 10**1 if self.value > 0 else math.ceil(self.value * 10**1) / 10**1

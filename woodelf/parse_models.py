@@ -4,8 +4,8 @@ from woodelf.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqual
 from woodelf.utils import safe_isinstance
 
 MODEL_CLASS_TO_DECISION_TREE_CLASS = {
-    "sklearn.ensemble.RandomForestRegressor": DecisionTreeNode,
-    "sklearn.ensemble.forest.RandomForestRegressor": DecisionTreeNode,
+    "sklearn.ensemble.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble.forest.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.GradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.gradient_boosting.GradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.HistGradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
@@ -35,8 +35,9 @@ def load_decision_tree(tree, features, decision_tree_class):
         nan_go_left = (tree.children_left[index] == tree.children_default[index])
         cover = tree.node_sample_weight[index]
         feature_index = tree.features[index]
+        feature_name = features[feature_index] if feature_index >= 0 else None
         nodes[index] = decision_tree_class(
-            feature_name=features[feature_index], value=value, right=None, left=None,
+            feature_name=feature_name, value=value, right=None, left=None,
             nan_go_left=nan_go_left, index=index, cover=cover
         )
 
