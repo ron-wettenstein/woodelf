@@ -6,6 +6,7 @@ import pytest
 import shap
 import xgboost as xgb
 import pandas as pd
+from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor
 
 from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
 from woodelf.explainer import WoodelfExplainer
@@ -131,4 +132,41 @@ def test_path_dependent_shap_iv_using_shap_package_is_same_as_using_woodelf(trai
     )
 
 
+@pytest.mark.parametrize("model_type, params", [
+    (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42)),
+    (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42)),
+    # (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42)) TODO fix RandomForrest
+], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor", "RandomForestRegressor"])
+def test_woodelf_against_shap_on_sklearn_regressor_model(model_type, params):
+    X, y = shap.datasets.california(n_points=110)
+    X_train = X.head(100)
+    y_train = y[:100]
+    X_test = X.tail(10)
+    model = model_type(**params)
+    model.fit(X_train, y_train)
+
+    # background shap
+    explainer = shap.TreeExplainer(model, X_test, model_output="raw")
+    shap_package_values = explainer.shap_values(X_test)
+    woodelf_values = calculate_background_metric(model, X_test, X_test, metric=ShapleyValues())
+    assert_shap_package_is_same_as_woodelf(
+        woodelf_values, shap_package_values, X_test, TOLERANCE
+    )
+
+    # path dependent shap
+    explainer = shap.TreeExplainer(model)
+    shap_package_values = explainer.shap_values(X_test)
+    woodelf_values = calculate_path_dependent_metric(model, X_test, metric=ShapleyValues())
+    assert_shap_package_is_same_as_woodelf(
+        woodelf_values, shap_package_values, X_test, TOLERANCE
+    )
+
+    # path dependent iv shap
+    explainer = shap.TreeExplainer(model)
+    shap_package_values = explainer.shap_interaction_values(X_test)
+    woodelf_values = calculate_path_dependent_metric(model, X_test, metric=ShapleyInteractionValues())
+
+    assert_shap_package_is_same_as_woodelf_on_interaction_values(
+        woodelf_values, shap_package_values, X_test, TOLERANCE
+    )
 
