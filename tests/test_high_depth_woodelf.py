@@ -12,6 +12,7 @@ import pytest
 
 from tests.test_woodelf_against_shap import trainset, testset, xgb_model
 from woodelf.parse_models import load_decision_tree_ensemble_model
+from woodelf.path_to_matrices import SimplePathToMatrices
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric, \
     path_dependent_frequencies
 
@@ -154,3 +155,21 @@ def test_calculate_path_dependent_metric_for_high_depth(
 
     for feature in simple_woodelf_values:
         np.testing.assert_allclose(simple_woodelf_values[feature], high_depth_woodelf_values[feature], atol=TOLERANCE)
+
+
+def test_only_unique_feature_paths_are_passed_to_path_to_matrices_calculator(trainset, testset, xgb_model):
+    p2v = SimplePathToMatrices(metric=ShapleyValues(), max_depth=6, GPU=False)
+    woodelf_for_high_depth(
+        xgb_model, testset, background_data=None, metric=ShapleyValues(), use_neighbor_leaf_trick=True,
+        path_to_matrices_calculator=p2v
+    )
+
+    assert p2v.cache_miss <= 6, "As all feature paths are unique, there is up to 6 of these (the depth is 6)"
+
+    p2v_shap_iv = SimplePathToMatrices(metric=ShapleyInteractionValues(), max_depth=6, GPU=False)
+    woodelf_for_high_depth(
+        xgb_model, testset, background_data=None, metric=ShapleyValues(), use_neighbor_leaf_trick=True,
+        path_to_matrices_calculator=p2v_shap_iv
+    )
+
+    assert p2v_shap_iv.cache_miss <= 6, "As all feature paths are unique, there is up to 6 of these (the depth is 6)"
