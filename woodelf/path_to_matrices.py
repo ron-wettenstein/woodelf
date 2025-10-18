@@ -96,7 +96,7 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
         self.cache_miss = 0
         self.cache = {}
 
-    def get_values_matrixes(self, features_in_path: List[str|int]):
+    def get_values_matrices(self, features_in_path: List[str|int]):
         """
         Apply the CubeMetric object (the v function), to create the matrixes M.
         Use the cache when possible, and update the cache with the created matrixes
@@ -128,12 +128,15 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
         return matrixes_for_the_given_features
 
     def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
-        matrices = self.get_values_matrixes(features_in_path)
+        matrices = self.get_values_matrices(features_in_path)
         s_vectors = {}
         for feature in matrices:
             # The matrix multiplication part is implemented in CPU, the matrix is too small for the GPU overhead to be worth it.
             # The sparse matrix multiplication here instead of the naive dense matrix multiplication is improvement 1 in Sec. 9.1
-            s_vectors[feature] = matrices[feature].dot(f) * w
+            try:
+                s_vectors[feature] = matrices[feature].dot(f) * w
+            except Exception as e:
+                raise e
         return s_vectors
 
     @classmethod

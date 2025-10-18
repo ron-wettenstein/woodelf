@@ -9,7 +9,6 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor
 
 from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
-from woodelf.explainer import WoodelfExplainer
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
 
 RESOURCES_PATH = os.path.join(__file__, "..", "resources")

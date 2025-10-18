@@ -117,6 +117,18 @@ class DecisionTreeNode:
                     nodes_to_visit.append(next_node_obj)
         return leaves
 
+    def get_nodes_to_path_dict(self):
+        nodes_to_visit = [(self, [])]
+        nodes_with_paths = {self.index: []}
+        while len(nodes_to_visit) > 0:
+            current_node, current_path_to_root = nodes_to_visit.pop(0)
+            if not current_node.is_leaf():
+                for next_node in [current_node.right, current_node.left]:
+                    path_to_node = current_path_to_root + [current_node]
+                    nodes_with_paths[next_node.index] = path_to_node
+                    nodes_to_visit.append((next_node, path_to_node))
+        return nodes_with_paths
+
     def __repr__(self):
         if self.is_leaf():
             return f"{self.index} (cover: {self.cover}): leaf with value {self.value}"
