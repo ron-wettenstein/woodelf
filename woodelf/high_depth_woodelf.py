@@ -133,7 +133,7 @@ def compute_f_of_neighbor(neighbor_f):
         frqs.append(neighbor_f[i])
     return np.array(frqs, dtype=np.float32)
 
-def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bool):
+def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bool, global_importance: bool = False):
     """
     Use numpy indexing to fetch the required values from the s_vectors and add them to the values' dict.
     """
@@ -145,6 +145,8 @@ def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bo
 
         # This is where the numpy indexing occur (improvement 6 of Sec. 9.1):
         current_contribution = replacements_array[consumer_patterns]
+        if global_importance:
+            current_contribution = np.mean(current_contribution)
 
         if feature not in values:
             values[feature] = current_contribution
@@ -177,26 +179,29 @@ def combine_neighbor_leaves_s_vectors(s_left, s_right):
 
 def compute_background_shap_for_leaf_node(
         values: Dict[Any, float], leaf: DecisionTreeNode, consumer_patterns: np.array, background_patterns: np.array,
-        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool
+        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
+        global_importance: bool = False
 ):
     depth = len(unique_features_in_path)
     f = compute_f(background_patterns, depth, GPU)
     s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
-    compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU)
+    compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU, global_importance)
 
 
 def compute_path_dependent_shap_for_leaf_node(
         values: Dict[Any, float], leaf: DecisionTreeNode, consumer_patterns: np.array, path: List[DecisionTreeNode],
-        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool
+        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
+        global_importance: bool = False
 ):
     f = compute_path_dependent_f(path + [leaf], unique_features_in_path)
     s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
-    compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU)
+    compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU, global_importance)
 
 def compute_background_shap_for_two_neighbor_leaves(
         values: Dict[Any, float], left_leaf: DecisionTreeNode, right_leaf: DecisionTreeNode,
         left_consumer_patterns: np.array, left_background_patterns: np.array,
-        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool
+        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
+        global_importance: bool = False
 ):
     depth = len(unique_features_in_path)
     left_f = compute_f(left_background_patterns, depth, GPU)
@@ -206,12 +211,13 @@ def compute_background_shap_for_two_neighbor_leaves(
     right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value)
 
     combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
-    compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU)
+    compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU, global_importance)
 
 def compute_path_dependent_shap_two_neighbor_leaves(
         values: Dict[Any, float], left_leaf: DecisionTreeNode, right_leaf: DecisionTreeNode,
         left_consumer_patterns: np.array, path: List[DecisionTreeNode],
-        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool
+        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
+        global_importance: bool = False
 ):
     left_f = compute_path_dependent_f(path + [left_leaf], unique_features_in_path)
     left_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, left_f, left_leaf.value)
@@ -219,7 +225,7 @@ def compute_path_dependent_shap_two_neighbor_leaves(
     right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value)
 
     combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
-    compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU)
+    compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU, global_importance)
 
 
 def compute_patterns_generator(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool = False) -> Tuple[int, np.array]:
@@ -258,7 +264,7 @@ def compute_patterns_generator(tree: DecisionTreeNode, data: pd.DataFrame, GPU: 
 def woodelf_for_high_depth_single_tree(
         tree: DecisionTreeNode, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
         values: Dict[Any, float], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool = False,
-        use_neighbor_leaf_trick: bool = True
+        use_neighbor_leaf_trick: bool = True, global_importance: bool = False
 ):
     """
     Run the woodelf algorithm that is optimized for a high depth trees on a single tree
@@ -300,12 +306,12 @@ def woodelf_for_high_depth_single_tree(
             if is_background:
                 compute_background_shap_for_leaf_node(
                     values, node, consumer_patterns[node.index], background_patterns[node.index],
-                    unique_features_in_path, path_to_matrices_calculator, GPU
+                    unique_features_in_path, path_to_matrices_calculator, GPU, global_importance
                 )
             else:
                 compute_path_dependent_shap_for_leaf_node(
                     values, node, consumer_patterns[node.index], path,
-                    unique_features_in_path, path_to_matrices_calculator, GPU
+                    unique_features_in_path, path_to_matrices_calculator, GPU, global_importance
                 )
         elif (
                 node.right.is_leaf() and node.left.is_leaf() and
@@ -318,12 +324,12 @@ def woodelf_for_high_depth_single_tree(
                 compute_background_shap_for_two_neighbor_leaves(
                     values, node.left, node.right, consumer_patterns[node.left.index],
                     background_patterns[node.left.index],
-                    unique_features_in_path, path_to_matrices_calculator, GPU
+                    unique_features_in_path, path_to_matrices_calculator, GPU, global_importance
                 )
             else:
                 compute_path_dependent_shap_two_neighbor_leaves(
                     values, node.left, node.right, consumer_patterns[node.left.index],
-                    path + [node], unique_features_in_path, path_to_matrices_calculator, GPU
+                    path + [node], unique_features_in_path, path_to_matrices_calculator, GPU, global_importance
                 )
         else:
             nodes_to_visit_left.append(node.left)
@@ -332,7 +338,8 @@ def woodelf_for_high_depth_single_tree(
 def woodelf_for_high_depth(
         model, consumer_data: pd.DataFrame, background_data: Optional[pd.DataFrame], metric: CubeMetric,
         GPU: bool=False, use_neighbor_leaf_trick: bool=True,
-        path_to_matrices_calculator: PathToMatricesAbstractCls = None
+        path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+        global_importance: bool = False,
 ):
     """
     WOODELF designed for higher depths decision trees.
@@ -352,6 +359,8 @@ def woodelf_for_high_depth(
     @param path_to_matrices_calculator: An object used to compute M matrices and s vectors, central parts of the
     algorithm. It uses cache, reusing the same object in several runs can save some time (not that significant
     on large/medium size datasets)
+    @param global_importance: If true return the average value across all consumer data rows. Used to
+    save RAM.
 
     @return The computed values as a dictionary that maps between features/features pairs to np.arrays with
     the values.
@@ -367,7 +376,7 @@ def woodelf_for_high_depth(
     for tree in tqdm(model_objs, desc="Preprocessing the trees and computing SHAP"):
         woodelf_for_high_depth_single_tree(
             tree, consumer_data, background_data, values, path_to_matrices_calculator, GPU,
-            use_neighbor_leaf_trick
+            use_neighbor_leaf_trick, global_importance
         )
 
     if not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE:

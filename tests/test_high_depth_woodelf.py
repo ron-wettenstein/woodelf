@@ -173,3 +173,14 @@ def test_only_unique_feature_paths_are_passed_to_path_to_matrices_calculator(tra
     )
 
     assert p2v_shap_iv.cache_miss <= 6, "As all feature paths are unique, there is up to 6 of these (the depth is 6)"
+
+
+def test_global_importance_flag(trainset, testset, xgb_model):
+    values = woodelf_for_high_depth(
+        xgb_model, testset, background_data=trainset, metric=ShapleyValues(), global_importance=False
+    )
+    global_values = woodelf_for_high_depth(
+        xgb_model, testset, background_data=trainset, metric=ShapleyValues(), global_importance=True
+    )
+    for feature in values:
+        assert abs(np.mean(values[feature]) - global_values[feature]) < TOLERANCE
