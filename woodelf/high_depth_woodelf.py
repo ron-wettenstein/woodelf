@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from tqdm import tqdm
 
@@ -34,6 +34,16 @@ def init_patterns_dict(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool):
     return {tree.index: root_pattern}
 
 def add_children_patterns(patterns_dict, node, path_features, data: pd.DataFrame, GPU: bool, int_dtype=int):
+    """
+    Compute the pattern of the provided node given the cahced patterns in the patterns_dict.
+    We assume its parent pattern is in this patterns_dict.
+
+    Compute unique_features_decision_pattern. i.e:
+    - If the feature was not appear in the path, do the regular stuff: shift left and add the condition bit
+    - If the feature appear in the path, find its relevant bit in the pattern and update it to be an 'and' operation
+    between the bit already there and the new condition bit (implement it using masking, creating numbers that are
+    all 1's except for the location of the condition bit and then 'and' them.)
+    """
     if node.is_leaf():
         return
 
@@ -60,6 +70,9 @@ def add_children_patterns(patterns_dict, node, path_features, data: pd.DataFrame
         patterns_dict[node.right.index] = my_pattern & (mask + right_condition*current_feature_bit)
 
 def clean_old_patterns(patterns_dict, node):
+    """
+    Delete the node patterns and all its children patterns from the cache
+    """
     if node is not None and patterns_dict is not None:
         for n in node.bfs():
             if n.index in patterns_dict:
@@ -67,6 +80,10 @@ def clean_old_patterns(patterns_dict, node):
 
 
 def compute_f(patterns, path_depth: int, GPU: bool = False):
+    """
+    f is a simple patterns.value_counts(normalized=True).
+    Do it more efficiently using bincount
+    """
     if GPU:
         f = cp.bincount(patterns, minlength=2 ** path_depth) / len(patterns)
         return cp.asnumpy( f )[:2 ** path_depth]
@@ -74,6 +91,14 @@ def compute_f(patterns, path_depth: int, GPU: bool = False):
     return np.bincount(patterns, minlength=2 ** path_depth) / len(patterns)
 
 def compute_path_dependent_f(path: List[DecisionTreeNode], unique_features_in_path: List[Any]):
+    """
+    Estimate the frequencies of the training data using the tree cover property.
+    Implement Formula 9 of the article for the provided path.
+
+    Note: as we want a path with only unique features, we unite repeating features by multiplying their proceed ratios.
+    For example if for the split a<3 only 0.4 continue to the next node in the path, and in the split a<1 only 0.6
+    continues that in total 0.4*0.6=0.24 continue in the path for the "a" feature and 1-0.24=0.76 diverge the path.
+    """
     proceed_covers = {f: 1 for f in unique_features_in_path}
     for i in range(len(path)-1):
         proceed_covers[path[i].feature_name] *= (path[i+1].cover / path[i].cover)
@@ -90,16 +115,18 @@ def compute_path_dependent_f(path: List[DecisionTreeNode], unique_features_in_pa
 
 
 def compute_f_of_neighbor(neighbor_f):
-    # neighbor leaves have similar patterns (only the last bit is different)
-    # For efficiency we reuse the frequencies computed for the neighbor.
+    """
+    neighbor leaves have similar patterns (only the last bit is different)
+    For efficiency we reuse the frequencies computed for the neighbor.
 
-    # Given leaves l_i, l_{i+1} s.t. there is an inner node n where n.left = l_i and n.right=l_{i+1}.
-    # The decision pattern of any consumer c in leaf l_i is the same as in leaf l_{i+1} except for the last bit which is different.
-    # For example if the pattern of c and l_i is 010011011101 then the pattern of c and l_{i+1} is 010011011100 (the 1 in the end is replaced with 0)
-    # Let the frequencies of l_i be [f1,f2,f3,f4,....,f_{n-1}, f_n], we can these conclude that the frequencies of l_{i+1} are [f2,f1,f4,f3,....,f_n, f_{n-1}].
-    # We can find them by swapping any pair of numbers in the array.
-    # The code below utilize this fact for efficiency - this saved half of the bincount opperations.
-    # This trick is part of improvement 3 in Sec. 9.1 (this is the improvement to line 4)
+    Given leaves l_i, l_{i+1} s.t. there is an inner node n where n.left = l_i and n.right=l_{i+1}.
+    The decision pattern of any consumer c in leaf l_i is the same as in leaf l_{i+1} except for the last bit which is different.
+    For example if the pattern of c and l_i is 010011011101 then the pattern of c and l_{i+1} is 010011011100 (the 1 in the end is replaced with 0)
+    Let the frequencies of l_i be [f1,f2,f3,f4,....,f_{n-1}, f_n], we can these conclude that the frequencies of l_{i+1} are [f2,f1,f4,f3,....,f_n, f_{n-1}].
+    We can find them by swapping any pair of numbers in the array.
+    The code below utilize this fact for efficiency - this saved half of the bincount opperations.
+    This trick is part of improvement 3 in Sec. 9.1 (this is the improvement to line 4)
+    """
     frqs = []
     for i in range(0, len(neighbor_f), 2):
         frqs.append(neighbor_f[i + 1])
@@ -107,6 +134,9 @@ def compute_f_of_neighbor(neighbor_f):
     return np.array(frqs, dtype=np.float32)
 
 def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bool):
+    """
+    Use numpy indexing to fetch the required values from the s_vectors and add them to the values' dict.
+    """
     for feature, s_vector in s_vectors.items():
         if GPU:
             replacements_array = cp.asarray(s_vector)
@@ -122,6 +152,19 @@ def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bo
             values[feature] += current_contribution
 
 def combine_neighbor_leaves_s_vectors(s_left, s_right):
+    """
+    If both the right and left nodes are leaves use improvement 3 of Sec. 9.1 (improvement of line 26)
+    See also the comment in compute_f_of_neighbor.
+    Given leaves l_i, l_{i+1} s.t. there is an inner node n where n.left=l_i and n.right=l_{i+1}:
+    - mark the s vector of feature f and leaf l_i as s_i = [a1,a2,a3,...,an] (In our case it is s_left)
+    - mark the s vector of feature f and leaf l_{i+1} as s_{i+1} = [b1,b2,b3,...,bn] (In our case it is s_right)
+    A trivial numpy indexing for feature f and the two leaves is:
+        [a1,a2,a3,...,an][ patterns ] + [b1,b2,b3,...,bn][ patterns ]
+
+    Utilizing the property explained in comment in preprocess_tree_background, we can run the equivalent numpy indexing:
+        [a1+b2, a2+b1, a3+b4, a4+b3,...,a_{n-1}+bn, an+b_{n-1}][ patterns ]
+    This saves half of the numpy indexing operations
+    """
     s_combined = {}
     for feature in s_left:
         s_right_vec = s_right[feature]
@@ -179,14 +222,23 @@ def compute_path_dependent_shap_two_neighbor_leaves(
     compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU)
 
 
-def compute_patterns_generator(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool = False):
+def compute_patterns_generator(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool = False) -> Tuple[int, np.array]:
+    """
+    Compute the decision patterns of the provided data for all the root-to-leaf paths in the provided tree.
+    This generator will return one leaf at a time, it will return a tuple with the leaf index as the first item
+    and this leaf's decision patterns as the second item.
+
+    This implementation is RAM efficient. In the naive implementation all the pattern of all the nodes of the
+    trees are saved in the RAM (its O(L2^D) RAM). In this implementation only the patterns of the nodes
+    of the current path (and their imminent children) as same, achieving an O(D2^D) memory complexity.
+    """
     nodes_to_visit_left = [tree]
     nodes_to_visit_right = []
 
     int_dtype = GPU_get_int_dtype_from_depth(tree.depth) if GPU else get_int_dtype_from_depth(tree.depth)
     patterns = init_patterns_dict(tree, data, GPU)
     nodes_to_path = tree.get_nodes_to_path_dict()
-    while len(nodes_to_visit_left) > 0 or len(nodes_to_visit_right) > 0:
+    while len(nodes_to_visit_left) > 0 or len(nodes_to_visit_right) > 0: # Implements a DFS
         if len(nodes_to_visit_left) > 0:
             node = nodes_to_visit_left.pop()
         else:
@@ -208,6 +260,9 @@ def woodelf_for_high_depth_single_tree(
         values: Dict[Any, float], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool = False,
         use_neighbor_leaf_trick: bool = True
 ):
+    """
+    Run the woodelf algorithm that is optimized for a high depth trees on a single tree
+    """
     nodes_to_visit_left = [tree]
     nodes_to_visit_right = []
 
@@ -279,6 +334,28 @@ def woodelf_for_high_depth(
         GPU: bool=False, use_neighbor_leaf_trick: bool=True,
         path_to_matrices_calculator: PathToMatricesAbstractCls = None
 ):
+    """
+    WOODELF designed for higher depths decision trees.
+    Save RAM and have a better complexity:
+    Space Complexity: O((2^D)*D)
+    Runtime complexity: O(mTL + nTLD + TL(2^D)*D + 3^D)
+
+    @param model: The model to explain
+    @param consumer_data: The data to explain its predictions
+    @param background_data: A reference dataset defining the data distribution of the population.
+    Using the trainset as a background is a solid choice.
+    @param metric: The metric to compute: ShapleyValues(), ShapleyInteractionValues(), BanzhafValues(), ...
+    @param GPU: If True accelerates the run using GPU. Make sure CuPy is installed (run: pip install cupy)
+    @param use_neighbor_leaf_trick: If True save some time by using a mathematical trick around leaves that
+    share a common parent. This is highly effective when the data is large. If the data is small passing False
+    might provide a better results
+    @param path_to_matrices_calculator: An object used to compute M matrices and s vectors, central parts of the
+    algorithm. It uses cache, reusing the same object in several runs can save some time (not that significant
+    on large/medium size datasets)
+
+    @return The computed values as a dictionary that maps between features/features pairs to np.arrays with
+    the values.
+    """
     model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrices_calculator is None:
         path_to_matrices_calculator = SimplePathToMatrices(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
