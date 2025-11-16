@@ -270,8 +270,7 @@ def calculate_background_metric(model, consumer_data: pd.DataFrame, background_d
                                                              path_to_matrixes_calculator=path_to_matrixes_calculator,
                                                              GPU=GPU))
 
-    print(
-        f"cache misses: {path_to_matrixes_calculator.cache_miss}, cache used: {path_to_matrixes_calculator.cached_used}")
+    path_to_matrixes_calculator.present_statistics()
     values = calculation_given_preprocessed_tree_ensemble(
         preprocessed_trees, consumer_data, global_importance,
         iv_one_sized=not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE, GPU=GPU
