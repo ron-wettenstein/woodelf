@@ -382,5 +382,7 @@ def woodelf_for_high_depth(
     if not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE:
         fill_mirror_pairs(values)
 
+    path_to_matrices_calculator.present_statistics()
+
     return values
 

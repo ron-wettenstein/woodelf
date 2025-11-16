@@ -1,6 +1,7 @@
 from typing import List
 import numpy as np
 import scipy
+import time
 
 from woodelf.cube_metric import CubeMetric
 
@@ -56,6 +57,9 @@ class PathToMatricesAbstractCls:
 
         return updated_wdnf_table
 
+    def present_statistics(self):
+        pass
+
 
 def get_feature_repetition_sequence(features_in_path: List[str]):
     """
@@ -95,12 +99,15 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
         self.cached_used = 0
         self.cache_miss = 0
         self.cache = {}
+        self.s_computation_time = 0
+        self.m_computation_time = 0
 
     def get_values_matrices(self, features_in_path: List[str|int]):
         """
         Apply the CubeMetric object (the v function), to create the matrixes M.
         Use the cache when possible, and update the cache with the created matrixes
         """
+        start_time = time.time()
         frs = get_feature_repetition_sequence(features_in_path)
         frs_tuple = tuple(frs)
 
@@ -125,10 +132,12 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
                     feature_tuple = tuple([features_in_path[feature_index] for feature_index in feature_indexes])
                 matrixes_for_the_given_features[feature_tuple] = current_matrices
 
+        self.m_computation_time += time.time() - start_time
         return matrixes_for_the_given_features
 
     def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         matrices = self.get_values_matrices(features_in_path)
+        start_time = time.time()
         s_vectors = {}
         for feature in matrices:
             # The matrix multiplication part is implemented in CPU, the matrix is too small for the GPU overhead to be worth it.
@@ -137,7 +146,14 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
                 s_vectors[feature] = matrices[feature].dot(f) * w
             except Exception as e:
                 raise e
+        self.s_computation_time += time.time() - start_time
         return s_vectors
+
+    def present_statistics(self):
+        print(
+            f"cache misses: {self.cache_miss}, cache used: {self.cached_used}, " +
+            f"M computation time: {self.m_computation_time} sec, s computation time: {self.s_computation_time} sec"
+        )
 
     @classmethod
     def build_patterns_to_values_sparse_matrix(cls, dl, metric: CubeMetric, path_length):
