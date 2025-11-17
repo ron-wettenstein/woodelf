@@ -2,6 +2,7 @@ import itertools
 from math import factorial
 from typing import List, Tuple, Dict, Any
 import pandas as pd
+import numpy as np
 
 from woodelf.cube_metric import CubeMetric
 from woodelf.decision_trees_ensemble import DecisionTreeNode

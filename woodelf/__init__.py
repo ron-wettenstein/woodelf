@@ -1,6 +1,5 @@
 import woodelf.cube_metric
 import woodelf.decision_trees_ensemble
-import woodelf.direct_computation
 import woodelf.parse_models
 import woodelf.path_to_matrices
 import woodelf.simple_woodelf

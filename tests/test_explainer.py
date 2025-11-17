@@ -2,20 +2,37 @@ import time
 
 import numpy as np
 import pandas as pd
+import pytest
 import shap
+import os
 
 from woodelf.explainer import WoodelfExplainer
-from tests.test_woodelf_against_shap import trainset, testset, xgb_model
-
-FIXTURES = [trainset, testset, xgb_model]
+import xgboost as xgb
 
 TOLERANCE = 0.00001
+RESOURCES_PATH = os.path.join(__file__, "..", "resources")
+
 
 ###############################################################
 # Test Explainer
 ###############################################################
 
+@pytest.fixture
+def trainset() -> pd.DataFrame:
+    fraud_trainset = pd.read_csv(os.path.join(RESOURCES_PATH, "IEEE-CIS_trainset_sample.csv"))
+    return fraud_trainset[[c for c in fraud_trainset.columns if c != 'isFraud' and c != 'Unnamed: 0']]
 
+@pytest.fixture
+def testset() -> pd.DataFrame:
+    fraud_testset = pd.read_csv(os.path.join(RESOURCES_PATH, "IEEE-CIS_testset_sample.csv"))
+    return fraud_testset[[c for c in fraud_testset.columns if c != 'isFraud' and c != 'Unnamed: 0']]
+
+@pytest.fixture
+def xgb_model() -> xgb.Booster:
+    # Load the model from a JSON file
+    loaded_model = xgb.Booster()  # Initialize an empty Booster object
+    loaded_model.load_model(os.path.join(RESOURCES_PATH, "IEEE-CIS_xgboost_model.json"))
+    return loaded_model
 
 
 def test_background_shap_using_shap_package_is_same_as_using_woodelf_explainer(trainset, testset, xgb_model):
