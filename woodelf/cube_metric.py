@@ -167,4 +167,3 @@ class BanzhafInteractionValues(CubeMetric):
                         if must_be_missing_feature < other_feature:
                             banzhaf_values[(must_be_missing_feature, other_feature)] = -contribution
         return banzhaf_values
-
