@@ -14,6 +14,7 @@ from woodelf.simple_woodelf import calculate_background_metric, calculate_path_d
 RESOURCES_PATH = os.path.join(__file__, "..", "resources")
 TOLERANCE = 0.00001
 
+# The parameters used for the model, for documentation
 XGB_PARAMS = {
     "objective": "reg:squarederror",  # Regression task with mean squared error loss
     "eval_metric": "rmse",  # Evaluation metric is root mean squared error

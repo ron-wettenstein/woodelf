@@ -19,8 +19,10 @@ AVAILABLE_CACHE_OPTIONS = ["auto", "yes", "no"]
 
 class WoodelfExplainer:
     def __init__(
-            self, model, data: pd.DataFrame = None, model_output : str="raw",
-            feature_perturbation: str="auto", cache_option: str = "auto", GPU: bool = False
+            self, model, data: pd.DataFrame = None,
+            model_output : str="raw", feature_perturbation: str="auto",
+            # Additional options exists only in Woodelf:
+            cache_option: str = "auto", GPU: bool = False
     ):
         self.model_objs = load_decision_tree_ensemble_model(model, list(data.columns))
         assert len(self.model_objs) > 0, "Did not load the model properly"
@@ -58,26 +60,27 @@ class WoodelfExplainer:
         return self.cache_option == "yes"
 
     def shap_values(
-            self, consumer_data, tree_limit: int = None,
+            self, X, tree_limit: int = None,
+            # Additional options exists only in Woodelf:
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False
     ):
         metric_name = "path_dependent_shap" if self.is_path_dependent else "background_shap"
         return self.calc_metric(
-            consumer_data, ShapleyValues(), metric_name, tree_limit, as_df, exclude_zero_contribution_features,
+            X, ShapleyValues(), metric_name, tree_limit, as_df, exclude_zero_contribution_features,
             path_to_matrices_calculator, verbose
         )
 
     def shap_interaction_values(
-            self, consumer_data, tree_limit: int = None, include_interaction_with_itself: bool = True,
+            self, X, tree_limit: int = None, include_interaction_with_itself: bool = True,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False
     ):
         metric_name = "path_dependent_shap_iv" if self.is_path_dependent else "background_shap_iv"
         shapley_ivs = self.calc_metric(
-            consumer_data, ShapleyInteractionValues(), metric_name, tree_limit, as_df=True,
+            X, ShapleyInteractionValues(), metric_name, tree_limit, as_df=True,
             exclude_zero_contribution_features=exclude_zero_contribution_features,
             path_to_matrices_calculator=path_to_matrices_calculator, verbose=verbose
         )
@@ -89,12 +92,12 @@ class WoodelfExplainer:
             shap_(i,i) = shap_i - \\sum_(j!=i) shap_(i,j) """)
             shap_metric_name = "path_dependent_shap" if self.is_path_dependent else "background_shap"
             shapley_values = self.calc_metric(
-                consumer_data, ShapleyValues(), shap_metric_name, tree_limit, as_df=True,
+                X, ShapleyValues(), shap_metric_name, tree_limit, as_df=True,
                 exclude_zero_contribution_features=exclude_zero_contribution_features,
                 path_to_matrices_calculator=path_to_matrices_calculator, verbose=verbose
             )
-            zeros_series = pd.Series(0, index=consumer_data.index)
-            for feature in consumer_data.columns:
+            zeros_series = pd.Series(0, index=X.index)
+            for feature in X.columns:
                 shap_value = shapley_values[feature] if feature in shapley_values.columns else zeros_series
                 interactions_with_feature = [pair for pair in shapley_ivs.columns if feature == pair[0]]
                 sum_interactions = shapley_ivs[interactions_with_feature].sum(axis=1)
@@ -102,31 +105,31 @@ class WoodelfExplainer:
 
         if not as_df:
             return shapley_ivs.values.reshape(
-                len(consumer_data), len(consumer_data.columns), len(consumer_data.columns)
+                len(X), len(X.columns), len(X.columns)
             )
         return shapley_ivs
 
     def banzhaf_values(
-            self, consumer_data, tree_limit: int = None,
+            self, X, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False
     ):
         metric_name = "path_dependent_banzhaf" if self.is_path_dependent else "background_banzahf"
         return self.calc_metric(
-            consumer_data, BanzahfValues(), metric_name, tree_limit, as_df, exclude_zero_contribution_features,
+            X, BanzahfValues(), metric_name, tree_limit, as_df, exclude_zero_contribution_features,
             path_to_matrices_calculator, verbose
         )
 
     def banzhaf_interaction_values(
-            self, consumer_data, tree_limit: int = None,
+            self, X, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False
     ):
         metric_name = "path_dependent_banzhaf_iv" if self.is_path_dependent else "background_banzahf_iv"
         return self.calc_metric(
-            consumer_data, BanzhafInteractionValues(), metric_name, tree_limit, as_df,
+            X, BanzhafInteractionValues(), metric_name, tree_limit, as_df,
             exclude_zero_contribution_features,
             path_to_matrices_calculator, verbose
         )

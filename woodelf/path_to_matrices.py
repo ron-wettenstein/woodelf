@@ -152,7 +152,8 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
     def present_statistics(self):
         print(
             f"cache misses: {self.cache_miss}, cache used: {self.cached_used}, " +
-            f"M computation time: {self.m_computation_time} sec, s computation time: {self.s_computation_time} sec"
+            f"M computation time: {round(self.m_computation_time,2)} sec, " +
+            f"s computation time: {round(self.s_computation_time, 2)} sec"
         )
 
     @classmethod
