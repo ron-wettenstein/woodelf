@@ -4,7 +4,7 @@
 pip uninstall -y woodelf_explainer
 pip install -e .
 
-python -c "import woodelf; print(woodelf.__version__)"
+python -c "import os; os.chdir('..'); os.chdir('..'); import woodelf; print(woodelf); print(woodelf.__version__)"
 
 # Build the package
 #If needed: python -m pip install --upgrade build twine
@@ -17,7 +17,7 @@ python -m twine upload dist/*
 # check installation
 pip uninstall -y woodelf_explainer
 pip install woodelf_explainer
-python -c "import woodelf; print(woodelf.__version__)"
+python -c "import os; os.chdir('..'); os.chdir('..'); import woodelf; print(woodelf); print(woodelf.__version__)"
 
 # Add the version to git
 X.Y.Z should be replaced with the new version
