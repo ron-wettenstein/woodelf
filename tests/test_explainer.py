@@ -186,3 +186,20 @@ def test_expected_value_property(trainset, testset, xgb_model):
     explainer = shap.TreeExplainer(xgb_model, trainset, feature_perturbation='interventional')
     woodelf_explainer = WoodelfExplainer(xgb_model, trainset, feature_perturbation='interventional')
     assert abs(explainer.expected_value - woodelf_explainer.expected_value) < TOLERANCE
+
+
+def test_call(trainset, testset, xgb_model):
+    # TODO slightly different base_values results on path-dependent
+    explainer = shap.TreeExplainer(xgb_model, trainset, feature_perturbation='interventional')
+    shap_package_explanation = explainer(testset)
+    woodelf_explainer = WoodelfExplainer(xgb_model, trainset, feature_perturbation='interventional')
+    woodelf_explanation = woodelf_explainer(testset)
+
+    np.testing.assert_allclose(woodelf_explanation.values, shap_package_explanation.values, atol=TOLERANCE, strict=True)
+    np.testing.assert_allclose(
+        woodelf_explanation.base_values, shap_package_explanation.base_values, atol=TOLERANCE, strict=True
+    )
+    np.testing.assert_allclose(
+        woodelf_explanation.data, shap_package_explanation.data, atol=TOLERANCE, strict=True
+    )
+    assert woodelf_explanation.feature_names == shap_package_explanation.feature_names

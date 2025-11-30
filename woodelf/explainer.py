@@ -3,6 +3,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import time
 
 from woodelf.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzahfValues, \
     BanzhafInteractionValues
@@ -32,7 +33,7 @@ class WoodelfExplainer:
             self.depth = self.model_objs[0].depth
             self.model_was_loaded = True
         else:
-            self.model_objs=None
+            self.model_objs = None
             self.depth = None
             self.model_was_loaded = False
         self.background_data = data
@@ -55,12 +56,6 @@ class WoodelfExplainer:
         assert cache in AVAILABLE_CACHE_OPTIONS, f"Available cache options are {AVAILABLE_CACHE_OPTIONS}. Given '{cache}'"
 
         assert model_output == "raw", f"Currently supports only model_output='raw'. Given {model_output}"
-
-
-    def __call__(self, consumer_data, interactions: bool = False):
-        if interactions:
-            pass
-        return 0
 
     def use_cache(self):
         if self.cache_option == "auto":
@@ -245,12 +240,40 @@ class WoodelfExplainer:
     @property
     def expected_value(self):
         # Use shap expected_value implementation...
-
         from shap.explainers import TreeExplainer
-
-        if self.background_data is None:
-            explainer = TreeExplainer(self.raw_model, feature_perturbation="tree_path_dependent")
-        else:
-            explainer = TreeExplainer(self.raw_model, self.background_data, feature_perturbation="interventional")
-
+        explainer = TreeExplainer(
+            self.raw_model, self.background_data,
+            feature_perturbation=self.feature_perturbation, model_output=self.model_output
+        )
         return explainer.expected_value
+
+
+    def __call__(self, consumer_data, interactions: bool = False):
+        from shap import Explanation
+
+        start_time = time.time()
+        feature_names = consumer_data.columns
+        if interactions:
+            v = self.shap_interaction_values(consumer_data)
+        else:
+            v = self.shap_values(consumer_data)
+
+        # the Explanation object expects an `expected_value` for each row
+        if hasattr(self.expected_value, "__len__") and len(self.expected_value) > 1:
+            # `expected_value` is a list / array of numbers, length k, e.g. for multi-output scenarios
+            # we repeat it N times along the first axis, so ev_tiled.shape == (N, k)
+            num_rows = v.shape[0]
+            ev_tiled = np.tile(self.expected_value, (num_rows, 1))
+        else:
+            # `expected_value` is a scalar / array of 1 number, so we simply repeat it for every row in `v`
+            # ev_tiled.shape == (N,)
+            ev_tiled = np.tile(self.expected_value, v.shape[0])
+
+        X_data = consumer_data.values
+        return Explanation(
+            v,
+            base_values=ev_tiled,
+            data=X_data,
+            feature_names=feature_names,
+            compute_time=time.time() - start_time
+        )
