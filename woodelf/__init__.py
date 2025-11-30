@@ -4,4 +4,4 @@ import woodelf.parse_models
 import woodelf.path_to_matrices
 import woodelf.simple_woodelf
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
