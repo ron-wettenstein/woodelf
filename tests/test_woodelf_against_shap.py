@@ -6,7 +6,10 @@ import pytest
 import shap
 import xgboost as xgb
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor
+from sklearn.ensemble import (
+    HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor,
+    ExtraTreesRegressor
+)
 
 from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
@@ -136,9 +139,10 @@ def test_path_dependent_shap_iv_using_shap_package_is_same_as_using_woodelf(trai
     (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42)),
     (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42)),
     (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42)),
-    (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6, random_state=42, learning_rate=0.01))
+    (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6, random_state=42, learning_rate=0.01)),
+    (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42))
 ], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor",
-        "RandomForestRegressor", "xgb.sklearn.XGBRegressor"])
+        "RandomForestRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor"])
 def test_woodelf_against_shap_on_sklearn_regressor_model(model_type, params):
     X, y = shap.datasets.california(n_points=110)
     X_train = X.head(100)

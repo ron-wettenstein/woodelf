@@ -5,7 +5,10 @@ import xgboost as xgb
 
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
-from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, AdaBoostRegressor
+from sklearn.ensemble import (
+    HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, AdaBoostRegressor,
+    ExtraTreesRegressor
+)
 
 TOLERANCE = 1e-7 # 0.00001
 
@@ -43,9 +46,11 @@ def test_load_and_predict_xgboost():
     (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42),
      lambda m: m.init_.constant_[0][0]),
     (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6,random_state=42, learning_rate=0.01, base_score=0.5),
-     lambda m: 0.5)
+     lambda m: 0.5),
+    (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42),
+     lambda m: 0),
     # (AdaBoostRegressor, dict(n_estimators=10, random_state=42), lambda m: 0) TODO
-], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor", "xgb.sklearn.XGBRegressor"])
+], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor"])
 def test_load_and_predict_sklearn_regressor_model(model_type, params, base_score_func):
     X, y = shap.datasets.california(n_points=10000)
     model = model_type(**params)
