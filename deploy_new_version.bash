@@ -9,7 +9,7 @@ python -c "import os; os.chdir('..'); os.chdir('..'); import woodelf; print(wood
 # Build the package
 #If needed: python -m pip install --upgrade build twine
 windows: del .\dist\*
-linux: del .\dist\*
+linux: rm .\dist\*
 
 python -m build
 # see files were created in dist/
