@@ -56,7 +56,7 @@ def test_path_dependent_shap_using_shap_package_is_same_as_using_woodelf_explain
     print("shap took: ", time.time() - start_time)
 
     start_time = time.time()
-    woodelf_explainer = WoodelfExplainer(xgb_model, trainset, feature_perturbation='tree_path_dependent')
+    woodelf_explainer = WoodelfExplainer(xgb_model, feature_perturbation='tree_path_dependent')
     woodelf_values = woodelf_explainer.shap_values(testset)
     print("woodelf took: ", time.time() - start_time)
 
@@ -74,7 +74,7 @@ def test_path_dependent_shap_iv_using_shap_package_is_same_as_using_woodelf_expl
     print("shap took: ", time.time() - start_time)
 
     start_time = time.time()
-    woodelf_explainer = WoodelfExplainer(xgb_model, trainset, feature_perturbation='tree_path_dependent')
+    woodelf_explainer = WoodelfExplainer(xgb_model)
     woodelf_values = woodelf_explainer.shap_interaction_values(testset.head(10))
     print("woodelf took: ", time.time() - start_time)
 

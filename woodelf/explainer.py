@@ -24,9 +24,16 @@ class WoodelfExplainer:
             # Additional options exists only in Woodelf:
             cache_option: str = "auto", GPU: bool = False
     ):
-        self.model_objs = load_decision_tree_ensemble_model(model, list(data.columns))
-        assert len(self.model_objs) > 0, "Did not load the model properly"
-        self.depth = self.model_objs[0].depth
+        # TODO fix this in the right way. data can be a np.array
+        if data is not None:
+            self.model_objs = load_decision_tree_ensemble_model(model, list(data.columns))
+            assert len(self.model_objs) > 0, "Did not load the model properly"
+            self.depth = self.model_objs[0].depth
+            self.model_was_loaded = True
+        else:
+            self.model_objs = model
+            self.depth = None
+            self.model_was_loaded = False
         self.background_data = data
 
         self.verify_init_input(model_output, feature_perturbation, cache_option)
@@ -139,6 +146,12 @@ class WoodelfExplainer:
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False):
+        if not self.model_was_loaded:
+            self.model_objs = load_decision_tree_ensemble_model(self.model_objs, list(consumer_data.columns))
+            assert len(self.model_objs) > 0, "Did not load the model properly"
+            self.depth = self.model_objs[0].depth
+            self.model_was_loaded = True
+
         if path_to_matrices_calculator is None:
             path_to_matrices_calculator = SimplePathToMatrices(
                 metric=metric, max_depth=self.model_objs[0].depth, GPU=self.GPU
