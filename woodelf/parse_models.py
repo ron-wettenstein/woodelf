@@ -10,6 +10,8 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     "sklearn.ensemble.gradient_boosting.GradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
+    "skopt.learning.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
+    "skopt.learning.forest.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.HistGradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "xgboost.core.Booster": DecisionTreeNode,
     "xgboost.sklearn.XGBClassifier": DecisionTreeNode,
