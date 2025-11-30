@@ -176,3 +176,13 @@ def test_explainer_cache_do_not_override_each_other(trainset, testset, xgb_model
     )
     assert len(woodelf_explainer.cache) == 2
     pd.testing.assert_frame_equal(woodelf_head_5_df_5, woodelf_head_5_df_6)
+
+
+def test_expected_value_property(trainset, testset, xgb_model):
+    explainer = shap.TreeExplainer(xgb_model)
+    woodelf_explainer = WoodelfExplainer(xgb_model)
+    assert abs(explainer.expected_value - woodelf_explainer.expected_value) < TOLERANCE
+
+    explainer = shap.TreeExplainer(xgb_model, trainset, feature_perturbation='interventional')
+    woodelf_explainer = WoodelfExplainer(xgb_model, trainset, feature_perturbation='interventional')
+    assert abs(explainer.expected_value - woodelf_explainer.expected_value) < TOLERANCE

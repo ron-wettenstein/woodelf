@@ -24,6 +24,7 @@ class WoodelfExplainer:
             # Additional options exists only in Woodelf:
             cache_option: str = "auto", GPU: bool = False
     ):
+        self.raw_model = model
         # TODO fix this in the right way. data can be a np.array
         if data is not None:
             self.model_objs = load_decision_tree_ensemble_model(model, list(data.columns))
@@ -31,7 +32,7 @@ class WoodelfExplainer:
             self.depth = self.model_objs[0].depth
             self.model_was_loaded = True
         else:
-            self.model_objs = model
+            self.model_objs=None
             self.depth = None
             self.model_was_loaded = False
         self.background_data = data
@@ -147,7 +148,7 @@ class WoodelfExplainer:
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False):
         if not self.model_was_loaded:
-            self.model_objs = load_decision_tree_ensemble_model(self.model_objs, list(consumer_data.columns))
+            self.model_objs = load_decision_tree_ensemble_model(self.raw_model, list(consumer_data.columns))
             assert len(self.model_objs) > 0, "Did not load the model properly"
             self.depth = self.model_objs[0].depth
             self.model_was_loaded = True
@@ -240,3 +241,16 @@ class WoodelfExplainer:
             path_to_matrixes_calculator=path_to_matrices_calculator, GPU=self.GPU
         )
 
+
+    @property
+    def expected_value(self):
+        # Use shap expected_value implementation...
+
+        from shap.explainers import TreeExplainer
+
+        if self.background_data is None:
+            explainer = TreeExplainer(self.raw_model, feature_perturbation="tree_path_dependent")
+        else:
+            explainer = TreeExplainer(self.raw_model, self.background_data, feature_perturbation="interventional")
+
+        return explainer.expected_value
