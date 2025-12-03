@@ -57,7 +57,7 @@ Its API is identical to the API of `shap.TreeExplainer`. The functions inputs ar
 ```python
 from woodelf.explainer import WoodelfExplainer
 
-# Get a data X_train, y_train, X_test, y_test and train an XGBoost model on it
+# Get X_train, y_train, X_test, y_test and train an XGBoost model
 
 # Path Dependent SHAP
 explainer = WoodelfExplainer(xgb_model)
@@ -66,7 +66,7 @@ pd_values = explainer.shap_values(X_test)
 # Background SHAP values and interaction values
 explainer = WoodelfExplainer(xgb_model, X_train)
 background_values = explainer.shap_values(X_test)
-# The shap python package does not support Background Shapley interaction values - WOODELF does support this!
+# The shap python package does not support Background SHAP interactions - WOODELF supports them!
 background_iv = explainer.shap_interaction_values(X_test) 
 # Better output format that saves RAM. Returns a DataFrame with the feature pairs as columns.
 # Feature pairs that never interact (so all their interaction values are zero) won't appear in the DataFrame.   
@@ -74,7 +74,7 @@ background_iv_df = explainer.shap_interaction_values(X_test, as_df=True, exclude
 
 # Background SHAP using GPU
 explainer = WoodelfExplainer(xgb_model, X_train, GPU=True)
-GPU_background_values = explainer.shap_values(X_test)
+background_values_GPU = explainer.shap_values(X_test)
 
 # Path Dependent Banzhaf values and interaction values
 explainer = WoodelfExplainer(xgb_model)
