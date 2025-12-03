@@ -96,7 +96,7 @@ remain the same (up to minor floating-point differences - we test with a toleran
 
 
 
-# Citations
+## Citations
 
 To cite our package and algorithm, please refer to our AAAI 2026 paper. The paper was accepted to AAAI 2026 and will be published soon.
 For now, refer to its [arXiv version](https://arxiv.org/abs/2511.09376). 
