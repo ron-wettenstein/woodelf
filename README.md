@@ -20,8 +20,8 @@ when explaining $n$ samples with a background dataset of size $m$,
 the `shap` package requires $O(nm)$ time, while WOODELF requires only $O(n + m)$ time. 
 We also substantially accelerate Path-Dependent SHAP, especially on large datasets and when computing interaction values.
 
-To demonstrate the speed-up, we computed Shapley values and interaction values for 3,000,000 samples using a 
-background dataset of 5,000,000 rows. We explained the predictions of an XGBoost model with 100 trees of 
+To demonstrate the speed-up, we computed Shapley values and interaction values for 3,000,000 samples with 127 features 
+using a background dataset of 5,000,000 rows. We explained the predictions of an XGBoost model with 100 trees of 
 depth 6, trained on this background data. The results are reported in the table below.
 
 | Task                             | shap package CPU | WOODELF CPU | WOODELF GPU |
