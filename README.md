@@ -80,7 +80,7 @@ shap.plots.force(background_values[0])
 ```
 
 
-### Additional Usage Examples
+## Additional Usage Examples
 
 #### Path Dependent SHAP
 
@@ -115,7 +115,7 @@ explainer = WoodelfExplainer(xgb_model, X_train)
 background_iv_df = explainer.shap_interaction_values(X_test, as_df=True, exclude_zero_contribution_features=False)
 ```
 
-### Built-in Cache
+#### Built-in Cache
 
 By default, caching is enabled for sufficiently small decision-tree ensembles (e.g., models with low tree depth).
 
@@ -129,7 +129,7 @@ You can control this behavior manually:
 ```python
 explainer = WoodelfExplainer(xgb_model, X_train, cache_option='yes')
 shap_sample_1 = explainer.shap_values(X_test.sample(100))
-# No need to preprocess the background data from here on, the cache will be used instead
+# No need to preprocess the background data from here on, the cache will be used instead.
 shap_sample_2 = explainer.shap_values(X_test.sample(100)) 
 shap_sample_3 = explainer.shap_values(X_test.sample(100))
 ...
