@@ -1,8 +1,7 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ron-wettenstein/woodelf/main/docs/WOODELF_logo.png" width="400" />
+  <img src="https://raw.githubusercontent.com/ron-wettenstein/woodelf/main/docs/WOODELF_commercial.png" width="400" />
 </p>
 
-# woodelf
 ### Understand trees. Decision trees.
 
 WOODELF is a unified and efficient algorithm for computing Shapley values on decision trees. It supports:
@@ -50,49 +49,91 @@ An optional dependency is `cupy`, which enables GPU-accelerated execution.
 
 ## Usage
 
-Use the `woodelf.explainer.WoodelfExplainer` object! 
+Use the `woodelf.explainer.WoodelfExplainer` object!
 
 Its API is identical to the API of `shap.TreeExplainer`. The functions inputs are the same, the output is the same, just the algorithm is different.
 
+Background (interventional) SHAP and Shapley interaction values computation:
 ```python
-from woodelf.explainer import WoodelfExplainer
+from woodelf import WoodelfExplainer
 
 # Get X_train, y_train, X_test, y_test and train an XGBoost model
 
-# Path Dependent SHAP
-explainer = WoodelfExplainer(xgb_model)
-pd_values = explainer.shap_values(X_test)
-
-# Background SHAP values and interaction values
 explainer = WoodelfExplainer(xgb_model, X_train)
 background_values = explainer.shap_values(X_test)
-# The shap python package does not support Background SHAP interactions - WOODELF supports them!
 background_iv = explainer.shap_interaction_values(X_test) 
-# Better output format that saves RAM. Returns a DataFrame with the feature pairs as columns.
-# Feature pairs that never interact (so all their interaction values are zero) won't appear in the DataFrame.   
-background_iv_df = explainer.shap_interaction_values(X_test, as_df=True, exclude_zero_contribution_features=False)
+```
+**Good to know:** 
+- The shap python package does not support Background SHAP interactions - WOODELF supports them!
+- We extensively validate WOODELF against the `shap` package and confirm that both return identical Shapley values. 
+Replacing `shap.TreeExplainer` with `WoodelfExplainer` will not change the output: both the format and the numerical values 
+remain the same (up to minor floating-point differences - we test with a tolerance of 0.00001).
 
-# Background SHAP using GPU
-explainer = WoodelfExplainer(xgb_model, X_train, GPU=True)
-background_values_GPU = explainer.shap_values(X_test)
-
-# Path Dependent Banzhaf values and interaction values
-explainer = WoodelfExplainer(xgb_model)
-banzhaf_values = explainer.banzhaf_values(X_test)
-banzhaf_iv = explainer.banzhaf_interaction_values(X_test)
-
+For visualization, pass the returned output to any of the shap plots:
+```python
 import shap
 
-# For visualization, pass the returned output to any of the shap plots:
 shap.summary_plot(background_values, X_test)
 shap.plots.waterfall(background_values[0])
-shap.plots.force(pd_values[0])
+shap.plots.force(background_values[0])
 ...
 ```
 
-**Note:** We extensively validate WOODELF against the `shap` package and confirm that both return identical Shapley values. 
-Replacing `shap.TreeExplainer` with `WoodelfExplainer` will not change the output: both the format and the numerical values 
-remain the same (up to minor floating-point differences - we test with a tolerance of 0.00001).
+
+### Additional Usage Examples
+
+#### Path Dependent SHAP
+
+Same API as in the shap package:
+```python
+explainer = WoodelfExplainer(xgb_model)
+pd_values = explainer.shap_values(X_test)
+pd_iv = explainer.shap_interaction_values(X_test)
+```
+
+#### Using GPU
+Simply pass `GPU=True` in the WoodelfExplainer initialization:
+```python
+explainer = WoodelfExplainer(xgb_model, X_train, GPU=True)
+background_values_GPU = explainer.shap_values(X_test)
+```
+
+#### Banzhaf Values
+Simply use `explainer.banzhaf_values` for banzhaf values and `explainer.banzhaf_interaction_values` for banzhaf interaction values.
+```python
+explainer = WoodelfExplainer(xgb_model, X_train)
+banzhaf_values = explainer.banzhaf_values(X_test)
+banzhaf_iv = explainer.banzhaf_interaction_values(X_test)
+```
+
+#### Better Output Format
+
+A memory-efficient output format that returns results as a DataFrame with feature pairs as columns. Feature pairs with zero interactions are automatically excluded to save RAM.
+
+```python
+explainer = WoodelfExplainer(xgb_model, X_train)
+background_iv_df = explainer.shap_interaction_values(X_test, as_df=True, exclude_zero_contribution_features=False)
+```
+
+### Built-in Cache
+
+By default, caching is enabled for sufficiently small decision-tree ensembles (e.g., models with low tree depth).
+
+The cache stores the preprocessed background data, eliminating the need to recompute it across repeated uses of the same explainer instance.
+
+You can control this behavior manually:
+- Enable caching with `cache_option='yes'`
+- Disable caching with `cache_option='no'`
+
+**Note:** Caching may be memory-intensive for deep trees (e.g., `max_depth ≥ 8`).
+```python
+explainer = WoodelfExplainer(xgb_model, X_train, cache_option='yes')
+shap_sample_1 = explainer.shap_values(X_test.sample(100))
+# No need to preprocess the background data from here on, the cache will be used instead
+shap_sample_2 = explainer.shap_values(X_test.sample(100)) 
+shap_sample_3 = explainer.shap_values(X_test.sample(100))
+...
+```
 
 
 
