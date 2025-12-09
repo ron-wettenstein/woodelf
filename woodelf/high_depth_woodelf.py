@@ -5,7 +5,8 @@ from tqdm import tqdm
 from woodelf.cube_metric import CubeMetric
 from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.parse_models import load_decision_tree_ensemble_model
-from woodelf.path_to_matrices import PathToMatricesAbstractCls, SimplePathToMatrices, HighDepthPathToMatrices
+from woodelf.path_to_matrices import PathToMatricesAbstractCls, SimplePathToMatrices, HighDepthPathToMatrices, \
+    HighDepthPathToMatricesVectorized
 
 import numpy as np
 import pandas as pd
@@ -367,7 +368,7 @@ def woodelf_for_high_depth(
     """
     model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrices_calculator is None:
-        path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
+        path_to_matrices_calculator = HighDepthPathToMatricesVectorized(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
     if GPU:
         consumer_data = get_cupy_data(model_objs, consumer_data)
         background_data = get_cupy_data(model_objs, background_data)
