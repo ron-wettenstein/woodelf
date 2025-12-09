@@ -90,7 +90,7 @@ def compute_f(patterns, path_depth: int, GPU: bool = False):
 
     return np.bincount(patterns, minlength=2 ** path_depth) / len(patterns)
 
-def compute_path_dependent_f(path: List[DecisionTreeNode], unique_features_in_path: List[Any]):
+def compute_path_dependent_f(path: List[DecisionTreeNode], unique_features_in_path: List[Any], prepare_f: bool = False):
     """
     Estimate the frequencies of the training data using the tree cover property.
     Implement Formula 9 of the article for the provided path.
@@ -107,10 +107,16 @@ def compute_path_dependent_f(path: List[DecisionTreeNode], unique_features_in_pa
     f = np.ones(f_size)
     for i, feature in enumerate(unique_features_in_path):
         proceed_cover = proceed_covers[feature]
-        f = f * np.tile(
-            np.array([1-proceed_cover] * (f_size // 2 ** (1 + i)) +  [proceed_cover] * (f_size // 2 ** (1 + i))),
-            2 ** i
-        )
+        if prepare_f:
+            f = f * np.tile(
+                np.array([1] * (f_size // 2 ** (1 + i)) + [proceed_cover] * (f_size // 2 ** (1 + i))),
+                2 ** i
+            )
+        else:
+            f = f * np.tile(
+                np.array([1-proceed_cover] * (f_size // 2 ** (1 + i)) +  [proceed_cover] * (f_size // 2 ** (1 + i))),
+                2 ** i
+            )
     return f
 
 
@@ -193,8 +199,12 @@ def compute_path_dependent_shap_for_leaf_node(
         unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
         global_importance: bool = False
 ):
-    f = compute_path_dependent_f(path + [leaf], unique_features_in_path)
-    s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
+    if isinstance(path_to_matrices_calculator, HighDepthPathToMatrices):
+        f = compute_path_dependent_f(path + [leaf], unique_features_in_path, prepare_f=True)
+        s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value, path_dependent=True)
+    else:
+        f = compute_path_dependent_f(path + [leaf], unique_features_in_path)
+        s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
     compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU, global_importance)
 
 def compute_background_shap_for_two_neighbor_leaves(
@@ -219,10 +229,16 @@ def compute_path_dependent_shap_two_neighbor_leaves(
         unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
         global_importance: bool = False
 ):
-    left_f = compute_path_dependent_f(path + [left_leaf], unique_features_in_path)
-    left_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, left_f, left_leaf.value)
-    right_f = compute_path_dependent_f(path + [right_leaf], unique_features_in_path)
-    right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value)
+    prepare_f = isinstance(path_to_matrices_calculator, HighDepthPathToMatrices)
+    left_f = compute_path_dependent_f(path + [left_leaf], unique_features_in_path, prepare_f=prepare_f)
+    right_f = compute_path_dependent_f(path + [right_leaf], unique_features_in_path, prepare_f=prepare_f)
+
+    if isinstance(path_to_matrices_calculator, HighDepthPathToMatrices):
+        left_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, left_f, left_leaf.value, path_dependent=True)
+        right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value, path_dependent=True)
+    else:
+        left_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, left_f, left_leaf.value)
+        right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value)
 
     combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
     compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU, global_importance)
