@@ -187,7 +187,6 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
         )
 
 
-
 class HighDepthPathToMatrices(PathToMatricesAbstractCls):
     def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False, path_dependent: bool = False):
         super().__init__(metric, max_depth, GPU)
@@ -197,10 +196,8 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
 
         start_time = time.time()
         self.matrices = {}
-        self.np_indexing_values = {}
         self.matrices_frs_subsets = {}
         self.build_matrices()
-        self.build_numpy_indexing_values()
         self.matrices_init_time = time.time() - start_time
 
     @classmethod
@@ -263,19 +260,6 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             self.matrices_frs_subsets[depth] = list(matrices.keys())
             self.matrices[depth] = np.array([matrices[k] for k in self.matrices_frs_subsets[depth]]).T
 
-    def build_numpy_indexing_values(self):
-        for depth in range(1, self.max_depth+1):
-            zero_row = 2 ** depth - 1
-            idx = np.arange(2 ** depth)
-            for d in range(0, depth, 1):
-                shifted_indexes = np.full_like(idx, zero_row)
-                shifted_indexes[2 ** d:] = idx[:-2 ** d]
-                mask = (idx & (1 << d)) == 0
-                shifted_indexes[mask] = zero_row
-                if depth not in self.np_indexing_values:
-                    self.np_indexing_values[depth] = {}
-                self.np_indexing_values[depth][d] = shifted_indexes
-
 
     def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         depth = len(features_in_path)
@@ -288,17 +272,15 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         matrices = self.matrices[depth]
         frs2feature_name = self.frs_subsets_to_feature_subsets(features_in_path, depth)
         s_vectors = {}
+        idx = np.arange(len(f))
         s_matrix = matrices * f[::-1].reshape(-1, 1) # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
-        last_row = s_matrix[-1].copy()
-        s_matrix[-1] = 0
-
         for d in range(0, depth, 1):
-            s_matrix = s_matrix + s_matrix[self.np_indexing_values[depth][d]]
-            last_row = last_row + s_matrix[-1].copy()
-            s_matrix[-1] = 0
+            s_matrix_copy = s_matrix.copy()
+            s_matrix_copy[2 ** d:, :] = s_matrix[:-2 ** d, :]  # shift the array to the left 2**d bits
+            s_matrix_copy[(idx & (1 << d)) == 0] = 0  # Zero all elements that are in an even place in the current division
+            s_matrix = s_matrix + s_matrix_copy
 
-        s_matrix[-1] = last_row
-        s_matrix *= w
+        s_matrix = s_matrix * w
         for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
             feature_subset = frs2feature_name[frs_subset]
             s_vectors[feature_subset] = s_matrix[:,index]
@@ -335,3 +317,54 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             f"M time: {round(self.matrices_init_time, 2)} sec, " +
             f"s time: {round(self.s_computation_time, 2)} sec (f prepare time: {self.f_prepare_time})"
         )
+
+
+class HighDepthPathToMatricesNumpyIndexing(HighDepthPathToMatrices):
+    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False, path_dependent: bool = False):
+        super().__init__(metric, max_depth, GPU, path_dependent)
+        self.np_indexing_values = {}
+        self.build_numpy_indexing_values()
+
+
+    def build_numpy_indexing_values(self):
+        for depth in range(1, self.max_depth+1):
+            zero_row = 2 ** depth - 1
+            idx = np.arange(2 ** depth)
+            for d in range(0, depth, 1):
+                shifted_indexes = np.full_like(idx, zero_row)
+                shifted_indexes[2 ** d:] = idx[:-2 ** d]
+                mask = (idx & (1 << d)) == 0
+                shifted_indexes[mask] = zero_row
+                if depth not in self.np_indexing_values:
+                    self.np_indexing_values[depth] = {}
+                self.np_indexing_values[depth][d] = shifted_indexes
+
+
+    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
+        depth = len(features_in_path)
+        start_time = time.time()
+        if not self.path_dependent:
+            start_time_f_prepare = time.time()
+            f = self.prepare_f(depth, f)
+            self.f_prepare_time += time.time() - start_time_f_prepare
+
+        matrices = self.matrices[depth]
+        frs2feature_name = self.frs_subsets_to_feature_subsets(features_in_path, depth)
+        s_vectors = {}
+        s_matrix = matrices * f[::-1].reshape(-1, 1) # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
+        last_row = s_matrix[-1].copy()
+        s_matrix[-1] = 0
+
+        for d in range(0, depth, 1):
+            s_matrix = s_matrix + s_matrix[self.np_indexing_values[depth][d]]
+            last_row = last_row + s_matrix[-1].copy()
+            s_matrix[-1] = 0
+
+        s_matrix[-1] = last_row
+        s_matrix = s_matrix * w
+        for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
+            feature_subset = frs2feature_name[frs_subset]
+            s_vectors[feature_subset] = s_matrix[:,index]
+
+        self.s_computation_time += time.time() - start_time
+        return s_vectors

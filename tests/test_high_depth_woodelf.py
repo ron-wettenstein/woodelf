@@ -122,7 +122,8 @@ def test_calculate_background_metric_for_high_depth(trainset, testset, xgb_model
 
     start_time = time.time()
     high_depth_woodelf_values = woodelf_for_high_depth(
-        xgb_model, testset, trainset, metric=metric_cls(), use_neighbor_leaf_trick=use_neighbor_leaf_trick
+        xgb_model, testset, trainset, metric=metric_cls(), use_neighbor_leaf_trick=use_neighbor_leaf_trick,
+        high_depth_th=3
     )
     print("high depth woodelf took: ", time.time() - start_time)
 
@@ -149,7 +150,8 @@ def test_calculate_path_dependent_metric_for_high_depth(
 
     start_time = time.time()
     high_depth_woodelf_values = woodelf_for_high_depth(
-        xgb_model, testset, background_data=None, metric=metric_cls(), use_neighbor_leaf_trick=use_neighbor_leaf_trick
+        xgb_model, testset, background_data=None, metric=metric_cls(), use_neighbor_leaf_trick=use_neighbor_leaf_trick,
+        high_depth_th=3
     )
     print("high depth woodelf took: ", time.time() - start_time)
 
@@ -177,10 +179,10 @@ def test_only_unique_feature_paths_are_passed_to_path_to_matrices_calculator(tra
 
 def test_global_importance_flag(trainset, testset, xgb_model):
     values = woodelf_for_high_depth(
-        xgb_model, testset, background_data=trainset, metric=ShapleyValues(), global_importance=False
+        xgb_model, testset, background_data=trainset, metric=ShapleyValues(), global_importance=False,
     )
     global_values = woodelf_for_high_depth(
-        xgb_model, testset, background_data=trainset, metric=ShapleyValues(), global_importance=True
+        xgb_model, testset, background_data=trainset, metric=ShapleyValues(), global_importance=True,
     )
     for feature in values:
         assert abs(np.mean(values[feature]) - global_values[feature]) < TOLERANCE

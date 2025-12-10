@@ -352,6 +352,7 @@ def woodelf_for_high_depth(
         GPU: bool=False, use_neighbor_leaf_trick: bool=True,
         path_to_matrices_calculator: PathToMatricesAbstractCls = None,
         global_importance: bool = False,
+        high_depth_th: int = 10,
 ):
     """
     WOODELF designed for higher depths decision trees.
@@ -373,6 +374,8 @@ def woodelf_for_high_depth(
     on large/medium size datasets)
     @param global_importance: If true return the average value across all consumer data rows. Used to
     save RAM.
+    @param high_depth_th: On this depth and higher, a RAM and time efficient M*f multiplication will be used (it is
+    significantly more efficient on high depth, but, due to large constants a bit slower on low depth)
 
     @return The computed values as a dictionary that maps between features/features pairs to np.arrays with
     the values.
@@ -385,9 +388,15 @@ def woodelf_for_high_depth(
 
     model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrices_calculator is None:
-        path_to_matrices_calculator = HighDepthPathToMatrices(
-            metric=metric, max_depth=model_objs[0].depth, GPU=GPU, path_dependent=background_data is None
-        )
+        max_depth = model_objs[0].depth
+        if max_depth < high_depth_th:
+            path_to_matrices_calculator = SimplePathToMatrices(
+                metric=metric, max_depth=model_objs[0].depth, GPU=GPU
+            )
+        else:
+            path_to_matrices_calculator = HighDepthPathToMatrices(
+                metric=metric, max_depth=model_objs[0].depth, GPU=GPU, path_dependent=background_data is None
+            )
     if GPU:
         consumer_data = get_cupy_data(model_objs, consumer_data)
         background_data = get_cupy_data(model_objs, background_data)
