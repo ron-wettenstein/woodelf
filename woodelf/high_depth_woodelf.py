@@ -430,7 +430,7 @@ def woodelf_for_high_depth(
         data_length += len(background_data)
     if data_length < 2 ** max_depth:
         # If the size of the data is smaller than the number of pattern, the leaf trick is not worse the effort.
-        # Skipping it will actually be faster.
+        # Skipping it will actually be faster
         use_neighbor_leaf_trick = False
 
     if GPU:
