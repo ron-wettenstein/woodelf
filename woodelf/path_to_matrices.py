@@ -202,6 +202,7 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         self.build_matrices()
         self.build_numpy_indexing_values()
         self.matrices_init_time = time.time() - start_time
+        self.timings = {k: 0 for k in ["m*f", "remove last row and set it to zero", "the s line", "return last row", "s * w", "split s to vectors"]}
 
     @classmethod
     def map_patterns_to_cube(cls, features_in_path: List):
@@ -288,20 +289,36 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         matrices = self.matrices[depth]
         frs2feature_name = self.frs_subsets_to_feature_subsets(features_in_path, depth)
         s_vectors = {}
+        st = time.time()
         s_matrix = matrices * f[::-1].reshape(-1, 1) # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
+        self.timings["m*f"] += time.time() - st
+        st = time.time()
         last_row = s_matrix[-1].copy()
         s_matrix[-1] = 0
+        self.timings["remove last row and set it to zero"] += time.time() - st
 
         for d in range(0, depth, 1):
+            st = time.time()
             s_matrix = s_matrix + s_matrix[self.np_indexing_values[depth][d]]
+            self.timings["the s line"] += time.time() - st
+            st = time.time()
             last_row = last_row + s_matrix[-1].copy()
             s_matrix[-1] = 0
+            self.timings["remove last row and set it to zero"] += time.time() - st
 
+
+        st = time.time()
         s_matrix[-1] = last_row
+        self.timings["return last row"] += time.time() - st
+
+        st = time.time()
         s_matrix *= w
+        self.timings["s * w"] += time.time() - st
+        st = time.time()
         for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
             feature_subset = frs2feature_name[frs_subset]
             s_vectors[feature_subset] = s_matrix[:,index]
+        self.timings["split s to vectors"] += time.time() - st
 
         self.s_computation_time += time.time() - start_time
         return s_vectors
@@ -335,3 +352,5 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             f"M time: {round(self.matrices_init_time, 2)} sec, " +
             f"s time: {round(self.s_computation_time, 2)} sec (f prepare time: {self.f_prepare_time})"
         )
+        for k in self.timings:
+            print(f"{k}: {round(self.timings[k], 2)} sec")
