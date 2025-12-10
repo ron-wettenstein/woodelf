@@ -32,7 +32,7 @@ def test_simple_and_high_depth_are_equivalent():
     f = np.arange(2 ** 6)
     expected_s = simple_p2m.get_s_matrices(features_in_path=list(range(1,7)), f=f, w=1)
 
-    actual_s = high_depth_p2m.get_s_matrices(features_in_path=list(range(1,7)), f=f, w=1)
+    actual_s = high_depth_p2m.get_s_matrices(features_in_path=list(range(1,7)), f=f, w=1, path_dependent=False)
 
     for feature in expected_s:
         np.testing.assert_allclose(actual_s[feature], expected_s[feature], atol=TOLERANCE)
@@ -40,6 +40,9 @@ def test_simple_and_high_depth_are_equivalent():
     # weight other than 1
     f = np.arange(2 ** 6) / 2 ** 6
     expected_s = simple_p2m.get_s_matrices(features_in_path=list(range(1, 7)), f=f, w=3)
-    actual_s = high_depth_p2m.get_s_matrices(features_in_path=list(range(1, 7)), f=f, w=3)
+    actual_s = high_depth_p2m.get_s_matrices(features_in_path=list(range(1, 7)), f=f, w=3, path_dependent=False)
     for feature in expected_s:
         np.testing.assert_allclose(actual_s[feature], expected_s[feature], atol=TOLERANCE)
+
+
+
