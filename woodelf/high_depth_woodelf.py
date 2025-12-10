@@ -384,6 +384,12 @@ def woodelf_for_high_depth(
     @return The computed values as a dictionary that maps between features/features pairs to np.arrays with
     the values.
     """
+    for func in [init_patterns_dict, add_children_patterns, compute_f, compute_path_dependent_f, compute_f_of_neighbor,
+                 compute_values_using_s_vectors, compute_background_shap_for_leaf_node, compute_path_dependent_shap_for_leaf_node,
+                 compute_background_shap_for_two_neighbor_leaves, compute_path_dependent_shap_two_neighbor_leaves,
+                 compute_patterns_generator]:
+        func._reset()
+
     model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrices_calculator is None:
         path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
