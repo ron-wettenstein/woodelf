@@ -276,9 +276,9 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             s_matrix_copy = s_matrix.copy()
             s_matrix_copy[2 ** d:, :] = s_matrix[:-2 ** d, :]  # shift the array to the left 2**d bits
             s_matrix_copy[(idx & (1 << d)) == 0] = 0  # Zero all elements that are in an even place in the current division
-            s_matrix += s_matrix_copy
+            s_matrix = s_matrix + s_matrix_copy
 
-        s_matrix *= w
+        s_matrix = s_matrix * w
         for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
             feature_subset = frs2feature_name[frs_subset]
             s_vectors[feature_subset] = s_matrix[:,index]
