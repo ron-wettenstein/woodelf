@@ -1,7 +1,7 @@
 import numpy as np
 
 from woodelf.cube_metric import ShapleyValues
-from woodelf.path_to_matrices import SimplePathToMatrices, HighDepthPathToMatrices, HighDepthPathToMatricesVectorized
+from woodelf.path_to_matrices import SimplePathToMatrices, HighDepthPathToMatrices
 
 TOLERANCE = 0.00001
 
@@ -26,7 +26,7 @@ def test_prepare_f():
 
 
 def test_simple_and_high_depth_are_equivalent():
-    high_depth_p2m = HighDepthPathToMatricesVectorized(metric=ShapleyValues(), max_depth=6, GPU=False)
+    high_depth_p2m = HighDepthPathToMatrices(metric=ShapleyValues(), max_depth=6, GPU=False)
     simple_p2m = SimplePathToMatrices(metric=ShapleyValues(), max_depth=6, GPU=False)
 
     f = np.arange(2 ** 6)

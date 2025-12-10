@@ -132,7 +132,9 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
             fl = fl[:2 ** len(features_in_path)]
 
         # Build M, implements lines 7-16 of the pseudo-code and Build s, implements lines 17-21 of the pseudo-code
-        features_to_values = path_to_matrixes_calculator.get_s_matrices(features_in_path, fl, leaf.value)
+        features_to_values = path_to_matrixes_calculator.get_s_matrices(
+            features_in_path, fl, leaf.value, path_dependent=False
+        )
         leaf.feature_contribution_replacement_values = features_to_values
     return tree
 
@@ -316,9 +318,9 @@ def fast_preprocess_path_dependent(tree: DecisionTreeNode, path_to_matrixes_calc
     """
     freq = path_dependent_frequencies(tree)
     for leaf, features_in_path in tree.get_all_leaves_with_path_to_root():
-        leaf.feature_contribution_replacement_values = path_to_matrixes_calculator.get_s_matrices(features_in_path,
-                                                                                                  freq[leaf.index],
-                                                                                                  leaf.value)
+        leaf.feature_contribution_replacement_values = path_to_matrixes_calculator.get_s_matrices(
+            features_in_path, freq[leaf.index], leaf.value, path_dependent=True
+        )
     return tree
 
 

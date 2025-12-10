@@ -19,7 +19,7 @@ class PathToMatricesAbstractCls:
     def get_values_matrices(self, features_in_path: List):
         raise NotImplemented
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
+    def get_s_matrices(self, features_in_path: List, f: np.array, w: float, path_dependent: bool = False):
         raise NotImplemented
 
     def dump(self, file_path: str):
@@ -165,7 +165,7 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
         self.m_computation_time += time.time() - start_time
         return matrixes_for_the_given_features
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
+    def get_s_matrices(self, features_in_path: List, f: np.array, w: float, path_dependent: bool = False):
         matrices = self.get_values_matrices(features_in_path)
         start_time = time.time()
         s_vectors = {}
