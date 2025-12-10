@@ -417,6 +417,7 @@ def woodelf_for_high_depth(
     #     compute_path_dependent_shap_two_neighbor_leaves: {compute_path_dependent_shap_two_neighbor_leaves.total_time()}
     #     compute_patterns_generator: {compute_patterns_generator.total_time()}
     #     """
+    #
     # )
 
     path_to_matrices_calculator.present_statistics()
