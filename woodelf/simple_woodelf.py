@@ -120,6 +120,7 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
             # The code below utilize this fact for efficiency - this saved half of the bincount opperations.
             # This trick is part of improvement 3 in Sec. 9.1 (this is the improvement to line 4)
             neighboor_frq = visited_leaves_parents[leaf.parent.index]
+            # TODO maybe swap using numpy
             frqs = []
             for i in range(0, len(neighboor_frq), 2):
                 frqs.append(neighboor_frq[i + 1])
@@ -182,6 +183,7 @@ def calculation_given_preprocessed_tree(tree: DecisionTreeNode, data: pd.DataFra
             current_edp_indexes = decision_patterns[almost_leaf.left.index]
             replacements_arrays = almost_leaf.left.feature_contribution_replacement_values
             for feature, replacement_values in almost_leaf.right.feature_contribution_replacement_values.items():
+                # TODO fast swap using numpy
                 swaped_replacements_values = []
                 for i in range(0, len(replacement_values), 2):
                     swaped_replacements_values.append(replacement_values[i + 1])
