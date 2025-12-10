@@ -23,7 +23,7 @@ except ModuleNotFoundError as e:
     IMPORTED_CP = False
 
 
-NUMPY_SWAP_IS_FASTER_SIZE = 2 ** 14
+NUMPY_SWAP_IS_FASTER_SIZE = 2 ** 13
 
 
 # @time_accumulator
