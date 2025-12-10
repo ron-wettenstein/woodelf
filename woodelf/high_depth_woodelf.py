@@ -200,12 +200,9 @@ def compute_path_dependent_shap_for_leaf_node(
         unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
         global_importance: bool = False
 ):
-    if isinstance(path_to_matrices_calculator, HighDepthPathToMatrices):
-        f = compute_path_dependent_f(path + [leaf], unique_features_in_path, prepare_f=True)
-        s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value, path_dependent=True)
-    else:
-        f = compute_path_dependent_f(path + [leaf], unique_features_in_path)
-        s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
+    prepare_f = isinstance(path_to_matrices_calculator, HighDepthPathToMatrices)
+    f = compute_path_dependent_f(path + [leaf], unique_features_in_path, prepare_f=prepare_f)
+    s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
     compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU, global_importance)
 
 @time_accumulator
@@ -236,12 +233,8 @@ def compute_path_dependent_shap_two_neighbor_leaves(
     left_f = compute_path_dependent_f(path + [left_leaf], unique_features_in_path, prepare_f=prepare_f)
     right_f = compute_path_dependent_f(path + [right_leaf], unique_features_in_path, prepare_f=prepare_f)
 
-    if isinstance(path_to_matrices_calculator, HighDepthPathToMatrices):
-        left_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, left_f, left_leaf.value, path_dependent=True)
-        right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value, path_dependent=True)
-    else:
-        left_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, left_f, left_leaf.value)
-        right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value)
+    left_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, left_f, left_leaf.value)
+    right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value)
 
     combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
     compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU, global_importance)
@@ -388,11 +381,13 @@ def woodelf_for_high_depth(
                  compute_values_using_s_vectors, compute_background_shap_for_leaf_node, compute_path_dependent_shap_for_leaf_node,
                  compute_background_shap_for_two_neighbor_leaves, compute_path_dependent_shap_two_neighbor_leaves,
                  compute_patterns_generator]:
-        func._reset()
+        func.reset()
 
     model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrices_calculator is None:
-        path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
+        path_to_matrices_calculator = HighDepthPathToMatrices(
+            metric=metric, max_depth=model_objs[0].depth, GPU=GPU, path_dependent=background_data is None
+        )
     if GPU:
         consumer_data = get_cupy_data(model_objs, consumer_data)
         background_data = get_cupy_data(model_objs, background_data)

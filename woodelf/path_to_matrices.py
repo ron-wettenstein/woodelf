@@ -187,8 +187,9 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
         )
 
 class HighDepthPathToMatrices(PathToMatricesAbstractCls):
-    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
+    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False, path_dependent: bool = False):
         super().__init__(metric, max_depth, GPU)
+        self.path_dependent = path_dependent
         self.s_computation_time = 0
         self.f_prepare_time = 0
 
@@ -260,10 +261,10 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             self.matrices[depth] = np.array([matrices[k] for k in self.matrices_frs_subsets[depth]]).T
 
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float, path_dependent: bool = False):
+    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         depth = len(features_in_path)
         start_time = time.time()
-        if not path_dependent:
+        if not self.path_dependent:
             start_time_f_prepare = time.time()
             f = self.prepare_f(depth, f)
             self.f_prepare_time += time.time() - start_time_f_prepare
