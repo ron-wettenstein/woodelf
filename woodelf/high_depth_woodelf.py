@@ -23,6 +23,9 @@ except ModuleNotFoundError as e:
     IMPORTED_CP = False
 
 
+NUMPY_SWAP_IS_FASTER_SIZE = 2 ** 14
+
+
 # @time_accumulator
 def init_patterns_dict(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool):
     # Use a tight uint type for efficiency. This is improvement 5 of Sec. 9.1
@@ -138,7 +141,14 @@ def compute_f_of_neighbor(neighbor_f):
     The code below utilize this fact for efficiency - this saved half of the bincount opperations.
     This trick is part of improvement 3 in Sec. 9.1 (this is the improvement to line 4)
     """
-    return neighbor_f.reshape(-1, 2)[:, ::-1].reshape(-1)
+    if len(neighbor_f) <= NUMPY_SWAP_IS_FASTER_SIZE:
+        frqs = []
+        for i in range(0, len(neighbor_f), 2):
+            frqs.append(neighbor_f[i + 1])
+            frqs.append(neighbor_f[i])
+        return np.array(frqs, dtype=np.float32)
+    else:
+        return neighbor_f.reshape(-1, 2)[:, ::-1].reshape(-1)
 
 # @time_accumulator
 def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bool, global_importance: bool = False):
@@ -178,9 +188,18 @@ def combine_neighbor_leaves_s_vectors(s_left, s_right):
     """
     s_combined = {}
     for feature in s_left:
-        # efficiently swap even and odd index cells
-        swapped_s_right = s_right[feature].reshape(-1, 2)[:, ::-1].reshape(-1)
-        s_combined[feature] = s_left[feature] + swapped_s_right
+
+        s_right_vec = s_right[feature]
+        if len(s_right_vec) <= NUMPY_SWAP_IS_FASTER_SIZE:
+            swapped_s_right = []
+            for i in range(0, len(s_right_vec), 2):
+                swapped_s_right.append(s_right_vec[i + 1])
+                swapped_s_right.append(s_right_vec[i])
+            s_combined[feature] = s_left[feature] + np.array(swapped_s_right, dtype=s_right_vec.dtype)
+        else:
+            # efficiently swap even and odd index cells
+            swapped_s_right = s_right[feature].reshape(-1, 2)[:, ::-1].reshape(-1)
+            s_combined[feature] = s_left[feature] + swapped_s_right
     return s_combined
 
 # @time_accumulator
