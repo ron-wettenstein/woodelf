@@ -13,6 +13,7 @@ import pandas as pd
 from woodelf.simple_woodelf import (
     GPU_get_int_dtype_from_depth, get_int_dtype_from_depth, get_cupy_data, fill_mirror_pairs
 )
+from woodelf.timings import time_accumulator
 
 try:
     import cupy as cp
@@ -22,7 +23,7 @@ except ModuleNotFoundError as e:
     IMPORTED_CP = False
 
 
-
+@time_accumulator
 def init_patterns_dict(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool):
     # Use a tight uint type for efficiency. This is improvement 5 of Sec. 9.1
     int_dtype = GPU_get_int_dtype_from_depth(tree.depth) if GPU else get_int_dtype_from_depth(tree.depth)
@@ -33,6 +34,7 @@ def init_patterns_dict(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool):
         root_pattern = pd.Series(0, index=data.index).to_numpy().astype(int_dtype)
     return {tree.index: root_pattern}
 
+@time_accumulator
 def add_children_patterns(patterns_dict, node, path_features, data: pd.DataFrame, GPU: bool, int_dtype=int):
     """
     Compute the pattern of the provided node given the cahced patterns in the patterns_dict.
@@ -69,6 +71,7 @@ def add_children_patterns(patterns_dict, node, path_features, data: pd.DataFrame
         patterns_dict[node.left.index] = my_pattern & (mask + left_condition*current_feature_bit)
         patterns_dict[node.right.index] = my_pattern & (mask + right_condition*current_feature_bit)
 
+@time_accumulator
 def clean_old_patterns(patterns_dict, node):
     """
     Delete the node patterns and all its children patterns from the cache
@@ -78,7 +81,7 @@ def clean_old_patterns(patterns_dict, node):
             if n.index in patterns_dict:
                 patterns_dict.pop(n.index)
 
-
+@time_accumulator
 def compute_f(patterns, path_depth: int, GPU: bool = False):
     """
     f is a simple patterns.value_counts(normalized=True).
@@ -90,6 +93,7 @@ def compute_f(patterns, path_depth: int, GPU: bool = False):
 
     return np.bincount(patterns, minlength=2 ** path_depth) / len(patterns)
 
+@time_accumulator
 def compute_path_dependent_f(path: List[DecisionTreeNode], unique_features_in_path: List[Any], prepare_f: bool = False):
     """
     Estimate the frequencies of the training data using the tree cover property.
@@ -120,6 +124,7 @@ def compute_path_dependent_f(path: List[DecisionTreeNode], unique_features_in_pa
     return f
 
 
+@time_accumulator
 def compute_f_of_neighbor(neighbor_f):
     """
     neighbor leaves have similar patterns (only the last bit is different)
@@ -135,6 +140,7 @@ def compute_f_of_neighbor(neighbor_f):
     """
     return neighbor_f.reshape(-1, 2)[:, ::-1].reshape(-1)
 
+@time_accumulator
 def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bool, global_importance: bool = False):
     """
     Use numpy indexing to fetch the required values from the s_vectors and add them to the values' dict.
@@ -155,6 +161,7 @@ def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bo
         else:
             values[feature] += current_contribution
 
+@time_accumulator
 def combine_neighbor_leaves_s_vectors(s_left, s_right):
     """
     If both the right and left nodes are leaves use improvement 3 of Sec. 9.1 (improvement of line 26)
@@ -176,6 +183,7 @@ def combine_neighbor_leaves_s_vectors(s_left, s_right):
         s_combined[feature] = s_left[feature] + swapped_s_right
     return s_combined
 
+@time_accumulator
 def compute_background_shap_for_leaf_node(
         values: Dict[Any, float], leaf: DecisionTreeNode, consumer_patterns: np.array, background_patterns: np.array,
         unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
@@ -186,7 +194,7 @@ def compute_background_shap_for_leaf_node(
     s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
     compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU, global_importance)
 
-
+@time_accumulator
 def compute_path_dependent_shap_for_leaf_node(
         values: Dict[Any, float], leaf: DecisionTreeNode, consumer_patterns: np.array, path: List[DecisionTreeNode],
         unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
@@ -200,6 +208,7 @@ def compute_path_dependent_shap_for_leaf_node(
         s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
     compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU, global_importance)
 
+@time_accumulator
 def compute_background_shap_for_two_neighbor_leaves(
         values: Dict[Any, float], left_leaf: DecisionTreeNode, right_leaf: DecisionTreeNode,
         left_consumer_patterns: np.array, left_background_patterns: np.array,
@@ -216,6 +225,7 @@ def compute_background_shap_for_two_neighbor_leaves(
     combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
     compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU, global_importance)
 
+@time_accumulator
 def compute_path_dependent_shap_two_neighbor_leaves(
         values: Dict[Any, float], left_leaf: DecisionTreeNode, right_leaf: DecisionTreeNode,
         left_consumer_patterns: np.array, path: List[DecisionTreeNode],
@@ -236,7 +246,7 @@ def compute_path_dependent_shap_two_neighbor_leaves(
     combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
     compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU, global_importance)
 
-
+@time_accumulator
 def compute_patterns_generator(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool = False) -> Tuple[int, np.array]:
     """
     Compute the decision patterns of the provided data for all the root-to-leaf paths in the provided tree.
@@ -390,6 +400,24 @@ def woodelf_for_high_depth(
 
     if not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE:
         fill_mirror_pairs(values)
+
+    # print statistics
+    print(
+        f"""
+        init_patterns_dict: {init_patterns_dict.total_time()}
+        add_children_patterns: {add_children_patterns.total_time()}
+        compute_f: {compute_f.total_time()}
+        compute_path_dependent_f: {compute_path_dependent_f.total_time()}
+        compute_f_of_neighbor: {compute_f_of_neighbor.total_time()}
+        compute_values_using_s_vectors: {compute_values_using_s_vectors.total_time()}
+        compute_background_shap_for_leaf_node: {compute_background_shap_for_leaf_node.total_time()}
+        compute_path_dependent_shap_for_leaf_node: {compute_path_dependent_shap_for_leaf_node.total_time()}
+        compute_background_shap_for_two_neighbor_leaves: {compute_background_shap_for_two_neighbor_leaves.total_time()}
+        compute_path_dependent_shap_two_neighbor_leaves: {compute_path_dependent_shap_two_neighbor_leaves.total_time()}
+        compute_patterns_generator: {compute_patterns_generator.total_time()}
+        """
+
+    )
 
     path_to_matrices_calculator.present_statistics()
 

@@ -197,6 +197,7 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         self.matrices_frs_subsets = {}
         self.build_matrices()
         self.matrices_init_time = time.time() - start_time
+        self.timings = {k: 0 for k in ["m*f", "s line 1", "s line 2", "s line 3", "s line 4", "s * w", "split s to vectors", "prepare mask"]}
 
     @classmethod
     def map_patterns_to_cube(cls, features_in_path: List):
@@ -271,17 +272,34 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         frs2feature_name = self.frs_subsets_to_feature_subsets(features_in_path, depth)
         s_vectors = {}
         idx = np.arange(len(f))
+        st = time.time()
         s_matrix = matrices * f[::-1].reshape(-1, 1) # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
+        self.timings["m*f"] += time.time() - st
         for d in range(0, depth, 1):
+            st = time.time()
             s_matrix_copy = s_matrix.copy()
+            self.timings["s line 1"] += time.time() - st
+            st = time.time()
             s_matrix_copy[2 ** d:, :] = s_matrix[:-2 ** d, :]  # shift the array to the left 2**d bits
-            s_matrix_copy[(idx & (1 << d)) == 0] = 0  # Zero all elements that are in an even place in the current division
+            self.timings["s line 2"] += time.time() - st
+            st = time.time()
+            mask = (idx & (1 << d)) == 0
+            self.timings["prepare mask"] += time.time() - st
+            st = time.time()
+            s_matrix_copy[mask] = 0  # Zero all elements that are in an even place in the current division
+            self.timings["s line 3"] += time.time() - st
+            st = time.time()
             s_matrix += s_matrix_copy
+            self.timings["s line 4"] += time.time() - st
 
+        st = time.time()
         s_matrix *= w
+        self.timings["s * w"] += time.time() - st
+        st = time.time()
         for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
             feature_subset = frs2feature_name[frs_subset]
             s_vectors[feature_subset] = s_matrix[:,index]
+        self.timings["split s to vectors"] += time.time() - st
 
         self.s_computation_time += time.time() - start_time
         return s_vectors
@@ -315,3 +333,5 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             f"M time: {round(self.matrices_init_time, 2)} sec, " +
             f"s time: {round(self.s_computation_time, 2)} sec (f prepare time: {self.f_prepare_time})"
         )
+        for k in self.timings:
+            print(f"{k}: {round(self.timings[k], 2)} sec")
