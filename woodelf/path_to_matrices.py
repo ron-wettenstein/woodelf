@@ -290,7 +290,7 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             s_matrix_copy[mask] = 0  # Zero all elements that are in an even place in the current division
             self.timings["s line 3"] += time.time() - st
             st = time.time()
-            s_matrix = s_matrix + s_matrix_copy
+            s_matrix += s_matrix_copy
             self.timings["s line 4"] += time.time() - st
 
         st = time.time()
