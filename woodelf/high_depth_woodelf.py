@@ -382,11 +382,20 @@ def woodelf_for_high_depth(
     the values.
     """
     model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+    max_depth = max([model_obj.depth for model_obj in model_objs])
     if path_to_matrices_calculator is None:
-        path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
+        path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=max_depth, GPU=GPU)
     if GPU:
         consumer_data = get_cupy_data(model_objs, consumer_data)
         background_data = get_cupy_data(model_objs, background_data)
+
+    data_len = len(consumer_data) + (0 if background_data is None else len(background_data))
+    if max_depth > 12 or data_len < 10 * (2 ** max_depth):
+        # If the max depth is too large or the data size is smaller than (or within the same order of magnitude as)
+        # the number of patterns - skip the neighbor leaf trick. It will be slower to apply it than to return the
+        # regular computation.
+        use_neighbor_leaf_trick = False
+
 
     values = {}
     for tree in tqdm(model_objs, desc="Preprocessing the trees and computing SHAP"):
