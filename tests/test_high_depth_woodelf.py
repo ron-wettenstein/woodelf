@@ -1,6 +1,9 @@
 import time
 
 import pandas as pd
+import shap
+from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, \
+    ExtraTreesRegressor
 
 from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
 from woodelf.decision_trees_ensemble import DecisionTreeNode
@@ -9,12 +12,13 @@ from woodelf.high_depth_woodelf import (
 )
 import numpy as np
 import pytest
+import xgboost as xgb
 
-from tests.test_woodelf_against_shap import trainset, testset, xgb_model
+from tests.test_woodelf_against_shap import trainset, testset, xgb_model, assert_shap_package_is_same_as_woodelf, \
+    assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import SimplePathToMatrices
-from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric, \
-    path_dependent_frequencies
+
 
 FIXTURES = [trainset, testset, xgb_model]
 
@@ -184,3 +188,45 @@ def test_global_importance_flag(trainset, testset, xgb_model):
     )
     for feature in values:
         assert abs(np.mean(values[feature]) - global_values[feature]) < TOLERANCE
+
+
+@pytest.mark.parametrize("model_type, params", [
+    (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42)),
+    (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42)),
+    (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42)),
+    (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6, random_state=42, learning_rate=0.01)),
+    (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42))
+], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor",
+        "RandomForestRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor"])
+def test_woodelf_high_depths_against_shap_on_sklearn_regressor_model(model_type, params):
+    X, y = shap.datasets.california(n_points=110)
+    X_train = X.head(100)
+    y_train = y[:100]
+    X_test = X.tail(10)
+    model = model_type(**params)
+    model.fit(X_train, y_train)
+
+    # background shap
+    explainer = shap.TreeExplainer(model, X_test, model_output="raw")
+    shap_package_values = explainer.shap_values(X_test)
+    woodelf_values = woodelf_for_high_depth(model, X_test, X_test, metric=ShapleyValues())
+    assert_shap_package_is_same_as_woodelf(
+        woodelf_values, shap_package_values, X_test, TOLERANCE
+    )
+
+    # path dependent shap
+    explainer = shap.TreeExplainer(model)
+    shap_package_values = explainer.shap_values(X_test)
+    woodelf_values = woodelf_for_high_depth(model, X_test, None, metric=ShapleyValues())
+    assert_shap_package_is_same_as_woodelf(
+        woodelf_values, shap_package_values, X_test, TOLERANCE
+    )
+
+    # path dependent iv shap
+    explainer = shap.TreeExplainer(model)
+    shap_package_values = explainer.shap_interaction_values(X_test)
+    woodelf_values = woodelf_for_high_depth(model, X_test, None, metric=ShapleyInteractionValues())
+
+    assert_shap_package_is_same_as_woodelf_on_interaction_values(
+        woodelf_values, shap_package_values, X_test, TOLERANCE
+    )
