@@ -10,14 +10,64 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     "sklearn.ensemble.gradient_boosting.GradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
-    "skopt.learning.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
-    "skopt.learning.forest.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.HistGradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "xgboost.core.Booster": DecisionTreeNode,
     "xgboost.sklearn.XGBClassifier": DecisionTreeNode,
     "xgboost.sklearn.XGBRegressor": DecisionTreeNode,
+
+    # TODO test these models (in one time notebook is enough)
+    "skopt.learning.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
+    "skopt.learning.forest.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
     # TODO support all decision trees supported in shap and more
 }
+
+
+# TODO all models supported by shap:
+# sklearn.tree.DecisionTreeRegressor
+# sklearn.tree.tree.DecisionTreeRegressor
+# sklearn.ensemble.IsolationForest
+# sklearn.ensemble._iforest.IsolationForest
+# sklearn.tree.DecisionTreeClassifier
+# sklearn.tree.tree.DecisionTreeClassifier
+# sklearn.ensemble.ExtraTreesClassifier
+# sklearn.ensemble.forest.ExtraTreesClassifier
+# sklearn.ensemble.RandomForestClassifier
+# sklearn.ensemble.forest.RandomForestClassifier
+# sklearn.ensemble.MeanEstimator
+# sklearn.ensemble.gradient_boosting.MeanEstimator
+# sklearn.ensemble.QuantileEstimator
+# sklearn.ensemble.gradient_boosting.QuantileEstimator
+# sklearn.dummy.DummyRegressor
+# sklearn.ensemble.HistGradientBoostingClassifier
+# sklearn.ensemble.GradientBoostingClassifier
+# sklearn.ensemble._gb.GradientBoostingClassifier
+# sklearn.ensemble.gradient_boosting.GradientBoostingClassifier
+# sklearn.ensemble.LogOddsEstimator
+# sklearn.ensemble.gradient_boosting.LogOddsEstimator
+# sklearn.dummy.DummyClassifier
+# xgboost.sklearn.XGBRanker
+# lightgbm.basic.Booster
+# lightgbm.sklearn.LGBMRegressor
+# lightgbm.sklearn.LGBMRanker
+# lightgbm.sklearn.LGBMClassifier
+# catboost.core.CatBoostRegressor
+# catboost.core.CatBoostClassifier
+# catboost.core.CatBoost
+# pyspark.ml.classification.RandomForestClassificationModel
+# pyspark.ml.regression.RandomForestRegressionModel
+# pyspark.ml.classification.GBTClassificationModel
+# pyspark.ml.regression.GBTRegressionModel
+# pyspark.ml.classification.DecisionTreeClassificationModel
+# pyspark.ml.regression.DecisionTreeRegressionModel
+# ngboost.ngboost.NGBoost
+# ngboost.api.NGBRegressor
+# ngboost.api.NGBClassifier
+# imblearn.ensemble._forest.BalancedRandomForestClassifier
+# gpboost.basic.Booster
+# pyod.models.iforest.IForest
+# econml.grf._base_grf.BaseGRF
+# causalml.inference.tree.CausalRandomForestRegressor
+
 
 
 def load_decision_tree(tree, features, decision_tree_class):
