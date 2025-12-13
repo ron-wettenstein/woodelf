@@ -68,6 +68,14 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
 # econml.grf._base_grf.BaseGRF
 # causalml.inference.tree.CausalRandomForestRegressor
 
+# TODO support mutli target classification
+
+# TODO Support models that are not supported in shap
+# sklearn.ensemble.AdaBoostRegressor   https://github.com/shap/shap/issues/4093
+# sklearn.ensemble.AdaBoostClassifier
+# lightGBM with linear regression instead of weights in the leaves
+# Xgboost with categorical features
+
 
 
 def load_decision_tree(tree, features, decision_tree_class):
