@@ -51,7 +51,8 @@ class DecisionTreeNode:
     def is_almost_leaf(self):
         return not self.is_leaf() and (self.right.is_leaf() or self.left.is_leaf())
 
-    def predict(self, data, GPU: bool = False):
+    def predict(self, data):
+        GPU = False
         if self.is_leaf():
             # TODO if GPU use CuPy series
             return pd.Series(self.value, index=data.index)
