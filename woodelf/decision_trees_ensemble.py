@@ -2,12 +2,6 @@ from typing import Optional
 
 import pandas as pd
 
-# For GPU execution
-try:
-    import cupy as cp
-except:
-    cp = None
-
 
 class DecisionTreeNode:
     """
