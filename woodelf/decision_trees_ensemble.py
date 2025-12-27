@@ -56,7 +56,7 @@ class DecisionTreeNode:
         if self.is_leaf():
             # TODO if GPU use CuPy series
             return pd.Series(self.value, index=data.index)
-        return self.shall_go_left(data, GPU) * self.left.predict(data, GPU) + self.shall_go_right(data, GPU) * self.right.predict(data, GPU)
+        return self.shall_go_left(data, GPU) * self.left.predict(data) + self.shall_go_right(data, GPU) * self.right.predict(data)
 
     def bfs(self, including_myself: bool = True, including_leaves: bool = True):
         """
