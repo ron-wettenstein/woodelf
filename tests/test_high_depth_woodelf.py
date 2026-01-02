@@ -18,6 +18,9 @@ from tests.test_woodelf_against_shap import trainset, testset, xgb_model, assert
     assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import SimplePathToMatrices
+from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric, \
+    path_dependent_frequencies
+
 
 
 FIXTURES = [trainset, testset, xgb_model]
