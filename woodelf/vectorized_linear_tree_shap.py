@@ -1,7 +1,15 @@
+import time
 from math import factorial
-from typing import List
+from typing import List, Any, Dict
 
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
+from woodelf.decision_trees_ensemble import DecisionTreeNode
+from woodelf.high_depth_woodelf import compute_patterns_generator
+from woodelf.parse_models import load_decision_tree_ensemble_model
+
 
 def nCk(n, k):
     return factorial(n) // (factorial(k) * factorial(n-k))
@@ -38,7 +46,7 @@ def linear_tree_shap_magic(
     over as in the input p) and the columns are features contributions of the path features
     (in the same order as the features cover appear in the input r)
     """
-    # P_M = bits_matrix(p, len(r))
+    # TODO - do not use, this is numerically unstable
     q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
 
     M_general = np.zeros((len(r)+1, len(p)))
@@ -68,7 +76,88 @@ def linear_tree_shap_magic(
     return (M * (q_M - 1)).T
 
 
+def linear_tree_shap_magic_longer_not_optimized(
+        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
+):
+    """
+    Compute the Shapley/Banzhaf values contribution of a single leaf on all the provided
+    consumer decision patterns.
+    r: The vector of R0...Rk - the cover rations of traversing with the path for all the unique features in the path. (k <= D).
+    p: The consumer patterns vector: Pc_1, Pc_2, ..., Pc_n. (n <= |C|).
+    f_w: The Shapley values/Banzhaf values weights vector per coalition size of coalitions 0,1,...,k
+    We assume |f_w| = |r| and that f_w is a row vector
+    leaf_weight: The leaf weight
 
+    Return a matrix with the Shapley/Banzhaf values contributions. The matrix rows are decision patterns (with the same
+    over as in the input p) and the columns are features contributions of the path features
+    (in the same order as the features cover appear in the input r)
+    """
+    # Longer, but numerically stable
+    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
+    constitutions_vectors = []
+    for i in range(len(r)):
+        M_f_i = np.zeros((len(r), len(p)))
+        M_f_i[0, :] = np.prod(r) * leaf_weight
+        for j, R_j in enumerate(r):
+            if j == i:
+                continue
+            # Multiply the polynomials by (y + q_i)
+            q_part = M_f_i * q_M[j]
+            # the y_part - shift M_general down one row, dropping the last row
+            M_f_i[1:] = M_f_i[:-1]
+            M_f_i[0] = 0
+            M_f_i += q_part
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        constitutions_vectors.append(game_theory_metric_vector)
+
+    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T
+
+
+
+def linear_tree_shap_magic_longer(
+        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
+):
+    """
+    Compute the Shapley/Banzhaf values contribution of a single leaf on all the provided
+    consumer decision patterns.
+    r: The vector of R0...Rk - the cover rations of traversing with the path for all the unique features in the path. (k <= D).
+    p: The consumer patterns vector: Pc_1, Pc_2, ..., Pc_n. (n <= |C|).
+    f_w: The Shapley values/Banzhaf values weights vector per coalition size of coalitions 0,1,...,k
+    We assume |f_w| = |r| and that f_w is a row vector
+    leaf_weight: The leaf weight
+
+    Return a matrix with the Shapley/Banzhaf values contributions. The matrix rows are decision patterns (with the same
+    over as in the input p) and the columns are features contributions of the path features
+    (in the same order as the features cover appear in the input r)
+    """
+    # Longer, but numerically stable
+
+    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
+    constitutions_vectors = []
+    M_shared = np.zeros((len(r), len(p)))
+    M_shared[0, :] = np.prod(r) * leaf_weight
+    for i in range(len(r)):
+        M_f_i = M_shared.copy()
+        for j in range(max(i-1, 0), len(r)):
+            if j == i:
+                M_shared = M_f_i.copy()
+                continue
+            # Multiply the polynomials by (y + q_i)
+            q_part = M_f_i * q_M[j]
+            # the y_part - shift M_general down one row, dropping the last row
+            M_f_i[1:] = M_f_i[:-1]
+            M_f_i[0] = 0
+            M_f_i += q_part
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        constitutions_vectors.append(game_theory_metric_vector)
+
+    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T
 
 
 def linear_tree_shap_magic_for_banzhaf(
@@ -117,15 +206,76 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
             # None f_ws for depth 0, in the rest use shapley_values_f_w(depth)
             self.f_ws = [None] + [shapley_values_f_w(depth) for depth in range(1, max_depth+1)]
 
-    def get_s_matrices(self, features_in_path: List, covers: List, consumer_patterns: np.array, w: float):
-        r = np.array(covers)
+        self.computation_time = 0
+
+    def get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float):
+        start_time = time.time()
         if self.is_shapley:
             # assume features in path are unique
-            f_w = self.f_ws[len(features_in_path)]
-            s_matrix = linear_tree_shap_magic(r, consumer_patterns, f_w, w)
+            f_w = self.f_ws[len(covers)]
+            # s_matrix = linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
+            s_matrix = linear_tree_shap_magic_longer(covers, consumer_patterns, f_w, w)
         else:
-            s_matrix = linear_tree_shap_magic_for_banzhaf(r, consumer_patterns, w)
-        s_vectors = {}
-        for index, feature in enumerate(features_in_path):
-            s_vectors[feature] = s_matrix[:,index]
-        return s_vectors
+            s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
+        self.computation_time += time.time() - start_time
+        return s_matrix
+
+    def present_statistics(self):
+        print(f"LinearTreeShapPathToMatrices took {round(self.computation_time, 2)}")
+
+
+
+def get_unique_features_in_path(path: List[DecisionTreeNode]):
+    unique_features_in_path = []
+    for n in path:
+        if n.feature_name not in unique_features_in_path:
+            unique_features_in_path.append(n.feature_name)
+    return unique_features_in_path
+
+
+def get_covers_vector(path: List[DecisionTreeNode], unique_features_in_path: List[Any]):
+    feature_index = {f: i for i, f in enumerate(unique_features_in_path)}
+
+    proceed_covers = [1] * len(unique_features_in_path)
+    for i in range(len(path)-1):
+        proceed_covers[ feature_index[path[i].feature_name] ] *= (path[i+1].cover / path[i].cover)
+    return proceed_covers
+
+
+def vectorized_linear_tree_shap_for_a_single_tree(
+        tree: DecisionTreeNode, consumer_data: pd.DataFrame, values: Dict, p2m: LinearTreeShapPathToMatrices, GPU: bool
+):
+    leaf_index_to_covers = {}
+    leaf_index_to_unique_features_in_path = {}
+    leaf_index_to_weight = {}
+    for leaf, path in tree.get_all_leaves_with_paths(only_feature_names=False):
+        unique_features_in_path = get_unique_features_in_path(path)
+        leaf_index_to_covers[leaf.index] = np.array(get_covers_vector(path + [leaf], unique_features_in_path))
+        leaf_index_to_unique_features_in_path[leaf.index] = unique_features_in_path
+        leaf_index_to_weight[leaf.index] = leaf.value
+
+    for leaf_index, consumer_patterns in compute_patterns_generator(tree, consumer_data, GPU):
+        unique_patterns, inverse = np.unique(consumer_patterns, return_inverse=True)
+        s_matrix = p2m.get_s_matrix(
+            covers=leaf_index_to_covers[leaf_index],
+            consumer_patterns=unique_patterns,
+            w=leaf_index_to_weight[leaf_index]
+        )
+
+        contribution_values = s_matrix[inverse]
+        for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf_index]):
+            if feature not in values:
+                values[feature] = contribution_values[:, index]
+            else:
+                values[feature] += contribution_values[:, index]
+
+
+def vectorized_linear_tree_shap(model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False):
+    model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+    max_depth = max([model_obj.depth for model_obj in model_objs])
+    p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=not is_shapley, max_depth=max_depth, GPU=GPU)
+    values = {}
+    for tree in tqdm(model_objs, desc="Preprocessing the trees and computing SHAP"):
+        vectorized_linear_tree_shap_for_a_single_tree(tree, consumer_data, values, p2m, GPU)
+    p2m.present_statistics()
+    return values

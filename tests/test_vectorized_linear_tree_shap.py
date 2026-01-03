@@ -1,8 +1,20 @@
+import time
+
 import numpy as np
 import pytest
 
+from woodelf.cube_metric import ShapleyValues, BanzahfValues
+from woodelf.parse_models import load_decision_tree_ensemble_model
+from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
-    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w
+    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, linear_tree_shap_magic_longer
+
+from tests.test_woodelf_against_shap import trainset, testset, xgb_model, assert_shap_package_is_same_as_woodelf, \
+    assert_shap_package_is_same_as_woodelf_on_interaction_values
+
+FIXTURES = [trainset, testset, xgb_model]
+
+TOLERANCE = 0.00001
 
 
 def test_linear_tree_shap_magic():
@@ -76,6 +88,33 @@ def test_linear_tree_shap_magic_high_depth(D):
         atol=tolerance
     )
 
+
+@pytest.mark.parametrize("D", list(range(5, 61, 5)))
+def test_linear_tree_shap_magic_longer_high_depth(D):
+    rng = np.random.default_rng(42)
+    leaf_weight = 5
+    r = rng.integers(low=1, high=100, size=D) / 100
+    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=80), np.array([(2 ** D) - 1])])
+    f_w = shapley_values_f_w(D)
+
+    shap_matrix = linear_tree_shap_magic_longer(
+        r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
+    )
+    print(shap_matrix)
+    print(shap_matrix.sum(axis=1))
+    all_missing_prediction = np.prod(r)*leaf_weight
+
+    # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to
+    # the prediction when all features participate minus the prediction when all features are missing.
+    # When the pattern is 7 when all features participate the prediction reaches the leaf and is equal to "leaf_weight"
+    # on other patterns the prediction does not reach the leaf and the prediction is 0
+    tolerance = 0.000001
+    np.testing.assert_allclose(
+        shap_matrix.sum(axis=1),
+        np.array([0 - all_missing_prediction] * 80 + [leaf_weight - all_missing_prediction]),
+        atol=tolerance
+    )
+
 @pytest.mark.parametrize("D", list(range(5, 61, 5)))
 def test_linear_tree_shap_fast_banzhaf_many_depths(D):
     # The technics are the same, also - no numerical errors in Banzhaf!
@@ -115,3 +154,44 @@ def test_linear_tree_shap_fast_banzhaf_many_depths(D):
 #     fast_code_matrix = linear_tree_shap_magic_for_banzhaf(
 #         r=r, p=p.astype(np.uint64), leaf_weight=leaf_weight
 #     )
+
+
+def test_linear_tree_shap_on_a_model(trainset, testset, xgb_model):
+
+    simple_woodelf_shap_values = calculate_path_dependent_metric(
+        xgb_model, testset, metric=ShapleyValues()
+    )
+
+    vectorized_linear_tree_shap_values = vectorized_linear_tree_shap(
+        xgb_model, testset, is_shapley=True, GPU=False
+    )
+    #
+    # model_objs = load_decision_tree_ensemble_model(xgb_model, list(testset.columns))
+    # non_unique_paths_counts = {c: 0 for c in testset.columns}
+    # total_paths_counts = {c: 0 for c in testset.columns}
+    # for tree in model_objs:
+    #     for leaf, path in tree.get_all_leaves_with_paths(only_feature_names=True):
+    #         for feature in path:
+    #             if
+
+    for feature in simple_woodelf_shap_values:
+        print(feature)
+        np.testing.assert_allclose(
+            simple_woodelf_shap_values[feature], vectorized_linear_tree_shap_values[feature], atol=0.00001
+        )
+
+
+def test_linear_tree_banzhaf_on_a_model(trainset, testset, xgb_model):
+
+    simple_woodelf_shap_values = calculate_path_dependent_metric(
+        xgb_model, testset, metric=BanzahfValues()
+    )
+
+    vectorized_linear_tree_shap_values = vectorized_linear_tree_shap(
+        xgb_model, testset, is_shapley=False, GPU=False
+    )
+
+    for feature in simple_woodelf_shap_values:
+        np.testing.assert_allclose(
+            simple_woodelf_shap_values[feature], vectorized_linear_tree_shap_values[feature], atol=TOLERANCE
+        )
