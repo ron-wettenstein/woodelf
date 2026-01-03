@@ -269,7 +269,6 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
 
         matrices = self.matrices[depth]
         frs2feature_name = self.frs_subsets_to_feature_subsets(features_in_path, depth)
-        s_vectors = {}
         idx = np.arange(len(f))
         s_matrix = matrices * f[::-1].reshape(-1, 1) # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
         for d in range(0, depth, 1):
@@ -279,6 +278,8 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             s_matrix = s_matrix + s_matrix_copy
 
         s_matrix = s_matrix * w
+
+        s_vectors = {}
         for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
             feature_subset = frs2feature_name[frs_subset]
             s_vectors[feature_subset] = s_matrix[:,index]
