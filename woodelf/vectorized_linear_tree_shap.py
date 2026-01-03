@@ -46,7 +46,56 @@ def linear_tree_shap_magic(
     over as in the input p) and the columns are features contributions of the path features
     (in the same order as the features cover appear in the input r)
     """
-    # TODO - do not use, this is numerically unstable
+    # Longer, but numerically stable
+
+    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
+    constitutions_vectors = []
+    M_shared = np.zeros((len(r), len(p)))
+    M_shared[0, :] = np.prod(r) * leaf_weight
+    for i in range(len(r)):
+        M_f_i = M_shared.copy()
+        for j in range(max(i-1, 0), len(r)):
+            if j == i:
+                M_shared = M_f_i.copy()
+                continue
+            # Multiply the polynomials by (y + q_i)
+            q_part = M_f_i * q_M[j]
+            # the y_part - shift M_general down one row, dropping the last row
+            M_f_i[1:] = M_f_i[:-1]
+            M_f_i[0] = 0
+            M_f_i += q_part
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        constitutions_vectors.append(game_theory_metric_vector)
+
+    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T
+
+
+def linear_tree_shap_magic_for_banzhaf(
+        r: np.array, p: np.array, leaf_weight: float
+):
+    R_emptyset = np.prod(r) * leaf_weight
+    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
+    sum_original_coefs = np.prod((1 + q_M), axis=0) * R_emptyset
+    constitutions_vectors = []
+    for i in range(len(r)):
+        M_f_i = sum_original_coefs * (1/(1+q_M[i]))
+        # Compute Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = M_f_i / 2 ** (len(r) - 1)
+        constitutions_vectors.append(game_theory_metric_vector)
+
+    M = np.array(constitutions_vectors)  # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T
+
+
+def linear_tree_shap_magic_not_numerically_stable(
+        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
+):
+    """
+    Not numerically stable but O(D) faster. Don't use this
+    """
     q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
 
     M_general = np.zeros((len(r)+1, len(p)))
@@ -80,17 +129,7 @@ def linear_tree_shap_magic_longer_not_optimized(
         r: np.array, p: np.array, f_w: np.array, leaf_weight: float
 ):
     """
-    Compute the Shapley/Banzhaf values contribution of a single leaf on all the provided
-    consumer decision patterns.
-    r: The vector of R0...Rk - the cover rations of traversing with the path for all the unique features in the path. (k <= D).
-    p: The consumer patterns vector: Pc_1, Pc_2, ..., Pc_n. (n <= |C|).
-    f_w: The Shapley values/Banzhaf values weights vector per coalition size of coalitions 0,1,...,k
-    We assume |f_w| = |r| and that f_w is a row vector
-    leaf_weight: The leaf weight
-
-    Return a matrix with the Shapley/Banzhaf values contributions. The matrix rows are decision patterns (with the same
-    over as in the input p) and the columns are features contributions of the path features
-    (in the same order as the features cover appear in the input r)
+    Not optimized, the linear_tree_shap_magic is ~2x faster
     """
     # Longer, but numerically stable
     q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
@@ -116,76 +155,24 @@ def linear_tree_shap_magic_longer_not_optimized(
     return (M * (q_M - 1)).T
 
 
-
-def linear_tree_shap_magic_longer(
-        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
-):
-    """
-    Compute the Shapley/Banzhaf values contribution of a single leaf on all the provided
-    consumer decision patterns.
-    r: The vector of R0...Rk - the cover rations of traversing with the path for all the unique features in the path. (k <= D).
-    p: The consumer patterns vector: Pc_1, Pc_2, ..., Pc_n. (n <= |C|).
-    f_w: The Shapley values/Banzhaf values weights vector per coalition size of coalitions 0,1,...,k
-    We assume |f_w| = |r| and that f_w is a row vector
-    leaf_weight: The leaf weight
-
-    Return a matrix with the Shapley/Banzhaf values contributions. The matrix rows are decision patterns (with the same
-    over as in the input p) and the columns are features contributions of the path features
-    (in the same order as the features cover appear in the input r)
-    """
-    # Longer, but numerically stable
-
-    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
-    constitutions_vectors = []
-    M_shared = np.zeros((len(r), len(p)))
-    M_shared[0, :] = np.prod(r) * leaf_weight
-    for i in range(len(r)):
-        M_f_i = M_shared.copy()
-        for j in range(max(i-1, 0), len(r)):
-            if j == i:
-                M_shared = M_f_i.copy()
-                continue
-            # Multiply the polynomials by (y + q_i)
-            q_part = M_f_i * q_M[j]
-            # the y_part - shift M_general down one row, dropping the last row
-            M_f_i[1:] = M_f_i[:-1]
-            M_f_i[0] = 0
-            M_f_i += q_part
-
-        # Compute Shapley/Banzhaf values using the constructed polynomial
-        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
-        constitutions_vectors.append(game_theory_metric_vector)
-
-    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
-    return (M * (q_M - 1)).T
-
-
-def linear_tree_shap_magic_for_banzhaf(
+def linear_tree_shap_magic_for_banzhaf_extra_numerically_stable(
         r: np.array, p: np.array, leaf_weight: float
 ):
     """
-    Compute the Shapley/Banzhaf values contribution of a single leaf on all the provided
-    consumer decision patterns.
-    r: The vector of R0...Rk - the cover rations of traversing with the path for all the unique features in the path. (k <= D).
-    p: The consumer patterns vector: Pc_1, Pc_2, ..., Pc_n. (n <= |C|).
-    f_w: The Shapley values/Banzhaf values weights vector per coalition size of coalitions 0,1,...,k
-    We assume |f_w| = |r| and that f_w is a row vector
-    leaf_weight: The leaf weight
-
-    Return a matrix with the Shapley/Banzhaf values contributions. The matrix rows are decision patterns (with the same
-    over as in the input p) and the columns are features contributions of the path features
-    (in the same order as the features cover appear in the input r)
+    Extra numerically stable but O(D) longer. No need to use, the current banzhaf implementation
+    is stable enough
     """
     R_emptyset = np.prod(r) * leaf_weight
     q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
-    sum_original_coefs = np.prod((1 + q_M), axis=0) * R_emptyset
+    M_shared = (1 + q_M) * R_emptyset
     constitutions_vectors = []
     for i in range(len(r)):
-        M_f_i = sum_original_coefs * (1/(1+q_M[i]))
-        # Compute Banzhaf values using the constructed polynomial
-        game_theory_metric_vector = M_f_i / 2 ** (len(r) - 1)
+        row_i = M_shared[i]
+        M_shared[i] = 1
+        sum_coefs = np.prod(M_shared, axis=0)
+        M_shared[i] = row_i
+        game_theory_metric_vector = sum_coefs / 2 ** (len(r) - 1)
         constitutions_vectors.append(game_theory_metric_vector)
-
     M = np.array(constitutions_vectors)  # Now M become a |n| columns and |r| rows matrix
     return (M * (q_M - 1)).T
 
@@ -213,8 +200,7 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
         if self.is_shapley:
             # assume features in path are unique
             f_w = self.f_ws[len(covers)]
-            # s_matrix = linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
-            s_matrix = linear_tree_shap_magic_longer(covers, consumer_patterns, f_w, w)
+            s_matrix = linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
         else:
             s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
         self.computation_time += time.time() - start_time
