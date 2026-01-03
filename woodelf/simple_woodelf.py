@@ -92,7 +92,7 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
     Frq_b = {}
     visited_leaves_parents = {}
     data_length = len(background_data) if not GPU else len(background_data[list(background_data.keys())[0]])
-    for leaf, features_in_path in tree.get_all_leaves_with_path_to_root():
+    for leaf, features_in_path in tree.get_all_leaves_with_paths():
         use_neighbor_trick = (leaf.parent.index in visited_leaves_parents) and (
                 (not unique_features_decision_pattern) or (features_in_path[-1] not in features_in_path[:-1])
         )
@@ -126,7 +126,7 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
                 frqs.append(neighboor_frq[i])
             Frq_b[leaf.index] = np.array(frqs, dtype=np.float32)
 
-    for leaf, features_in_path in tree.get_all_leaves_with_path_to_root():
+    for leaf, features_in_path in tree.get_all_leaves_with_paths():
         fl = Frq_b[leaf.index]
         if GPU and 2 ** len(features_in_path) < len(fl):  # this trim is needed only on GPU
             fl = fl[:2 ** len(features_in_path)]
@@ -317,7 +317,7 @@ def fast_preprocess_path_dependent(tree: DecisionTreeNode, path_to_matrixes_calc
     Implement the preprocssing needed for Path-Dependent WOODELF
     """
     freq = path_dependent_frequencies(tree)
-    for leaf, features_in_path in tree.get_all_leaves_with_path_to_root():
+    for leaf, features_in_path in tree.get_all_leaves_with_paths():
         leaf.feature_contribution_replacement_values = path_to_matrixes_calculator.get_s_matrices(
             features_in_path, freq[leaf.index], leaf.value, path_dependent=True
         )

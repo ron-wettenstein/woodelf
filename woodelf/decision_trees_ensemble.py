@@ -99,13 +99,14 @@ class DecisionTreeNode:
         inner_nodes = self.bfs(including_leaves=False)
         return set(n.feature_name for n in inner_nodes)
 
-    def get_all_leaves_with_path_to_root(self):
+    def get_all_leaves_with_paths(self, only_feature_names=True):
         nodes_to_visit = [(self, [])]
         leaves = []
         while len(nodes_to_visit) > 0:
-            current_node, current_path_to_root = nodes_to_visit.pop(0)
+            current_node, current_path = nodes_to_visit.pop(0)
             for next_node in [current_node.right, current_node.left]:
-                next_node_obj = (next_node, current_path_to_root + [current_node.feature_name])
+                next_node_path = current_path + [current_node.feature_name if only_feature_names else current_node]
+                next_node_obj = (next_node, next_node_path)
                 if next_node.is_leaf():
                     leaves.append(next_node_obj)
                 else:
