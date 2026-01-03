@@ -1,16 +1,11 @@
-import time
-
 import numpy as np
 import pytest
 
+from tests.test_woodelf_against_shap import trainset, testset, xgb_model
 from woodelf.cube_metric import ShapleyValues, BanzahfValues
-from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
     linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, linear_tree_shap_magic_longer
-
-from tests.test_woodelf_against_shap import trainset, testset, xgb_model, assert_shap_package_is_same_as_woodelf, \
-    assert_shap_package_is_same_as_woodelf_on_interaction_values
 
 FIXTURES = [trainset, testset, xgb_model]
 
@@ -165,14 +160,6 @@ def test_linear_tree_shap_on_a_model(trainset, testset, xgb_model):
     vectorized_linear_tree_shap_values = vectorized_linear_tree_shap(
         xgb_model, testset, is_shapley=True, GPU=False
     )
-    #
-    # model_objs = load_decision_tree_ensemble_model(xgb_model, list(testset.columns))
-    # non_unique_paths_counts = {c: 0 for c in testset.columns}
-    # total_paths_counts = {c: 0 for c in testset.columns}
-    # for tree in model_objs:
-    #     for leaf, path in tree.get_all_leaves_with_paths(only_feature_names=True):
-    #         for feature in path:
-    #             if
 
     for feature in simple_woodelf_shap_values:
         print(feature)
