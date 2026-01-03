@@ -100,6 +100,13 @@ class DecisionTreeNode:
         return set(n.feature_name for n in inner_nodes)
 
     def get_all_leaves_with_paths(self, only_feature_names=True):
+        """
+        Return a list of leaves and their root-to-leaf path.
+        If only_feature_names=True return the path as a list of the feature names starting at the root feature
+        name and ending at the leaf parent.
+        If only_feature_names=False return the path nodes. The path returned are all the nodes from root node till
+        the leaf, excluding the leaf itself.
+        """
         nodes_to_visit = [(self, [])]
         leaves = []
         while len(nodes_to_visit) > 0:
@@ -114,6 +121,9 @@ class DecisionTreeNode:
         return leaves
 
     def get_nodes_to_path_dict(self):
+        """
+        Return a dict between the node index to the path from the root to this node (excluding the node itself)
+        """
         nodes_to_visit = [(self, [])]
         nodes_with_paths = {self.index: []}
         while len(nodes_to_visit) > 0:

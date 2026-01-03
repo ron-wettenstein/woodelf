@@ -16,11 +16,11 @@ class PBFunction:
         raise NotImplemented
 
 class Cube(PBFunction):
-    def __init__(self, sp, sm):
+    def __init__(self, sp: List[int], sm: List[int]):
         self.sp = sp # S+: positive literals
         self.sm = sm # S-: negative literals
 
-    def assign(self, assignment):
+    def assign(self, assignment: List[bool]) -> bool:
         result = True
         for l in self.sp:
             if not assignment[l]:
@@ -30,7 +30,7 @@ class Cube(PBFunction):
                 result = False
         return result
 
-    def variables(self):
+    def variables(self) -> List[int]:
         return list(set(self.sp + self.sm))
 
 
@@ -38,20 +38,20 @@ class WDNF(PBFunction):
     def __init__(self, cubes_and_weights: List[Tuple[float, Cube]]):
         self.cubes_and_weights = cubes_and_weights
 
-    def variables(self):
+    def variables(self) -> List[int]:
         variables = []
         for (weight, cube) in self.cubes_and_weights:
             variables.extend(cube.sp)
             variables.extend(cube.sm)
         return list(set(variables))
 
-    def assign(self, assignment):
+    def assign(self, assignment: List[bool]) -> float:
         result = 0
         for weight, cube in self.cubes_and_weights:
             result += weight * cube.assign(assignment)
         return result
 
-    def calc_metric(self, metric: CubeMetric):
+    def calc_metric(self, metric: CubeMetric) -> Dict[Any, float]:
         values = {}
         for weight, cube in self.cubes_and_weights:
             cube_values = metric.calc_metric(set(cube.sp), set(cube.sm))
@@ -78,7 +78,7 @@ class BackgroundModelCF(PBFunction):
     def variables(self):
         return list(self.row.keys())
 
-    def assign(self, assignment):
+    def assign(self, assignment: Dict[Any, bool]) -> float:
         data = self.background_data.copy()
         for feature in assignment:
             if assignment[feature]:
@@ -86,7 +86,7 @@ class BackgroundModelCF(PBFunction):
 
         return self.mean_model_prediction(data)
 
-    def mean_model_prediction(self, data):
+    def mean_model_prediction(self, data: pd.DataFrame) -> float:
         return self.model.predict(data).mean()
 
 
@@ -98,7 +98,7 @@ class PathDependentModelCF(PBFunction):
     def variables(self):
         return list(self.row.keys())
 
-    def assign(self, assignment):
+    def assign(self, assignment: Dict[Any, bool]) -> float:
         score = 0
         for tree in self.model:
             nodes_to_visit = [(1, tree)] # include pairs of (weight, node)
@@ -163,7 +163,7 @@ class ShapleyDirectComputation(GameTheoryMetricDirectComputation):
     def assignment_weight(self, assignment, variables) -> float:
         n = len(variables)
         s_size = sum(assignment.values())
-        return (factorial(s_size) * factorial(n - s_size - 1))/ factorial(n)
+        return (factorial(s_size) * factorial(n - s_size - 1)) / factorial(n)
 
 class GameTheoryIVMetricDirectComputation(DirectComputation):
     def compute(self, pb_function: PBFunction) -> Dict[Any, float]:
@@ -177,16 +177,16 @@ class GameTheoryIVMetricDirectComputation(DirectComputation):
                 other_vs = [v for v in variables if v != variable1 and v != variable2]
                 for truth_values in itertools.product([True, False], repeat=len(other_vs)):
                     assignment = {v: t for v, t in zip(other_vs, truth_values)}
-                    a1p2p = assignment.copy()
-                    a1m2p = assignment.copy()
-                    a1p2m = assignment.copy()
-                    a1m2m = assignment.copy()
+                    a1p2p = assignment.copy() # Assignment player1 Participates, player2 Participates: a1p2p
                     a1p2p[variable1] = True
                     a1p2p[variable2] = True
+                    a1m2p = assignment.copy() # Assignment player1 is Missing, player2 Participates: a1m2p
                     a1m2p[variable1] = False
                     a1m2p[variable2] = True
+                    a1p2m = assignment.copy() # Assignment player1 Participates, player2 is Missing: a1p2m
                     a1p2m[variable1] = True
                     a1p2m[variable2] = False
+                    a1m2m = assignment.copy() # Assignment player1 is Missing, player2 is Missing: a1m2m
                     a1m2m[variable1] = False
                     a1m2m[variable2] = False
                     iv_values[(variable1, variable2)] += self.assignment_weight(assignment, variables) * (
