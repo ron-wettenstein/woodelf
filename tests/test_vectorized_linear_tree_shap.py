@@ -1,0 +1,117 @@
+import numpy as np
+import pytest
+
+from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
+    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w
+
+
+def test_linear_tree_shap_magic():
+    leaf_weight = 5
+    shap_matrix = linear_tree_shap_magic(
+        r= np.array([0.5, 0.6, 0.9]), p=np.array([2, 4, 5, 6, 7]).astype(np.uint16),
+        f_w=np.array([[1/3], [1/6], [1/3]]), leaf_weight=leaf_weight
+    )
+    print(shap_matrix)
+    print(shap_matrix.sum(axis=1))
+    all_missing_prediction = 0.5*0.6*0.9*leaf_weight
+
+    # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to
+    # the prediction when all features participate minus the prediction when all features are missing.
+    # When the pattern is 7 when all features participate the prediction reaches the leaf and is equal to "leaf_weight"
+    # on other patterns the prediction does not reach the leaf and the prediction is 0
+    np.testing.assert_allclose(
+        shap_matrix.sum(axis=1),
+        np.array([0 - all_missing_prediction] * 4 + [leaf_weight - all_missing_prediction])
+    )
+
+
+def test_linear_tree_shap_fast_banzhaf():
+    leaf_weight = 5
+    original_code_matrix = linear_tree_shap_magic(
+        r= np.array([0.5, 0.6, 0.9]), p=np.array([0, 1, 2, 3, 4, 5, 6, 7]).astype(np.uint16),
+        f_w=np.array([[0.25], [0.25], [0.25]]), leaf_weight=leaf_weight
+    )
+    print(original_code_matrix)
+    print(original_code_matrix.sum(axis=1))
+
+    fast_code_matrix = linear_tree_shap_magic_for_banzhaf(
+        r=np.array([0.5, 0.6, 0.9]), p=np.array([0, 1, 2, 3, 4, 5, 6, 7]).astype(np.uint16),
+        leaf_weight=leaf_weight
+    )
+    print(fast_code_matrix)
+    print(fast_code_matrix.sum(axis=1))
+
+    np.testing.assert_allclose(
+        original_code_matrix.sum(axis=1),
+        fast_code_matrix.sum(axis=1)
+    )
+
+
+
+@pytest.mark.parametrize("D", list(range(5, 41, 5)))
+def test_linear_tree_shap_magic_high_depth(D):
+    # TODO fix numerical problems in high depths and low covers
+    rng = np.random.default_rng(42)
+    leaf_weight = 5
+    # Use minimum 0.7 cover so the np.prod(r) will stay large (the all_missing_prediction uses it)
+    r = rng.integers(low=70, high=100, size=D) / 100
+    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=80), np.array([(2 ** D) - 1])])
+    f_w = shapley_values_f_w(D)
+
+    shap_matrix = linear_tree_shap_magic(
+        r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
+    )
+    print(shap_matrix)
+    print(shap_matrix.sum(axis=1))
+    all_missing_prediction = np.prod(r)*leaf_weight
+
+    # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to
+    # the prediction when all features participate minus the prediction when all features are missing.
+    # When the pattern is 7 when all features participate the prediction reaches the leaf and is equal to "leaf_weight"
+    # on other patterns the prediction does not reach the leaf and the prediction is 0
+    tolerance = 0.000001 if D <= 30 else 0.0001 # Numerical problems after 30
+    np.testing.assert_allclose(
+        shap_matrix.sum(axis=1),
+        np.array([0 - all_missing_prediction] * 80 + [leaf_weight - all_missing_prediction]),
+        atol=tolerance
+    )
+
+@pytest.mark.parametrize("D", list(range(5, 61, 5)))
+def test_linear_tree_shap_fast_banzhaf_many_depths(D):
+    # The technics are the same, also - no numerical errors in Banzhaf!
+    rng = np.random.default_rng(42)
+    leaf_weight = 5
+    r = rng.integers(low=70, high=100, size=D) / 100
+    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=80), np.array([(2 ** D) - 1])])
+    f_w = banzhaf_values_f_w(D)
+    original_code_matrix = linear_tree_shap_magic(
+        r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
+    )
+
+    fast_code_matrix = linear_tree_shap_magic_for_banzhaf(
+        r=r, p=p.astype(np.uint64), leaf_weight=leaf_weight
+    )
+
+    np.testing.assert_allclose(
+        original_code_matrix.sum(axis=1),
+        fast_code_matrix.sum(axis=1),
+        rtol=10**-7
+    )
+
+
+# @pytest.mark.parametrize("D", list(range(5, 61, 5)))
+# def test_linear_tree_shap_fast_banzhaf_many_depths_timings(D):
+#     # Testing the timing of the linear_tree_shap_magic_for_banzhaf and linear_tree_shap_magic functions
+#     rng = np.random.default_rng(42)
+#     leaf_weight = 5
+#     r = rng.integers(low=70, high=100, size=D) / 100
+#     p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=100000), np.array([(2 ** D) - 1])])
+#
+#     # f_w = banzhaf_values_f_w(D)
+#     # original_code_matrix = linear_tree_shap_magic(
+#     #     r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
+#     # )
+#
+#     fast_code_matrix = linear_tree_shap_magic_for_banzhaf(
+#         r=r, p=p.astype(np.uint64), leaf_weight=leaf_weight
+#     )
