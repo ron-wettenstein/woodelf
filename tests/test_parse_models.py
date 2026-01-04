@@ -1,3 +1,6 @@
+import os
+
+import pandas as pd
 import pytest
 import shap
 import numpy as np
@@ -54,6 +57,34 @@ def test_load_and_predict_xgboost():
 def test_load_and_predict_sklearn_regressor_model(model_type, params, base_score_func):
     X, y = shap.datasets.california(n_points=10000)
     model = model_type(**params)
+    model.fit(X, y)
+    tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
+    assert_predictions_equal(
+        original_pred=model.predict(X),
+        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
+        base_score=base_score_func(model)
+    )
+
+
+@pytest.mark.parametrize("model_type, params, base_score_func", [
+    (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42),
+     lambda m: m._baseline_prediction[0][0]),
+    (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42),
+     lambda m: m.init_.constant_[0][0]),
+    (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6,random_state=42, learning_rate=0.01, base_score=0.5),
+     lambda m: 0.5),
+    (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42),
+     lambda m: 0),
+    # (AdaBoostRegressor, dict(n_estimators=10, random_state=42), lambda m: 0) TODO
+], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor"])
+def test_load_and_predict_sklearn_regressor_model_ieee_data(model_type, params, base_score_func):
+    resources_path = os.path.join(__file__, "..", "resources")
+    fraud_trainset = pd.read_csv(os.path.join(resources_path, "IEEE-CIS_trainset_sample.csv"))
+    X = fraud_trainset[[c for c in fraud_trainset.columns if c != 'isFraud' and c != 'Unnamed: 0']]
+    y = fraud_trainset['isFraud']
+    model = model_type(**params)
+    if isinstance(model,GradientBoostingRegressor):
+        X.fillna(0, inplace=True)
     model.fit(X, y)
     tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
     assert_predictions_equal(
