@@ -5,7 +5,8 @@ from tests.test_woodelf_against_shap import trainset, testset, xgb_model
 from woodelf.cube_metric import ShapleyValues, BanzahfValues
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
-    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap
+    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, \
+    linear_tree_shap_magic_not_numerically_stable
 
 FIXTURES = [trainset, testset, xgb_model]
 
@@ -88,7 +89,7 @@ def test_linear_tree_shap_magic_high_depth(D):
 def test_linear_tree_shap_magic_longer_high_depth(D):
     rng = np.random.default_rng(42)
     leaf_weight = 5
-    r = rng.integers(low=1, high=100, size=D) / 100
+    r = rng.integers(low=1, high=99, size=D) / 100
     p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=80), np.array([(2 ** D) - 1])])
     f_w = shapley_values_f_w(D)
 
