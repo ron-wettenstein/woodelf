@@ -5,7 +5,7 @@ import xgboost as xgb
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor
 
 from woodelf.cube_metric import (
-    BanzahfValues, BanzhafInteractionValues, ShapleyInteractionValues, ShapleyValues, CubeMetric
+    BanzhafValues, BanzhafInteractionValues, ShapleyInteractionValues, ShapleyValues, CubeMetric
 )
 from woodelf.direct_computation import (
     BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation,
@@ -35,7 +35,7 @@ def train_xgboost(n_cols):
 
 
 @pytest.mark.parametrize("metric, direct_computation", [
-    (BanzahfValues(), BanzhafDirectComputation()),
+    (BanzhafValues(), BanzhafDirectComputation()),
     (BanzhafInteractionValues(), BanzhafIVDirectComputation()),
     (ShapleyInteractionValues(), ShapleyIVDirectComputation()),
     (ShapleyValues(), ShapleyDirectComputation()),
@@ -55,7 +55,7 @@ def test_background_metric_computation_xgboost(metric: CubeMetric, direct_comput
 
 
 @pytest.mark.parametrize("metric, direct_computation", [
-    (BanzahfValues(), BanzhafDirectComputation()),
+    (BanzhafValues(), BanzhafDirectComputation()),
     (BanzhafInteractionValues(), BanzhafIVDirectComputation()),
     (ShapleyInteractionValues(), ShapleyIVDirectComputation()),
     (ShapleyValues(), ShapleyDirectComputation()),

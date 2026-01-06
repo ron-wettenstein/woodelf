@@ -95,7 +95,7 @@ class ShapleyInteractionValues(CubeMetric):
         return shapley_values
 
 
-class BanzahfValues(CubeMetric):
+class BanzhafValues(CubeMetric):
     """
     Implement the linear-time formula for Banzhaf value computation on WDNF/WCNF, see Formula 6 in the paper.
     """

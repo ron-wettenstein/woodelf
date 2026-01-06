@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from tests.test_woodelf_against_shap import trainset, testset, xgb_model
-from woodelf.cube_metric import ShapleyValues, BanzahfValues
+from woodelf.cube_metric import ShapleyValues, BanzhafValues
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
     linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, \
@@ -172,7 +172,7 @@ def test_linear_tree_shap_on_a_model(trainset, testset, xgb_model):
 def test_linear_tree_banzhaf_on_a_model(trainset, testset, xgb_model):
 
     simple_woodelf_shap_values = calculate_path_dependent_metric(
-        xgb_model, testset, metric=BanzahfValues()
+        xgb_model, testset, metric=BanzhafValues()
     )
 
     vectorized_linear_tree_shap_values = vectorized_linear_tree_shap(

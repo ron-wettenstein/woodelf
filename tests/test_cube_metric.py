@@ -1,7 +1,7 @@
 import pytest
 
 from woodelf.cube_metric import (
-    BanzhafInteractionValues, BanzahfValues, CubeMetric, ShapleyInteractionValues, ShapleyValues
+    BanzhafInteractionValues, BanzhafValues, CubeMetric, ShapleyInteractionValues, ShapleyValues
 )
 from woodelf.direct_computation import (
     BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation,
@@ -13,7 +13,7 @@ TOLERANCE = 1e-7
 
 
 @pytest.mark.parametrize("metric, direct_computation", [
-    (BanzahfValues(), BanzhafDirectComputation()),
+    (BanzhafValues(), BanzhafDirectComputation()),
     (BanzhafInteractionValues(), BanzhafIVDirectComputation()),
     (ShapleyInteractionValues(), ShapleyIVDirectComputation()),
     (ShapleyValues(), ShapleyDirectComputation()),
@@ -28,7 +28,7 @@ def test_metric(metric: CubeMetric, direct_computation: DirectComputation):
 
 
 @pytest.mark.parametrize("metric, direct_computation", [
-    (BanzahfValues(), BanzhafDirectComputation()),
+    (BanzhafValues(), BanzhafDirectComputation()),
     (ShapleyValues(), ShapleyDirectComputation()),
 ], ids=["BanzahfValues", "ShapleyValues"])
 def test_metric_applies_on_wcnf(metric: CubeMetric, direct_computation: DirectComputation):

@@ -5,7 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 import time
 
-from woodelf.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzahfValues, \
+from woodelf.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzhafValues, \
     BanzhafInteractionValues
 from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.parse_models import load_decision_tree_ensemble_model
@@ -120,7 +120,7 @@ class WoodelfExplainer:
     ):
         metric_name = "path_dependent_banzhaf" if self.is_path_dependent else "background_banzahf"
         return self.calc_metric(
-            X, BanzahfValues(), metric_name, tree_limit, as_df, exclude_zero_contribution_features,
+            X, BanzhafValues(), metric_name, tree_limit, as_df, exclude_zero_contribution_features,
             path_to_matrices_calculator, verbose
         )
 
