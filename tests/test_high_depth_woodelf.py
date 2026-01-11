@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 import xgboost as xgb
 
-from tests.test_woodelf_against_shap import trainset, testset, xgb_model, assert_shap_package_is_same_as_woodelf, \
+from shared_fixtures_and_utils import trainset, testset, xgb_model, assert_shap_package_is_same_as_woodelf, \
     assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import SimplePathToMatrices

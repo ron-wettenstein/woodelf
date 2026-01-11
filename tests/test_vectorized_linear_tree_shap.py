@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from tests.test_woodelf_against_shap import trainset, testset, xgb_model
+from shared_fixtures_and_utils import trainset, testset, xgb_model
 from woodelf.cube_metric import ShapleyValues, BanzhafValues
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
@@ -163,7 +163,6 @@ def test_linear_tree_shap_on_a_model(trainset, testset, xgb_model):
     )
 
     for feature in simple_woodelf_shap_values:
-        print(feature)
         np.testing.assert_allclose(
             simple_woodelf_shap_values[feature], vectorized_linear_tree_shap_values[feature], atol=0.00001
         )
