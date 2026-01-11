@@ -73,6 +73,57 @@ def linear_tree_shap_magic(
     return (M * (q_M - 1)).T
 
 
+def linear_tree_shap_magic_optimization_try(
+        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
+):
+    """
+    Compute the Shapley/Banzhaf values contribution of a single leaf on all the provided
+    consumer decision patterns.
+    r: The vector of R0...Rk - the cover rations of traversing with the path for all the unique features in the path. (k <= D).
+    p: The consumer patterns vector: Pc_1, Pc_2, ..., Pc_n. (n <= |C|).
+    f_w: The Shapley values/Banzhaf values weights vector per coalition size of coalitions 0,1,...,k
+    We assume |f_w| = |r| and that f_w is a row vector
+    leaf_weight: The leaf weight
+
+    Return a matrix with the Shapley/Banzhaf values contributions. The matrix rows are decision patterns (with the same
+    over as in the input p) and the columns are features contributions of the path features
+    (in the same order as the features cover appear in the input r)
+    """
+    # Longer, but numerically stable
+
+    rank = len(r)
+    q_M = bits_matrix(p, rank) * (1/r.reshape(-1, 1))
+    constitutions_vectors = []
+    M_shared = np.zeros((rank, len(p)), dtype=np.float32)
+    M_shared[0, :] = np.prod(r) * leaf_weight
+    for i in range(rank):
+        min_effected_row = min(i+1, rank - 1)
+        M_f_i = M_shared.copy()
+        # Multiply the polynomials by (y + q_i)
+        q_part = M_shared[0:min_effected_row] * q_M[i]
+        # the y_part - shift M_general down one row, dropping the last row
+        M_shared[1:min_effected_row+1] = M_shared[0:min_effected_row] # work: M_shared[1:] = M_shared[:-1]
+        M_shared[0] = 0
+        M_shared[0:min_effected_row] += q_part
+
+        for j in range(i+1, rank):
+            min_effected_row = min(j, rank-1)
+            # Multiply the polynomials by (y + q_i)
+            q_part = M_f_i[0:min_effected_row] * q_M[j]
+            # the y_part - shift M_general down one row, dropping the last row
+            M_f_i[1:min_effected_row+1] = M_f_i[0:min_effected_row] # work: M_f_i[1:] = M_f_i[:-1]
+            M_f_i[0] = 0
+            M_f_i[0:min_effected_row] += q_part
+
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        constitutions_vectors.append(game_theory_metric_vector)
+
+    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T
+
+
 def linear_tree_shap_magic_for_banzhaf(
         r: np.array, p: np.array, leaf_weight: float
 ):
