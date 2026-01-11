@@ -11,6 +11,7 @@ from sklearn.ensemble import (
     HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor,
     ExtraTreesRegressor, ExtraTreesClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier, IsolationForest
 )
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
@@ -75,8 +76,9 @@ def test_path_dependent_shap_iv_using_shap_package_is_same_as_using_woodelf(trai
     (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42)),
     (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6, random_state=42, learning_rate=0.01)),
     (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42)),
+    (DecisionTreeRegressor, dict(max_depth=6, random_state=42))
 ], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor",
-        "RandomForestRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor"])
+        "RandomForestRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor", "DecisionTreeRegressor"])
 def test_woodelf_against_shap_on_sklearn_regressor_model(model_type, params):
     X, y = shap.datasets.california(n_points=110)
     X_train = X.head(100)
@@ -118,23 +120,16 @@ def test_woodelf_against_shap_on_sklearn_regressor_model(model_type, params):
     (xgb.sklearn.XGBClassifier, dict(n_estimators=10,max_depth=6,random_state=42,learning_rate=0.01,
         base_score=0.5,eval_metric="logloss",use_label_encoder=False)),
     (IsolationForest, dict(n_estimators=10,contamination=0.2,random_state=42)),
+    (DecisionTreeClassifier,  dict(max_depth=6, random_state=42)),
 ], ids=["HistGradientBoostingClassifier",
         "GradientBoostingClassifier",
         "ExtraTreesClassifier",
         "xgb.sklearn.XGBClassifier",
-        "IsolationForest"])
+        "IsolationForest",
+        "DecisionTreeClassifier"])
 def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type, params):
     # Toy binary classification task
-    X, y = make_classification(
-        n_samples=100,
-        n_features=12,
-        n_informative=6,
-        n_redundant=2,
-        n_classes=2,
-        class_sep=1.0,
-        random_state=42,
-    )
-
+    X, y = make_classification(n_samples=100, n_features=12, n_informative=6, n_redundant=2, n_classes=2, class_sep=1.0, random_state=42)
     model = model_type(**params)
     model.fit(X, y)
 
@@ -147,7 +142,7 @@ def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type
     woodelf_values = calculate_background_metric(model, X, X, metric=ShapleyValues())
 
     # these models are treated a mutli target classifiers and get Shapley value for their 0 class and 1 class. I choose the values of the 0 class
-    if isinstance(model, ExtraTreesClassifier):
+    if isinstance(model, ExtraTreesClassifier) or isinstance(model, DecisionTreeClassifier):
         shap_package_values = shap_package_values[:, :, 0]
     assert_shap_package_is_same_as_woodelf(
         woodelf_values, shap_package_values, X, TOLERANCE
@@ -157,7 +152,7 @@ def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type
     explainer = shap.TreeExplainer(model)
     shap_package_values = explainer.shap_values(X)
     woodelf_values = calculate_path_dependent_metric(model, X, metric=ShapleyValues())
-    if isinstance(model, ExtraTreesClassifier):
+    if isinstance(model, ExtraTreesClassifier) or isinstance(model, DecisionTreeClassifier):
         shap_package_values = shap_package_values[:, :, 0]
     assert_shap_package_is_same_as_woodelf(
         woodelf_values, shap_package_values, X, TOLERANCE
@@ -168,7 +163,7 @@ def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type
     shap_package_values = explainer.shap_interaction_values(X)
     woodelf_values = calculate_path_dependent_metric(model, X, metric=ShapleyInteractionValues())
 
-    if isinstance(model, ExtraTreesClassifier):
+    if isinstance(model, ExtraTreesClassifier) or isinstance(model, DecisionTreeClassifier):
         shap_package_values = shap_package_values[:, :, :, 0]
     assert_shap_package_is_same_as_woodelf_on_interaction_values(
         woodelf_values, shap_package_values, X, TOLERANCE

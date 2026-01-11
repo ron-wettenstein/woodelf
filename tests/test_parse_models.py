@@ -7,6 +7,7 @@ import shap
 import numpy as np
 import xgboost as xgb
 from sklearn.datasets import make_classification
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
@@ -59,16 +60,13 @@ def test_load_and_predict_xgboost_classifier():
     )
 
 @pytest.mark.parametrize("model_type, params, base_score_func", [
-    (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42),
-     lambda m: m._baseline_prediction[0][0]),
-    (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42),
-     lambda m: m.init_.constant_[0][0]),
-    (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6,random_state=42, learning_rate=0.01, base_score=0.5),
-     lambda m: 0.5),
-    (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42),
-     lambda m: 0),
+    (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42), lambda m: m._baseline_prediction[0][0]),
+    (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42), lambda m: m.init_.constant_[0][0]),
+    (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6,random_state=42, learning_rate=0.01, base_score=0.5), lambda m: 0.5),
+    (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42), lambda m: 0),
+    (DecisionTreeRegressor, dict(max_depth=6, random_state=42), lambda m: 0)
     # (AdaBoostRegressor, dict(n_estimators=10, random_state=42), lambda m: 0) TODO
-], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor"])
+], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor", "DecisionTreeRegressor"])
 def test_load_and_predict_sklearn_regressor_model(model_type, params, base_score_func):
     X, y = shap.datasets.california(n_points=10000)
     model = model_type(**params)
@@ -135,7 +133,14 @@ def test_load_and_predict_random_forest_model():
         ),
         lambda m, X: logit(m.predict_proba(X)[:, 1]),
         lambda m: 0,
-    ),
+        ),
+        # DecisionTreeClassifier: same situation as ExtraTrees -> use probability output.
+        (
+            DecisionTreeClassifier,
+            dict(max_depth=6, random_state=42),
+            lambda m, X: m.predict_proba(X)[:, 0],
+            lambda m: 0.0,
+        ),
     # (IsolationForest, dict(n_estimators=10,contamination=0.2,random_state=42),
     #  lambda m, X: m.score_samples(X), lambda m: 0), # TODO doesn't work with IsolationForest
     ],
@@ -144,6 +149,7 @@ def test_load_and_predict_random_forest_model():
         "GradientBoostingClassifier",
         "ExtraTreesClassifier",
         "xgb.sklearn.XGBClassifier",
+        "DecisionTreeClassifier",
     ],
 )
 def test_load_and_predict_sklearn_classifier_model(model_type, params, predict_func, base_score_func):

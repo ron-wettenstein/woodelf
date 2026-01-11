@@ -5,6 +5,8 @@ from woodelf.utils import safe_isinstance
 
 MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     # sklearn regressors
+    "sklearn.tree.DecisionTreeRegressor": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.tree.tree.DecisionTreeRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.forest.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.GradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
@@ -13,6 +15,7 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     "sklearn.ensemble.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.HistGradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.IsolationForest": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble._iforest.IsolationForest": LeftIsSmallerEqualDecisionTreeNode,
 
     # xgboost regressors
     "xgboost.core.Booster": DecisionTreeNode,
@@ -20,6 +23,8 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     "xgboost.sklearn.XGBRegressor": DecisionTreeNode,
 
     # sklearn classifiers
+    "sklearn.tree.DecisionTreeClassifier": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.tree.tree.DecisionTreeClassifier": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.RandomForestClassifier": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.forest.RandomForestClassifier": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.GradientBoostingClassifier": LeftIsSmallerEqualDecisionTreeNode,
@@ -37,12 +42,6 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
 
 
 # TODO all models supported by shap:
-# sklearn.tree.DecisionTreeRegressor
-# sklearn.tree.tree.DecisionTreeRegressor
-# sklearn.ensemble.IsolationForest
-# sklearn.ensemble._iforest.IsolationForest
-# sklearn.tree.DecisionTreeClassifier
-# sklearn.tree.tree.DecisionTreeClassifier
 # sklearn.ensemble.MeanEstimator
 # sklearn.ensemble.gradient_boosting.MeanEstimator
 # sklearn.ensemble.QuantileEstimator
