@@ -46,6 +46,18 @@ def test_load_and_predict_xgboost():
         base_score=base_score
     )
 
+def test_load_and_predict_xgboost_classifier():
+    X, y = shap.datasets.california(n_points=100)
+    model = xgb.train(
+        {"learning_rate": 0.01, "base_score": 0.5, "eval_metric": "logloss", "objective": "binary:logistic"},
+        xgb.DMatrix(X, label=(y > 2)), num_boost_round=10)
+    tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
+    assert_predictions_equal(
+        original_pred=logit(model.predict(xgb.DMatrix(X))),
+        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
+        base_score=0 # TODO why not base_score 0.5 ?
+    )
+
 @pytest.mark.parametrize("model_type, params, base_score_func", [
     (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42),
      lambda m: m._baseline_prediction[0][0]),
@@ -118,7 +130,7 @@ def test_load_and_predict_random_forest_model():
         (
         xgb.sklearn.XGBClassifier,
         dict(
-            n_estimators=10,max_depth=6,random_state=42,learning_rate=0.01,base_score=0.5,
+            n_estimators=10, max_depth=6, random_state=42, learning_rate=0.01, base_score=0.5,
             eval_metric="logloss",use_label_encoder=False
         ),
         lambda m, X: logit(m.predict_proba(X)[:, 1]),

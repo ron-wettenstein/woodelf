@@ -6,9 +6,10 @@ import pytest
 import shap
 import xgboost as xgb
 import pandas as pd
+from sklearn.datasets import make_classification
 from sklearn.ensemble import (
     HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor,
-    ExtraTreesRegressor
+    ExtraTreesRegressor, ExtraTreesClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier, IsolationForest
 )
 
 from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
@@ -140,7 +141,7 @@ def test_path_dependent_shap_iv_using_shap_package_is_same_as_using_woodelf(trai
     (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42)),
     (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42)),
     (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6, random_state=42, learning_rate=0.01)),
-    (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42))
+    (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42)),
 ], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor",
         "RandomForestRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor"])
 def test_woodelf_against_shap_on_sklearn_regressor_model(model_type, params):
@@ -178,39 +179,64 @@ def test_woodelf_against_shap_on_sklearn_regressor_model(model_type, params):
 
 
 @pytest.mark.parametrize("model_type, params", [
-    (xgb.sklearn.XGBClassifier, dict(n_estimators=10,max_depth=6, random_state=42, learning_rate=0.01)),
-], ids=["xgb.sklearn.XGBClassifier"])
-def test_woodelf_against_shap_on_sklearn_classifier_model(model_type, params):
-    X, y = shap.datasets.california(n_points=110)
-    y = (y > 2)
-    X_train = X.head(100)
-    y_train = y[:100]
-    X_test = X.tail(10)
+    (HistGradientBoostingClassifier,dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42)),
+    (GradientBoostingClassifier,dict(n_estimators=10, max_depth=6, random_state=42)),
+    (ExtraTreesClassifier,dict(n_estimators=10, max_depth=6, random_state=42)),
+    (xgb.sklearn.XGBClassifier, dict(n_estimators=10,max_depth=6,random_state=42,learning_rate=0.01,
+        base_score=0.5,eval_metric="logloss",use_label_encoder=False)),
+    (IsolationForest, dict(n_estimators=10,contamination=0.2,random_state=42)),
+], ids=["HistGradientBoostingClassifier",
+        "GradientBoostingClassifier",
+        "ExtraTreesClassifier",
+        "xgb.sklearn.XGBClassifier",
+        "IsolationForest"])
+def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type, params):
+    # Toy binary classification task
+    X, y = make_classification(
+        n_samples=100,
+        n_features=12,
+        n_informative=6,
+        n_redundant=2,
+        n_classes=2,
+        class_sep=1.0,
+        random_state=42,
+    )
+
     model = model_type(**params)
-    model.fit(X_train, y_train)
+    model.fit(X, y)
+
+    features = [f"x{i}" for i in range(X.shape[1])]
+    X = pd.DataFrame(X, columns=features)
 
     # background shap
-    explainer = shap.TreeExplainer(model, X_test, model_output="raw")
-    shap_package_values = explainer.shap_values(X_test)
-    woodelf_values = calculate_background_metric(model, X_test, X_test, metric=ShapleyValues())
+    explainer = shap.TreeExplainer(model, X, model_output="raw")
+    shap_package_values = explainer.shap_values(X)
+    woodelf_values = calculate_background_metric(model, X, X, metric=ShapleyValues())
+
+    # these models are treated a mutli target classifiers and get Shapley value for their 0 class and 1 class. I choose the values of the 0 class
+    if isinstance(model, ExtraTreesClassifier):
+        shap_package_values = shap_package_values[:, :, 0]
     assert_shap_package_is_same_as_woodelf(
-        woodelf_values, shap_package_values, X_test, TOLERANCE
+        woodelf_values, shap_package_values, X, TOLERANCE
     )
 
     # path dependent shap
     explainer = shap.TreeExplainer(model)
-    shap_package_values = explainer.shap_values(X_test)
-    woodelf_values = calculate_path_dependent_metric(model, X_test, metric=ShapleyValues())
+    shap_package_values = explainer.shap_values(X)
+    woodelf_values = calculate_path_dependent_metric(model, X, metric=ShapleyValues())
+    if isinstance(model, ExtraTreesClassifier):
+        shap_package_values = shap_package_values[:, :, 0]
     assert_shap_package_is_same_as_woodelf(
-        woodelf_values, shap_package_values, X_test, TOLERANCE
+        woodelf_values, shap_package_values, X, TOLERANCE
     )
 
     # path dependent iv shap
     explainer = shap.TreeExplainer(model)
-    shap_package_values = explainer.shap_interaction_values(X_test)
-    woodelf_values = calculate_path_dependent_metric(model, X_test, metric=ShapleyInteractionValues())
+    shap_package_values = explainer.shap_interaction_values(X)
+    woodelf_values = calculate_path_dependent_metric(model, X, metric=ShapleyInteractionValues())
 
+    if isinstance(model, ExtraTreesClassifier):
+        shap_package_values = shap_package_values[:, :, :, 0]
     assert_shap_package_is_same_as_woodelf_on_interaction_values(
-        woodelf_values, shap_package_values, X_test, TOLERANCE
+        woodelf_values, shap_package_values, X, TOLERANCE
     )
-
