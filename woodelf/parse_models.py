@@ -4,6 +4,7 @@ from woodelf.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqual
 from woodelf.utils import safe_isinstance
 
 MODEL_CLASS_TO_DECISION_TREE_CLASS = {
+    # sklearn regressors
     "sklearn.ensemble.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.forest.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.GradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
@@ -11,9 +12,22 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     "sklearn.ensemble.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.HistGradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble.IsolationForest": LeftIsSmallerEqualDecisionTreeNode,
+
+    # xgboost regressors
     "xgboost.core.Booster": DecisionTreeNode,
     "xgboost.sklearn.XGBClassifier": DecisionTreeNode,
     "xgboost.sklearn.XGBRegressor": DecisionTreeNode,
+
+    # sklearn classifiers
+    "sklearn.ensemble.RandomForestClassifier": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble.forest.RandomForestClassifier": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble.GradientBoostingClassifier": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble.gradient_boosting.GradientBoostingClassifier": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble._gb.GradientBoostingClassifier": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble.ExtraTreesClassifier": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble.forest.ExtraTreesClassifier": LeftIsSmallerEqualDecisionTreeNode,
+    "sklearn.ensemble.HistGradientBoostingClassifier": LeftIsSmallerEqualDecisionTreeNode,
 
     # TODO test these models (in one time notebook is enough)
     "skopt.learning.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
