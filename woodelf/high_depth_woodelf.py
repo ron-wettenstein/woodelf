@@ -183,35 +183,29 @@ def combine_neighbor_leaves_s_vectors(s_left, s_right):
         s_combined[feature] = s_left[feature] + np.array(swapped_s_right, dtype=s_right_vec.dtype)
     return s_combined
 
-def compute_background_shap_for_leaf_node(
-        values: Dict[Any, float], leaf: DecisionTreeNode, consumer_patterns: np.array, background_patterns: np.array,
-        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
-        global_importance: bool = False
+def compute_background_s_vectors_for_leaf_node(
+        leaf: DecisionTreeNode, background_patterns: np.array, unique_features_in_path: List[Any],
+        path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool
 ):
     depth = len(unique_features_in_path)
     f = compute_f(background_patterns, depth, GPU)
-    s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
-    compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU, global_importance)
+    return path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
 
 
-def compute_path_dependent_shap_for_leaf_node(
-        values: Dict[Any, float], leaf: DecisionTreeNode, consumer_patterns: np.array, path: List[DecisionTreeNode],
-        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
-        global_importance: bool = False
+def compute_path_dependent_s_vectors_for_leaf_node(
+        leaf: DecisionTreeNode, path: List[DecisionTreeNode], unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls
 ):
     if isinstance(path_to_matrices_calculator, HighDepthPathToMatrices):
         f = compute_path_dependent_f(path + [leaf], unique_features_in_path, prepare_f=True)
-        s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value, path_dependent=True)
-    else:
-        f = compute_path_dependent_f(path + [leaf], unique_features_in_path)
-        s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
-    compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU, global_importance)
+        return path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value, path_dependent=True)
 
-def compute_background_shap_for_two_neighbor_leaves(
-        values: Dict[Any, float], left_leaf: DecisionTreeNode, right_leaf: DecisionTreeNode,
-        left_consumer_patterns: np.array, left_background_patterns: np.array,
-        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
-        global_importance: bool = False
+    f = compute_path_dependent_f(path + [leaf], unique_features_in_path)
+    return path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value)
+
+
+def compute_background_s_vectors_for_two_neighbor_leaves(
+        left_leaf: DecisionTreeNode, right_leaf: DecisionTreeNode, left_background_patterns: np.array,
+        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool
 ):
     depth = len(unique_features_in_path)
     left_f = compute_f(left_background_patterns, depth, GPU)
@@ -220,14 +214,11 @@ def compute_background_shap_for_two_neighbor_leaves(
     right_f = compute_f_of_neighbor(left_f)
     right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value)
 
-    combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
-    compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU, global_importance)
+    return left_s_vectors, right_s_vectors
 
-def compute_path_dependent_shap_two_neighbor_leaves(
-        values: Dict[Any, float], left_leaf: DecisionTreeNode, right_leaf: DecisionTreeNode,
-        left_consumer_patterns: np.array, path: List[DecisionTreeNode],
-        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls, GPU: bool,
-        global_importance: bool = False
+def compute_path_dependent_s_vectors_two_neighbor_leaves(
+        left_leaf: DecisionTreeNode, right_leaf: DecisionTreeNode, path: List[DecisionTreeNode],
+        unique_features_in_path: List[Any], path_to_matrices_calculator: PathToMatricesAbstractCls
 ):
     prepare_f = isinstance(path_to_matrices_calculator, HighDepthPathToMatrices)
     left_f = compute_path_dependent_f(path + [left_leaf], unique_features_in_path, prepare_f=prepare_f)
@@ -240,8 +231,7 @@ def compute_path_dependent_shap_two_neighbor_leaves(
         left_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, left_f, left_leaf.value)
         right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value)
 
-    combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
-    compute_values_using_s_vectors(values, combined_vectors, left_consumer_patterns, GPU, global_importance)
+    return left_s_vectors, right_s_vectors
 
 
 def compute_patterns_generator(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool = False) -> Tuple[int, np.array]:
@@ -318,36 +308,43 @@ def woodelf_for_high_depth_single_tree(
                 unique_features_in_path.append(n.feature_name)
 
         current_node_feature_does_not_repeat_in_the_path = all(n.feature_name != node.feature_name for n in path)
+
         if node.is_leaf():
+            # Compute the Shapley/Banzhaf values of this leaf
             if is_background:
-                compute_background_shap_for_leaf_node(
-                    values, node, consumer_patterns[node.index], background_patterns[node.index],
-                    unique_features_in_path, path_to_matrices_calculator, GPU, global_importance
+                s_vectors = compute_background_s_vectors_for_leaf_node(
+                    node, background_patterns[node.index],
+                    unique_features_in_path, path_to_matrices_calculator, GPU
                 )
             else:
-                compute_path_dependent_shap_for_leaf_node(
-                    values, node, consumer_patterns[node.index], path,
-                    unique_features_in_path, path_to_matrices_calculator, GPU, global_importance
+                s_vectors = compute_path_dependent_s_vectors_for_leaf_node(
+                    node, path,
+                    unique_features_in_path, path_to_matrices_calculator
                 )
+            compute_values_using_s_vectors(values, s_vectors, consumer_patterns[node.index], GPU, global_importance)
+
         elif (
                 node.right.is_leaf() and node.left.is_leaf() and
                 current_node_feature_does_not_repeat_in_the_path and use_neighbor_leaf_trick
         ):
+            # Compute the Shapley/Banzhaf values of these two neighbor leaves faster, using the neighbor leaf trick
             if node.feature_name not in unique_features_in_path:
                 unique_features_in_path.append(node.feature_name)
 
             if is_background:
-                compute_background_shap_for_two_neighbor_leaves(
-                    values, node.left, node.right, consumer_patterns[node.left.index],
-                    background_patterns[node.left.index],
-                    unique_features_in_path, path_to_matrices_calculator, GPU, global_importance
+                left_s_vectors, right_s_vectors = compute_background_s_vectors_for_two_neighbor_leaves(
+                    node.left, node.right, background_patterns[node.left.index], unique_features_in_path, path_to_matrices_calculator, GPU
                 )
             else:
-                compute_path_dependent_shap_two_neighbor_leaves(
-                    values, node.left, node.right, consumer_patterns[node.left.index],
-                    path + [node], unique_features_in_path, path_to_matrices_calculator, GPU, global_importance
+                left_s_vectors, right_s_vectors = compute_path_dependent_s_vectors_two_neighbor_leaves(
+                    node.left, node.right, path + [node], unique_features_in_path, path_to_matrices_calculator
                 )
+
+            combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
+            compute_values_using_s_vectors(values, combined_vectors, consumer_patterns[node.left.index], GPU, global_importance)
+
         else:
+            # Not leaf and the children are not two neighbor leaves - continue the traversal
             nodes_to_visit_left.append(node.left)
             nodes_to_visit_right.append(node.right)
 
