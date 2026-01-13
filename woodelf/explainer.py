@@ -1,22 +1,21 @@
+import time
 from typing import List
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-import time
 
 from woodelf.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzhafValues, \
     BanzhafInteractionValues
 from woodelf.decision_trees_ensemble import DecisionTreeNode
+from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.parse_models import load_decision_tree_ensemble_model
-from woodelf.path_to_matrices import PathToMatricesAbstractCls, SimplePathToMatrices
-from woodelf.simple_woodelf import get_cupy_data, preprocess_tree_background, \
-    calculation_given_preprocessed_tree_ensemble, calculation_given_preprocessed_tree, fast_preprocess_path_dependent, \
-    fill_mirror_pairs
+from woodelf.path_to_matrices import PathToMatricesAbstractCls
 
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]
 AVAILABLE_CACHE_OPTIONS = ["auto", "yes", "no"]
+
+MAX_SUGGESTED_CACHE_SIZE = 250 * 2 ^ 20 # Use cache if it is predicted to take less than 250MB
 
 class WoodelfExplainer:
     def __init__(
@@ -26,16 +25,7 @@ class WoodelfExplainer:
             cache_option: str = "auto", GPU: bool = False
     ):
         self.raw_model = model
-        # TODO fix this in the right way. data can be a np.array
-        if data is not None:
-            self.model_objs = load_decision_tree_ensemble_model(model, list(data.columns))
-            assert len(self.model_objs) > 0, "Did not load the model properly"
-            self.depth = self.model_objs[0].depth
-            self.model_was_loaded = True
-        else:
-            self.model_objs = None
-            self.depth = None
-            self.model_was_loaded = False
+        self.cache_option = cache_option
         self.background_data = data
 
         self.verify_init_input(model_output, feature_perturbation, cache_option)
@@ -46,8 +36,18 @@ class WoodelfExplainer:
         )
         self.GPU = GPU
 
-        self.cache_option = cache_option
-        self.cache = {}
+        # TODO fix this in the right way. data can be a np.array
+        if data is not None:
+            self.model_objs: List[DecisionTreeNode] = load_decision_tree_ensemble_model(model, list(data.columns))
+            assert len(self.model_objs) > 0, "Did not load the model properly"
+            self.depth = self.model_objs[0].depth
+            self.model_was_loaded = True
+            self.cache = [{} for i in range(len(self.model_objs))] if self.use_cache() else None
+            self.cache_filled = False
+        else:
+            self.model_objs: List[DecisionTreeNode] = None
+            self.depth = None
+            self.model_was_loaded = False
 
     @classmethod
     def verify_init_input(cls, model_output: str, feature_perturbation: str, cache: str):
@@ -58,9 +58,20 @@ class WoodelfExplainer:
         assert model_output == "raw", f"Currently supports only model_output='raw'. Given {model_output}"
 
     def use_cache(self):
+        if self.background_data is None:
+            return False
         if self.cache_option == "auto":
-            return self.depth <= 8
+            # Use cache if it is predicted to take less than 250MB
+            return self.predict_cache_size() <= MAX_SUGGESTED_CACHE_SIZE
         return self.cache_option == "yes"
+
+    def predict_cache_size(self):
+        total_cache_size = 0
+        for tree in self.model_objs:
+            for leaf, features_in_path in tree.get_all_leaves_with_paths():
+                D = len(set(features_in_path))
+                total_cache_size += 2 ** D * 4
+        return total_cache_size
 
     def shap_values(
             self, X, tree_limit: int = None,
@@ -69,9 +80,8 @@ class WoodelfExplainer:
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False
     ):
-        metric_name = "path_dependent_shap" if self.is_path_dependent else "background_shap"
         return self.calc_metric(
-            X, ShapleyValues(), metric_name, tree_limit, as_df, exclude_zero_contribution_features,
+            X, ShapleyValues(), tree_limit, as_df, exclude_zero_contribution_features,
             path_to_matrices_calculator, verbose
         )
 
@@ -81,9 +91,8 @@ class WoodelfExplainer:
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False
     ):
-        metric_name = "path_dependent_shap_iv" if self.is_path_dependent else "background_shap_iv"
         shapley_ivs = self.calc_metric(
-            X, ShapleyInteractionValues(), metric_name, tree_limit, as_df=True,
+            X, ShapleyInteractionValues(), tree_limit, as_df=True,
             exclude_zero_contribution_features=exclude_zero_contribution_features,
             path_to_matrices_calculator=path_to_matrices_calculator, verbose=verbose
         )
@@ -93,9 +102,8 @@ class WoodelfExplainer:
             interaction values it has with other features (when it is the first feature in the pair).
             a.k.a:
             shap_(i,i) = shap_i - \\sum_(j!=i) shap_(i,j) """)
-            shap_metric_name = "path_dependent_shap" if self.is_path_dependent else "background_shap"
             shapley_values = self.calc_metric(
-                X, ShapleyValues(), shap_metric_name, tree_limit, as_df=True,
+                X, ShapleyValues(), tree_limit, as_df=True,
                 exclude_zero_contribution_features=exclude_zero_contribution_features,
                 path_to_matrices_calculator=path_to_matrices_calculator, verbose=verbose
             )
@@ -118,9 +126,8 @@ class WoodelfExplainer:
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False
     ):
-        metric_name = "path_dependent_banzhaf" if self.is_path_dependent else "background_banzahf"
         return self.calc_metric(
-            X, BanzhafValues(), metric_name, tree_limit, as_df, exclude_zero_contribution_features,
+            X, BanzhafValues(), tree_limit, as_df, exclude_zero_contribution_features,
             path_to_matrices_calculator, verbose
         )
 
@@ -130,15 +137,14 @@ class WoodelfExplainer:
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False
     ):
-        metric_name = "path_dependent_banzhaf_iv" if self.is_path_dependent else "background_banzahf_iv"
         return self.calc_metric(
-            X, BanzhafInteractionValues(), metric_name, tree_limit, as_df,
+            X, BanzhafInteractionValues(), tree_limit, as_df,
             exclude_zero_contribution_features,
             path_to_matrices_calculator, verbose
         )
 
     def calc_metric(
-            self, consumer_data, metric: CubeMetric, metric_name: str, tree_limit: int = None,
+            self, consumer_data, metric: CubeMetric, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False):
@@ -147,47 +153,24 @@ class WoodelfExplainer:
             assert len(self.model_objs) > 0, "Did not load the model properly"
             self.depth = self.model_objs[0].depth
             self.model_was_loaded = True
+            self.cache = [{} for i in range(len(self.model_objs))] if self.use_cache() else None
+            self.cache_filled = False
 
-        if path_to_matrices_calculator is None:
-            path_to_matrices_calculator = SimplePathToMatrices(
-                metric=metric, max_depth=self.model_objs[0].depth, GPU=self.GPU
-            )
-        if self.GPU:
-            consumer_data = get_cupy_data(self.model_objs, consumer_data)
-
-        if self.use_cache() and tree_limit is None:
-            preprocessed_trees = []
-            if metric_name in self.cache:
-                print("Skipped preprocessing - used cache")
-                for tree, replacement_values_lst in zip(self.model_objs, self.cache[metric_name]):
-                    for leaf, replacement_values in zip(tree.get_all_leaves(), replacement_values_lst):
-                        leaf.feature_contribution_replacement_values = replacement_values
-                    preprocessed_trees.append(tree)
+        model_objs = self.model_objs if tree_limit is not None else self.model_objs[:tree_limit]
+        cache_kwargs = {}
+        if self.cache is not None:
+            if self.cache_filled:
+                # use the cache
+                cache_kwargs["cache_to_use"] = self.cache
             else:
-                self.cache[metric_name] = []
-                for tree in tqdm(self.model_objs, desc="Preprocessing the trees", disable=not verbose):
-                    preprocessed_tree = self._preprocess_tree(tree, path_to_matrices_calculator)
-                    preprocessed_trees.append(preprocessed_tree)
-                    self.cache[metric_name].append([
-                        leaf.feature_contribution_replacement_values.copy() for leaf in preprocessed_tree.get_all_leaves()
-                    ])
+                # fill the cache
+                cache_kwargs["cache_to_fill"] = self.cache
+                self.cache_filled = True # will fill the cache now
 
-            woodelf_values = calculation_given_preprocessed_tree_ensemble(
-                preprocessed_trees, consumer_data, global_importance=False,
-                iv_one_sized=not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE, GPU=self.GPU
-            )
-        else:
-            woodelf_values = {}
-            trees = self.model_objs if tree_limit is None else self.model_objs[tree_limit:]
-            for tree in tqdm(trees, desc="Running (preprocessing and computation)", disable=not verbose):
-                preprocessed_tree = self._preprocess_tree(tree, path_to_matrices_calculator)
-                woodelf_values = calculation_given_preprocessed_tree(
-                    preprocessed_tree, consumer_data, values=woodelf_values, GPU=self.GPU
-                )
-
-            # Improvement 4 of Sec. 9.1
-            if not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE:
-                fill_mirror_pairs(woodelf_values)
+        woodelf_values = woodelf_for_high_depth(
+            model_objs, consumer_data, self.background_data, metric, GPU=self.GPU,
+            path_to_matrices_calculator=path_to_matrices_calculator, model_was_loaded=True, **cache_kwargs
+        )
 
         return self._output_formatting(
             woodelf_values, as_df, exclude_zero_contribution_features, list(consumer_data.columns),
@@ -226,15 +209,6 @@ class WoodelfExplainer:
                 return woodelf_df.values.reshape(len(consumer_data), len(columns), len(columns))
             return woodelf_df.values
         return woodelf_df
-
-
-    def _preprocess_tree(self, tree: DecisionTreeNode, path_to_matrices_calculator: PathToMatricesAbstractCls):
-        if self.is_path_dependent:
-            return fast_preprocess_path_dependent(tree, path_to_matrixes_calculator=path_to_matrices_calculator)
-        return preprocess_tree_background(
-            tree, self.background_data, depth=tree.depth,
-            path_to_matrixes_calculator=path_to_matrices_calculator, GPU=self.GPU
-        )
 
 
     @property
