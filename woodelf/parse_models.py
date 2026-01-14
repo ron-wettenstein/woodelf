@@ -41,18 +41,11 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     "skopt.learning.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "skopt.learning.forest.RandomForestRegressor": LeftIsSmallerEqualDecisionTreeNode,
     # TODO support all decision trees supported in shap and more
+
 }
 
 
 # TODO all models supported by shap:
-# sklearn.ensemble.MeanEstimator
-# sklearn.ensemble.gradient_boosting.MeanEstimator
-# sklearn.ensemble.QuantileEstimator
-# sklearn.ensemble.gradient_boosting.QuantileEstimator
-# sklearn.dummy.DummyRegressor
-# sklearn.ensemble.LogOddsEstimator
-# sklearn.ensemble.gradient_boosting.LogOddsEstimator
-# sklearn.dummy.DummyClassifier
 # xgboost.sklearn.XGBRanker
 # lightgbm.sklearn.LGBMRanker
 # catboost.core.CatBoostRegressor
@@ -80,6 +73,16 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
 # sklearn.ensemble.AdaBoostClassifier
 # lightGBM with linear regression instead of weights in the leaves
 # Xgboost with categorical features
+
+# TODO keep unsupported as they are not really models, just constant estimators...
+# sklearn.ensemble.MeanEstimator
+# sklearn.ensemble.gradient_boosting.MeanEstimator
+# sklearn.ensemble.QuantileEstimator
+# sklearn.ensemble.gradient_boosting.QuantileEstimator
+# sklearn.dummy.DummyRegressor
+# sklearn.ensemble.LogOddsEstimator
+# sklearn.ensemble.gradient_boosting.LogOddsEstimator
+# sklearn.dummy.DummyClassifier
 
 
 
