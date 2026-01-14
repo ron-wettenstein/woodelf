@@ -23,7 +23,7 @@ from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import SimplePathToMatrices
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric, \
     path_dependent_frequencies
-
+import lightgbm as lgb
 
 
 FIXTURES = [trainset, testset, xgb_model]
@@ -202,9 +202,10 @@ def test_global_importance_flag(trainset, testset, xgb_model):
     (RandomForestRegressor, dict(n_estimators=10,max_depth=6, random_state=42)),
     (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6, random_state=42, learning_rate=0.01)),
     (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42)),
-    (DecisionTreeRegressor, dict(max_depth=6, random_state=42))
+    (DecisionTreeRegressor, dict(max_depth=6, random_state=42)),
+    (lgb.LGBMRegressor, dict(n_estimators=10, max_depth=6, random_state=42, learning_rate=0.01))
 ], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor",
-        "RandomForestRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor", "DecisionTreeRegressor"])
+        "RandomForestRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor", "DecisionTreeRegressor", "LGBMRegressor"])
 def test_woodelf_high_depths_against_shap_on_sklearn_regressor_model(model_type, params):
     X, y = shap.datasets.california(n_points=110)
     X_train = X.head(100)
@@ -247,12 +248,14 @@ def test_woodelf_high_depths_against_shap_on_sklearn_regressor_model(model_type,
         base_score=0.5,eval_metric="logloss",use_label_encoder=False)),
     (IsolationForest, dict(n_estimators=10,contamination=0.2,random_state=42)),
     (DecisionTreeClassifier,  dict(max_depth=6, random_state=42)),
+    (lgb.LGBMClassifier, dict(n_estimators=10, max_depth=6, random_state=42, learning_rate=0.01)),
 ], ids=["HistGradientBoostingClassifier",
         "GradientBoostingClassifier",
         "ExtraTreesClassifier",
         "xgb.sklearn.XGBClassifier",
         "IsolationForest",
-        "DecisionTreeClassifier"])
+        "DecisionTreeClassifier",
+        "LGBMClassifier"])
 def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type, params):
     # Toy binary classification task
     X, y = make_classification(n_samples=100, n_features=12, n_informative=6, n_redundant=2, n_classes=2, class_sep=1.0, random_state=42)

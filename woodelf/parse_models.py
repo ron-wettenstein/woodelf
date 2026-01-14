@@ -16,6 +16,8 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     "sklearn.ensemble.HistGradientBoostingRegressor": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.IsolationForest": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble._iforest.IsolationForest": LeftIsSmallerEqualDecisionTreeNode,
+    "lightgbm.basic.Booster": LeftIsSmallerEqualDecisionTreeNode,
+    "lightgbm.sklearn.LGBMRegressor": LeftIsSmallerEqualDecisionTreeNode,
 
     # xgboost regressors
     "xgboost.core.Booster": DecisionTreeNode,
@@ -33,6 +35,7 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     "sklearn.ensemble.ExtraTreesClassifier": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.forest.ExtraTreesClassifier": LeftIsSmallerEqualDecisionTreeNode,
     "sklearn.ensemble.HistGradientBoostingClassifier": LeftIsSmallerEqualDecisionTreeNode,
+    "lightgbm.sklearn.LGBMClassifier": LeftIsSmallerEqualDecisionTreeNode,
 
     # TODO test these models (in one time notebook is enough)
     "skopt.learning.forest.ExtraTreesRegressor": LeftIsSmallerEqualDecisionTreeNode,
@@ -51,10 +54,7 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
 # sklearn.ensemble.gradient_boosting.LogOddsEstimator
 # sklearn.dummy.DummyClassifier
 # xgboost.sklearn.XGBRanker
-# lightgbm.basic.Booster
-# lightgbm.sklearn.LGBMRegressor
 # lightgbm.sklearn.LGBMRanker
-# lightgbm.sklearn.LGBMClassifier
 # catboost.core.CatBoostRegressor
 # catboost.core.CatBoostClassifier
 # catboost.core.CatBoost

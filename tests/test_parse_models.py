@@ -8,6 +8,7 @@ import numpy as np
 import xgboost as xgb
 from sklearn.datasets import make_classification
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+import lightgbm as lgb
 
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
@@ -47,6 +48,7 @@ def test_load_and_predict_xgboost():
         base_score=base_score
     )
 
+
 def test_load_and_predict_xgboost_classifier():
     X, y = shap.datasets.california(n_points=100)
     model = xgb.train(
@@ -64,7 +66,7 @@ def test_load_and_predict_xgboost_classifier():
     (GradientBoostingRegressor, dict(n_estimators=10,max_depth=6,random_state=42), lambda m: m.init_.constant_[0][0]),
     (xgb.sklearn.XGBRegressor, dict(n_estimators=10,max_depth=6,random_state=42, learning_rate=0.01, base_score=0.5), lambda m: 0.5),
     (ExtraTreesRegressor, dict(n_estimators=10,max_depth=6,random_state=42), lambda m: 0),
-    (DecisionTreeRegressor, dict(max_depth=6, random_state=42), lambda m: 0)
+    (DecisionTreeRegressor, dict(max_depth=6, random_state=42), lambda m: 0),
     # (AdaBoostRegressor, dict(n_estimators=10, random_state=42), lambda m: 0) TODO
 ], ids=["HistGradientBoostingRegressor", "GradientBoostingRegressor", "xgb.sklearn.XGBRegressor", "ExtraTreesRegressor", "DecisionTreeRegressor"])
 def test_load_and_predict_sklearn_regressor_model(model_type, params, base_score_func):
@@ -78,7 +80,41 @@ def test_load_and_predict_sklearn_regressor_model(model_type, params, base_score
         base_score=base_score_func(model)
     )
 
-    # (IsolationForest, dict(n_estimators=10,contamination=0.2,random_state=42), lambda m: 0)
+
+def test_load_and_predict_lightgbm_regressor():
+    X, y = shap.datasets.california(n_points=10000)
+    model = lgb.LGBMRegressor(n_estimators=10, max_depth=6, random_state=42, learning_rate=0.01)
+    model.fit(X, y)
+    base_score = float(model.booster_.dump_model().get("average_output", 0.0))
+    tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
+    assert_predictions_equal(
+        original_pred=model.predict(X),
+        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
+        base_score=base_score
+    )
+
+    # Test lightgbm.basic.Booster
+    tree_ensemble = load_decision_tree_ensemble_model(model=model.booster_, features=list(X.columns))
+    assert_predictions_equal(
+        original_pred=model.predict(X),
+        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
+        base_score=base_score
+    )
+
+def test_load_and_predict_lightgbm_classifier():
+    X, y = make_classification(
+        n_samples=5000, n_features=12, n_informative=6, n_redundant=2, n_classes=2, class_sep=1.0, random_state=42,
+    )
+    model = lgb.LGBMClassifier(n_estimators=10, max_depth=6, random_state=42, learning_rate=0.01)
+    model.fit(X, y)
+    base_score = float(model.booster_.dump_model().get("average_output", 0.0))
+    X_df = pd.DataFrame(X, columns=[f"x{i}" for i in range(X.shape[1])])
+    tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X_df.columns))
+    assert_predictions_equal(
+        original_pred=model.predict(X, raw_score=True),
+        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X_df),
+        base_score=base_score
+    )
 
 
 def logit(p, eps=1e-15):
@@ -155,15 +191,8 @@ def test_load_and_predict_random_forest_model():
 def test_load_and_predict_sklearn_classifier_model(model_type, params, predict_func, base_score_func):
     # Toy binary classification task
     X, y = make_classification(
-        n_samples=5000,
-        n_features=12,
-        n_informative=6,
-        n_redundant=2,
-        n_classes=2,
-        class_sep=1.0,
-        random_state=42,
+        n_samples=5000, n_features=12, n_informative=6, n_redundant=2, n_classes=2, class_sep=1.0, random_state=42,
     )
-
     model = model_type(**params)
     model.fit(X, y)
 
