@@ -299,12 +299,12 @@ def vectorized_linear_tree_shap_for_a_single_tree(
             w=leaf_index_to_weight[leaf_index]
         )
 
-        contribution_values = s_matrix[inverse]
+        # TODO why np indexing on a matrix is slower than vector by vector! contribution_values = s_matrix[inverse]
         for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf_index]):
             if feature not in values:
-                values[feature] = contribution_values[:, index]
+                values[feature] = s_matrix[:, index][inverse]
             else:
-                values[feature] += contribution_values[:, index]
+                values[feature] += s_matrix[:, index][inverse]
 
 
 def vectorized_linear_tree_shap(model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False):
