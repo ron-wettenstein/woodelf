@@ -70,7 +70,7 @@ def linear_tree_shap_magic(
         constitutions_vectors.append(game_theory_metric_vector)
 
     M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
-    return (M * (q_M - 1)).T
+    return (M * (q_M - 1)).T.copy()
 
 
 def linear_tree_shap_magic_optimization_try(
@@ -121,7 +121,7 @@ def linear_tree_shap_magic_optimization_try(
         constitutions_vectors.append(game_theory_metric_vector)
 
     M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
-    return (M * (q_M - 1)).T
+    return (M * (q_M - 1)).T.copy()
 
 
 def linear_tree_shap_magic_for_banzhaf(
@@ -138,7 +138,7 @@ def linear_tree_shap_magic_for_banzhaf(
         constitutions_vectors.append(game_theory_metric_vector)
 
     M = np.array(constitutions_vectors)  # Now M become a |n| columns and |r| rows matrix
-    return (M * (q_M - 1)).T
+    return (M * (q_M - 1)).T.copy()
 
 
 def linear_tree_shap_magic_not_numerically_stable(
@@ -173,7 +173,7 @@ def linear_tree_shap_magic_not_numerically_stable(
         constitutions_vectors.append(game_theory_metric_vector)
 
     M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
-    return (M * (q_M - 1)).T
+    return (M * (q_M - 1)).T.copy()
 
 
 def linear_tree_shap_magic_longer_not_optimized(
@@ -203,7 +203,7 @@ def linear_tree_shap_magic_longer_not_optimized(
         constitutions_vectors.append(game_theory_metric_vector)
 
     M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
-    return (M * (q_M - 1)).T
+    return (M * (q_M - 1)).T.copy()
 
 
 def linear_tree_shap_magic_for_banzhaf_extra_numerically_stable(
@@ -225,7 +225,7 @@ def linear_tree_shap_magic_for_banzhaf_extra_numerically_stable(
         game_theory_metric_vector = sum_coefs / 2 ** (len(r) - 1)
         constitutions_vectors.append(game_theory_metric_vector)
     M = np.array(constitutions_vectors)  # Now M become a |n| columns and |r| rows matrix
-    return (M * (q_M - 1)).T
+    return (M * (q_M - 1)).T.copy()
 
 
 class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls as its API is different

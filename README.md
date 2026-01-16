@@ -172,7 +172,7 @@ meaningful step toward answering these questions.
 We will continue to explore new explainability methods and expand this framework with increasingly powerful tools for interpreting 
 and understanding the behavior of decision tree ensembles—so you can not only observe their predictions, but understand what drives them.
 
-> "Tree much like this one date back 290 million years, around a thousand times longer than we've been here.
+> "Trees much like this one date back 290 million years, around a thousand times longer than we've been here.
 > To me, to sit beneath a Ginkgo tree and look up is to be reminded that we're a blip in the story of life.
 > But also, what a blip. We are, after all, the only species that ever tried to name the Ginkgo. 
 > We are not observers of life on Earth, as much as it may sometimes feel that way. We are participants in that life. And so trees don't just remind me how astonishing they are, they also remind me how astonishing we are." 
