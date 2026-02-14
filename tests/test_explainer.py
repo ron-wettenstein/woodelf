@@ -39,20 +39,6 @@ def test_path_dependent_shap_using_shap_package_is_same_as_using_woodelf_explain
     np.testing.assert_allclose(woodelf_values, shap_package_values, atol=TOLERANCE, strict=True)
 
 
-def test_woodelf_explainer_with_xgboost_model_of_depth_16(trainset, testset, xgb_model_depth_16):
-    start_time = time.time()
-    explainer = shap.TreeExplainer(xgb_model_depth_16)
-    shap_package_values = explainer.shap_values(testset)
-    print("shap took: ", time.time() - start_time)
-
-    start_time = time.time()
-    woodelf_explainer = WoodelfExplainer(xgb_model_depth_16, feature_perturbation='tree_path_dependent')
-    woodelf_values = woodelf_explainer.shap_values(testset)
-    print("woodelf took: ", time.time() - start_time)
-
-    np.testing.assert_allclose(woodelf_values, shap_package_values, atol=TOLERANCE, strict=True)
-
-
 # def test_background_shap_iv_using_shap_package_is_same_as_using_woodelf_explainer(trainset, testset, xgb_model):
 #     # Not possible as shap package does not support background interaction values
 
@@ -79,6 +65,19 @@ def test_path_dependent_shap_iv_using_shap_package_is_same_as_using_woodelf_expl
 
     np.testing.assert_allclose(woodelf_values, shap_package_values, atol=TOLERANCE, strict=True)
 
+
+def test_woodelf_explainer_with_xgboost_model_of_depth_16(trainset, testset, xgb_model_depth_16):
+    start_time = time.time()
+    explainer = shap.TreeExplainer(xgb_model_depth_16)
+    shap_package_values = explainer.shap_values(testset)
+    print("shap took: ", time.time() - start_time)
+
+    start_time = time.time()
+    woodelf_explainer = WoodelfExplainer(xgb_model_depth_16, feature_perturbation='tree_path_dependent')
+    woodelf_values = woodelf_explainer.shap_values(testset)
+    print("woodelf took: ", time.time() - start_time)
+
+    np.testing.assert_allclose(woodelf_values, shap_package_values, atol=TOLERANCE, strict=True)
 
 def test_excluding_only_zero_contributions(trainset, testset, xgb_model):
     woodelf_explainer = WoodelfExplainer(xgb_model, trainset, feature_perturbation='tree_path_dependent')

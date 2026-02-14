@@ -241,11 +241,10 @@ class WoodelfExplainer:
             # ev_tiled.shape == (N,)
             ev_tiled = np.tile(self.expected_value, v.shape[0])
 
-        X_data = consumer_data.values
         return Explanation(
             v,
             base_values=ev_tiled,
-            data=X_data,
+            data=consumer_data.values,
             feature_names=feature_names,
             compute_time=time.time() - start_time
         )
