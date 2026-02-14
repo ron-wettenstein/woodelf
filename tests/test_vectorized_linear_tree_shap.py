@@ -188,16 +188,11 @@ def test_linear_tree_banzhaf_on_a_model(testset, xgb_model):
 
 def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):
     for model in [xgb_model_depth_16, xgb_model_depth_22]:
-        start_time = time.time()
+
         explainer = shap.TreeExplainer(model)
         shap_package_values = explainer.shap_values(testset)
-        print("shap took: ", time.time() - start_time)
 
-        print(testset.shape)
-        start_time = time.time()
         linear_tree_shap_values = vectorized_linear_tree_shap(
             model, testset, is_shapley=True, GPU=False
         )
-        print("high depth woodelf took: ", time.time() - start_time)
-
         assert_shap_package_is_same_as_woodelf(linear_tree_shap_values, shap_package_values, testset, TOLERANCE)
