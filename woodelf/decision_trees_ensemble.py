@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 import pandas as pd
 
@@ -169,6 +169,22 @@ class LeftIsSmallerEqualDecisionTreeNode(DecisionTreeNode):
         return f"{self.index} (cover: {self.cover}): {self.feature_name} <= {self.value}"
 
 
+
+class DecisionTreesEnsemble:
+    """
+    Represent a decision trees ensemble models. Include a list of all the trees roots.
+    """
+
+    def __init__(self, trees: List[DecisionTreeNode]):
+        self.trees = trees
+        self.max_depth = max([tree.depth for tree in trees])
+
+    def predict(self, df):
+        first_tree = self.trees[0]
+        preds = first_tree.predict(df)
+        for tree in self.trees[1:]:
+            preds += tree.predict(df)
+        return preds
 
 # class RandomForrestRegressorDecisionTreeNode(LeftIsSmallerEqualDecisionTreeNode):
 #     def __init__(self, *args, **kwargs):

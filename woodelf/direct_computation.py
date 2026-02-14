@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 from woodelf.cube_metric import CubeMetric
-from woodelf.decision_trees_ensemble import DecisionTreeNode
+from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 
 
 class PBFunction:
@@ -91,7 +91,7 @@ class BackgroundModelCF(PBFunction):
 
 
 class PathDependentModelCF(PBFunction):
-    def __init__(self, model: List[DecisionTreeNode], row: Dict[Any, float]):
+    def __init__(self, model: DecisionTreesEnsemble, row: Dict[Any, float]):
         self.model = model
         self.row = row
 
@@ -100,7 +100,7 @@ class PathDependentModelCF(PBFunction):
 
     def assign(self, assignment: Dict[Any, bool]) -> float:
         score = 0
-        for tree in self.model:
+        for tree in self.model.trees:
             nodes_to_visit = [(1, tree)] # include pairs of (weight, node)
             while len(nodes_to_visit) > 0:
                 weight, node = nodes_to_visit.pop(0)

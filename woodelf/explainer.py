@@ -6,7 +6,7 @@ import pandas as pd
 
 from woodelf.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzhafValues, \
     BanzhafInteractionValues
-from woodelf.decision_trees_ensemble import DecisionTreeNode
+from woodelf.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import PathToMatricesAbstractCls
@@ -37,16 +37,16 @@ class WoodelfExplainer:
         self.GPU = GPU
 
         # TODO fix this in the right way. data can be a np.array
-        if data is not None:
-            self.model_objs: List[DecisionTreeNode] = load_decision_tree_ensemble_model(model, list(data.columns))
-            assert len(self.model_objs) > 0, "Did not load the model properly"
-            self.depth = self.model_objs[0].depth
+        self.model: DecisionTreesEnsemble = None
+        if data is not None or isinstance(model, DecisionTreesEnsemble):
+            if isinstance(model, DecisionTreesEnsemble):
+                self.model = model
+            else:
+                self.model: DecisionTreesEnsemble = load_decision_tree_ensemble_model(model, list(data.columns))
             self.model_was_loaded = True
-            self.cache = [{} for i in range(len(self.model_objs))] if self.use_cache() else None
+            self.cache = [{} for i in range(len(self.model.trees))] if self.use_cache() else None
             self.cache_filled = False
         else:
-            self.model_objs: List[DecisionTreeNode] = None
-            self.depth = None
             self.model_was_loaded = False
 
     @classmethod
@@ -67,7 +67,7 @@ class WoodelfExplainer:
 
     def predict_cache_size(self):
         total_cache_size = 0
-        for tree in self.model_objs:
+        for tree in self.model.trees:
             for leaf, features_in_path in tree.get_all_leaves_with_paths():
                 D = len(set(features_in_path))
                 total_cache_size += 2 ** D * 4
@@ -149,14 +149,12 @@ class WoodelfExplainer:
             path_to_matrices_calculator: PathToMatricesAbstractCls = None,
             verbose: bool = False):
         if not self.model_was_loaded:
-            self.model_objs = load_decision_tree_ensemble_model(self.raw_model, list(consumer_data.columns))
-            assert len(self.model_objs) > 0, "Did not load the model properly"
-            self.depth = self.model_objs[0].depth
+            self.model = load_decision_tree_ensemble_model(self.raw_model, list(consumer_data.columns))
             self.model_was_loaded = True
-            self.cache = [{} for i in range(len(self.model_objs))] if self.use_cache() else None
+            self.cache = [{} for i in range(len(self.model.trees))] if self.use_cache() else None
             self.cache_filled = False
 
-        model_objs = self.model_objs if tree_limit is not None else self.model_objs[:tree_limit]
+        model = self.model if tree_limit is not None else DecisionTreesEnsemble(self.model.trees[:tree_limit])
         cache_kwargs = {}
         if self.cache is not None:
             if self.cache_filled:
@@ -168,7 +166,7 @@ class WoodelfExplainer:
                 self.cache_filled = True # will fill the cache now
 
         woodelf_values = woodelf_for_high_depth(
-            model_objs, consumer_data, self.background_data, metric, GPU=self.GPU,
+            model.trees, consumer_data, self.background_data, metric, GPU=self.GPU,
             path_to_matrices_calculator=path_to_matrices_calculator, model_was_loaded=True, **cache_kwargs
         )
 

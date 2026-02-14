@@ -1,6 +1,6 @@
 from typing import List
 
-from woodelf.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode
+from woodelf.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
 from woodelf.utils import safe_isinstance
 
 MODEL_CLASS_TO_DECISION_TREE_CLASS = {
@@ -131,11 +131,13 @@ def find_the_right_decision_tree_class(model):
             return MODEL_CLASS_TO_DECISION_TREE_CLASS[class_name]
     return DecisionTreeNode
 
-def load_decision_tree_ensemble_model(model, features) -> List[DecisionTreeNode]:
+def load_decision_tree_ensemble_model(model, features) -> DecisionTreesEnsemble:
     """
     Load an XGBoost regressor tree (utilizing the shap python package parsing object)
     """
     # Use the shap package's Decision Tree loading. this is cheating, I know...
     from shap.explainers._tree import TreeEnsemble
     decision_tree_cls = find_the_right_decision_tree_class(model)
-    return [load_decision_tree(t, features, decision_tree_cls) for t in TreeEnsemble(model).trees]
+    trees = [load_decision_tree(t, features, decision_tree_cls) for t in TreeEnsemble(model).trees]
+    assert len(trees) > 0, "Did not load the model properly"
+    return DecisionTreesEnsemble(trees)

@@ -62,8 +62,8 @@ def test_compute_path_dependent_f(simple_path):
 
 
 def test_compute_path_dependent_f_on_a_full_model(trainset, xgb_model):
-    model_objs = load_decision_tree_ensemble_model(xgb_model, list(trainset.columns))
-    for tree in model_objs:
+    model_obj = load_decision_tree_ensemble_model(xgb_model, list(trainset.columns))
+    for tree in model_obj.trees:
         simple_woodelf_fs = path_dependent_frequencies(tree)
         index_to_node = {n.index: n for n in tree.bfs()}
         for node_index, path in tree.get_nodes_to_path_dict().items():

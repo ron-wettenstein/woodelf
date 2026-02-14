@@ -1,31 +1,22 @@
-import os
-
+import lightgbm as lgb
+import numpy as np
 import pandas as pd
 import pytest
 import scipy
 import shap
-import numpy as np
 import xgboost as xgb
 from sklearn.datasets import make_classification
+from sklearn.ensemble import (
+    HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, ExtraTreesRegressor, HistGradientBoostingClassifier,
+    GradientBoostingClassifier,
+    ExtraTreesClassifier
+)
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
-import lightgbm as lgb
 
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
-from sklearn.ensemble import (
-    HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, AdaBoostRegressor,
-    ExtraTreesRegressor, IsolationForest, HistGradientBoostingClassifier, GradientBoostingClassifier,
-    ExtraTreesClassifier
-)
-
 TOLERANCE = 1e-7 # 0.00001
 
-def predict_of_loaded_model(model, df):
-    first_tree = model[0]
-    preds = first_tree.predict(df)
-    for tree in model[1:]:
-        preds += tree.predict(df)
-    return preds
 
 def assert_predictions_equal(original_pred, loaded_model_pred, base_score):
     """
@@ -44,7 +35,7 @@ def test_load_and_predict_xgboost():
     tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
     assert_predictions_equal(
         original_pred=model.predict(xgb.DMatrix(X)),
-        loaded_model_pred=predict_of_loaded_model(tree_ensemble,X),
+        loaded_model_pred=tree_ensemble.predict(X),
         base_score=base_score
     )
 
@@ -57,7 +48,7 @@ def test_load_and_predict_xgboost_classifier():
     tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
     assert_predictions_equal(
         original_pred=logit(model.predict(xgb.DMatrix(X))),
-        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
+        loaded_model_pred=tree_ensemble.predict(X),
         base_score=0 # TODO why not base_score 0.5 ?
     )
 
@@ -76,7 +67,7 @@ def test_load_and_predict_sklearn_regressor_model(model_type, params, base_score
     tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
     assert_predictions_equal(
         original_pred=model.predict(X),
-        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
+        loaded_model_pred=tree_ensemble.predict(X),
         base_score=base_score_func(model)
     )
 
@@ -89,7 +80,7 @@ def test_load_and_predict_lightgbm_regressor():
     tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
     assert_predictions_equal(
         original_pred=model.predict(X),
-        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
+        loaded_model_pred=tree_ensemble.predict(X),
         base_score=base_score
     )
 
@@ -97,7 +88,7 @@ def test_load_and_predict_lightgbm_regressor():
     tree_ensemble = load_decision_tree_ensemble_model(model=model.booster_, features=list(X.columns))
     assert_predictions_equal(
         original_pred=model.predict(X),
-        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
+        loaded_model_pred=tree_ensemble.predict(X),
         base_score=base_score
     )
 
@@ -112,7 +103,7 @@ def test_load_and_predict_lightgbm_classifier():
     tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X_df.columns))
     assert_predictions_equal(
         original_pred=model.predict(X, raw_score=True),
-        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X_df),
+        loaded_model_pred=tree_ensemble.predict(X_df),
         base_score=base_score
     )
 
@@ -128,10 +119,10 @@ def test_load_and_predict_random_forest_model():
     model = RandomForestRegressor(n_estimators=10,max_depth=6, random_state=42)
     model.fit(X, y)
     tree_ensemble = load_decision_tree_ensemble_model(model=model, features=list(X.columns))
-    tree_ensemble[0].pretty_print()
+    tree_ensemble.trees[0].pretty_print()
     assert_predictions_equal(
         original_pred=model.predict(X),
-        loaded_model_pred=predict_of_loaded_model(tree_ensemble, X),
+        loaded_model_pred=tree_ensemble.predict(X),
         base_score=0
     )
 
@@ -202,7 +193,7 @@ def test_load_and_predict_sklearn_classifier_model(model_type, params, predict_f
 
     # Compare positive-class probabilities
     original_pred = predict_func(model, X)
-    loaded_pred = predict_of_loaded_model(tree_ensemble, pd.DataFrame(X, columns=features))
+    loaded_pred = tree_ensemble.predict(pd.DataFrame(X, columns=features))
 
     assert_predictions_equal(
         original_pred=original_pred,

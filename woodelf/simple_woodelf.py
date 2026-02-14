@@ -3,7 +3,7 @@ from typing import List
 from tqdm import tqdm
 
 from woodelf.cube_metric import CubeMetric
-from woodelf.decision_trees_ensemble import DecisionTreeNode
+from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import PathToMatricesAbstractCls, SimplePathToMatrices
 
@@ -139,13 +139,13 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
     return tree
 
 
-def get_cupy_data(trees: List[DecisionTreeNode], df: pd.DataFrame):
+def get_cupy_data(model: DecisionTreesEnsemble, df: pd.DataFrame):
     """
     Cast the dataframe to cupy dict mapping between columns of CuPy arrays.
     We only do this for feature partisipating in the trees.
     """
     data = {}
-    for tree in trees:
+    for tree in model.trees:
         for feature in tree.get_all_features():
             if feature not in data:
                 data[feature] = cp.asarray(df[feature].to_numpy())
@@ -259,15 +259,14 @@ def calculate_background_metric(model, consumer_data: pd.DataFrame, background_d
     background data for size m and a desired metric to calculate.
     Compute the desired metric in O(n+m)
     """
-    model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+    model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrixes_calculator is None:
-        max_depth = max([t.depth for t in model_objs])
-        path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=max_depth, GPU=GPU)
+        path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=model_obj.max_depth, GPU=GPU)
     if GPU:
-        consumer_data = get_cupy_data(model_objs, consumer_data)
-        background_data = get_cupy_data(model_objs, background_data)
+        consumer_data = get_cupy_data(model_obj, consumer_data)
+        background_data = get_cupy_data(model_obj, background_data)
     preprocessed_trees = []
-    for tree in tqdm(model_objs, desc="Preprocessing the trees"):
+    for tree in tqdm(model_obj.trees, desc="Preprocessing the trees"):
         preprocessed_trees.append(preprocess_tree_background(tree, background_data, depth=tree.depth,
                                                              path_to_matrixes_calculator=path_to_matrixes_calculator,
                                                              GPU=GPU))
@@ -331,14 +330,14 @@ def calculate_path_dependent_metric(model, consumer_data, metric: CubeMetric, gl
 
     Given a model, a consumer data and a desired metric compute the metric under the Path-Dependent assumptions.
     """
-    model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+    model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrixes_calculator is None:
-        path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=model_objs[0].depth, GPU=GPU)
+        path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=model_obj.max_depth, GPU=GPU)
     if GPU:
-        consumer_data = get_cupy_data(model_objs, consumer_data)
+        consumer_data = get_cupy_data(model_obj, consumer_data)
 
     preprocessed_trees = []
-    for tree in tqdm(model_objs, desc="Preprocessing the trees"):
+    for tree in tqdm(model_obj.trees, desc="Preprocessing the trees"):
         preprocessed_trees.append(
             fast_preprocess_path_dependent(tree, path_to_matrixes_calculator=path_to_matrixes_calculator))
 

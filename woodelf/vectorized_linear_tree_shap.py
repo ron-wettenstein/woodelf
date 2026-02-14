@@ -308,11 +308,10 @@ def vectorized_linear_tree_shap_for_a_single_tree(
 
 
 def vectorized_linear_tree_shap(model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False):
-    model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
-    max_depth = max([model_obj.depth for model_obj in model_objs])
-    p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=not is_shapley, max_depth=max_depth, GPU=GPU)
+    model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+    p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
     values = {}
-    for tree in tqdm(model_objs, desc="Preprocessing the trees and computing SHAP"):
+    for tree in tqdm(model.trees, desc="Preprocessing the trees and computing SHAP"):
         vectorized_linear_tree_shap_for_a_single_tree(tree, consumer_data, values, p2m, GPU)
     p2m.present_statistics()
     return values

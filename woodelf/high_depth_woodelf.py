@@ -397,19 +397,18 @@ def woodelf_for_high_depth(
     the values.
     """
     if model_was_loaded:
-        model_objs = model
+        model_obj = model
     else:
-        model_objs = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+        model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
 
-    max_depth = max([model_obj.depth for model_obj in model_objs])
     if path_to_matrices_calculator is None:
-        path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=max_depth, GPU=GPU)
+        path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=model_obj.max_depth, GPU=GPU)
     if GPU:
-        consumer_data = get_cupy_data(model_objs, consumer_data)
-        background_data = get_cupy_data(model_objs, background_data)
+        consumer_data = get_cupy_data(model_obj, consumer_data)
+        background_data = get_cupy_data(model_obj, background_data)
 
     data_len = len(consumer_data) + (0 if background_data is None else len(background_data))
-    if max_depth > 12 or data_len < 10 * (2 ** max_depth):
+    if model_obj.max_depth > 12 or data_len < 10 * (2 ** model_obj.max_depth):
         # If the max depth is too large or the data size is smaller than (or within the same order of magnitude as)
         # the number of patterns - skip the neighbor leaf trick. It will be slower to apply it than to return the
         # regular computation.
@@ -417,7 +416,7 @@ def woodelf_for_high_depth(
 
 
     values = {}
-    for tree_index, tree in tqdm(enumerate(model_objs), desc="Preprocessing the trees and computing SHAP"):
+    for tree_index, tree in tqdm(enumerate(model_obj.trees), desc="Preprocessing the trees and computing SHAP"):
         woodelf_for_high_depth_single_tree(
             tree, consumer_data, background_data, values, path_to_matrices_calculator, GPU,
             use_neighbor_leaf_trick, global_importance,
