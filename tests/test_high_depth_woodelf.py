@@ -17,8 +17,8 @@ import numpy as np
 import pytest
 import xgboost as xgb
 
-from shared_fixtures_and_utils import trainset, testset, xgb_model, assert_shap_package_is_same_as_woodelf, \
-    assert_shap_package_is_same_as_woodelf_on_interaction_values
+from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, \
+    assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import SimplePathToMatrices
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric, \
@@ -26,7 +26,7 @@ from woodelf.simple_woodelf import calculate_background_metric, calculate_path_d
 import lightgbm as lgb
 
 
-FIXTURES = [trainset, testset, xgb_model]
+FIXTURES = [trainset, testset, xgb_model, xgb_model_depth_16]
 
 TOLERANCE = 0.00001
 
@@ -165,6 +165,22 @@ def test_calculate_path_dependent_metric_for_high_depth(
 
     for feature in simple_woodelf_values:
         np.testing.assert_allclose(simple_woodelf_values[feature], high_depth_woodelf_values[feature], atol=TOLERANCE)
+
+
+def test_shap_on_depth_16_xgboost(testset, xgb_model_depth_16):
+    start_time = time.time()
+    explainer = shap.TreeExplainer(xgb_model_depth_16)
+    shap_package_values = explainer.shap_values(testset)
+    print("shap took: ", time.time() - start_time)
+
+    print(testset.shape)
+    start_time = time.time()
+    high_depth_woodelf_values = woodelf_for_high_depth(
+        xgb_model_depth_16, testset, background_data=None, metric=ShapleyValues()
+    )
+    print("high depth woodelf took: ", time.time() - start_time)
+
+    assert_shap_package_is_same_as_woodelf(high_depth_woodelf_values, shap_package_values, testset, TOLERANCE)
 
 
 def test_only_unique_feature_paths_are_passed_to_path_to_matrices_calculator(trainset, testset, xgb_model):

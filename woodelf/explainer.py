@@ -166,7 +166,7 @@ class WoodelfExplainer:
                 self.cache_filled = True # will fill the cache now
 
         woodelf_values = woodelf_for_high_depth(
-            model.trees, consumer_data, self.background_data, metric, GPU=self.GPU,
+            model, consumer_data, self.background_data, metric, GPU=self.GPU,
             path_to_matrices_calculator=path_to_matrices_calculator, model_was_loaded=True, **cache_kwargs
         )
 

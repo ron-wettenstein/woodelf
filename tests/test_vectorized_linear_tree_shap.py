@@ -1,14 +1,17 @@
+import time
+
 import numpy as np
 import pytest
+import shap
 
-from shared_fixtures_and_utils import trainset, testset, xgb_model
+from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, assert_shap_package_is_same_as_woodelf
 from woodelf.cube_metric import ShapleyValues, BanzhafValues
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
     linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, \
     linear_tree_shap_magic_not_numerically_stable
 
-FIXTURES = [trainset, testset, xgb_model]
+FIXTURES = [testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
 
 TOLERANCE = 0.00001
 
@@ -152,7 +155,7 @@ def test_linear_tree_shap_fast_banzhaf_many_depths(D):
 #     )
 
 
-def test_linear_tree_shap_on_a_model(trainset, testset, xgb_model):
+def test_linear_tree_shap_on_a_model(testset, xgb_model):
 
     simple_woodelf_shap_values = calculate_path_dependent_metric(
         xgb_model, testset, metric=ShapleyValues()
@@ -168,7 +171,7 @@ def test_linear_tree_shap_on_a_model(trainset, testset, xgb_model):
         )
 
 
-def test_linear_tree_banzhaf_on_a_model(trainset, testset, xgb_model):
+def test_linear_tree_banzhaf_on_a_model(testset, xgb_model):
 
     simple_woodelf_shap_values = calculate_path_dependent_metric(
         xgb_model, testset, metric=BanzhafValues()
@@ -182,3 +185,19 @@ def test_linear_tree_banzhaf_on_a_model(trainset, testset, xgb_model):
         np.testing.assert_allclose(
             simple_woodelf_shap_values[feature], vectorized_linear_tree_shap_values[feature], atol=TOLERANCE
         )
+
+def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):
+    for model in [xgb_model_depth_16, xgb_model_depth_22]:
+        start_time = time.time()
+        explainer = shap.TreeExplainer(model)
+        shap_package_values = explainer.shap_values(testset)
+        print("shap took: ", time.time() - start_time)
+
+        print(testset.shape)
+        start_time = time.time()
+        linear_tree_shap_values = vectorized_linear_tree_shap(
+            model, testset, is_shapley=True, GPU=False
+        )
+        print("high depth woodelf took: ", time.time() - start_time)
+
+        assert_shap_package_is_same_as_woodelf(linear_tree_shap_values, shap_package_values, testset, TOLERANCE)
