@@ -1,5 +1,3 @@
-from typing import List
-
 from woodelf.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
 from woodelf.utils import safe_isinstance
 

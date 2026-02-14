@@ -1,11 +1,12 @@
 import itertools
 from math import factorial
 from typing import List, Tuple, Dict, Any
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 from woodelf.cube_metric import CubeMetric
-from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
+from woodelf.decision_trees_ensemble import DecisionTreesEnsemble
 
 
 class PBFunction:

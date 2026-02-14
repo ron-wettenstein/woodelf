@@ -1,15 +1,13 @@
 from typing import List, Dict, Any, Optional, Tuple
 
+import numpy as np
+import pandas as pd
 from tqdm import tqdm
 
 from woodelf.cube_metric import CubeMetric
 from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.parse_models import load_decision_tree_ensemble_model
-from woodelf.path_to_matrices import PathToMatricesAbstractCls, SimplePathToMatrices, HighDepthPathToMatrices
-
-import numpy as np
-import pandas as pd
-
+from woodelf.path_to_matrices import PathToMatricesAbstractCls, HighDepthPathToMatrices
 from woodelf.simple_woodelf import (
     GPU_get_int_dtype_from_depth, get_int_dtype_from_depth, get_cupy_data, fill_mirror_pairs
 )

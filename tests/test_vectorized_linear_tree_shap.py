@@ -1,5 +1,3 @@
-import time
-
 import numpy as np
 import pytest
 import shap
@@ -8,8 +6,7 @@ from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xg
 from woodelf.cube_metric import ShapleyValues, BanzhafValues
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
-    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, \
-    linear_tree_shap_magic_not_numerically_stable
+    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap
 
 FIXTURES = [testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
 
