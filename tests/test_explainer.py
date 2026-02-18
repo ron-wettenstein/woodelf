@@ -156,6 +156,7 @@ def test_expected_value_property(trainset, testset, xgb_model):
     # Test object dtype
     trainset["card1"] = trainset["card1"].astype(object)
     woodelf_explainer = WoodelfExplainer(xgb_model, trainset)
+    # Running 'shap.TreeExplainer(xgb_model, trainset)' will crash on TypeError
     assert abs(explainer.expected_value - woodelf_explainer.expected_value) < TOLERANCE
 
 
