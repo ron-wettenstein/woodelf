@@ -176,6 +176,72 @@ def linear_tree_shap_magic_not_numerically_stable(
     return (M * (q_M - 1)).T.copy()
 
 
+def find_min_cover_for_numerical_stability_fast_calc(depth):
+    if depth <= 20:
+        return 0.2
+    if depth <= 25:
+        return 0.5
+    if depth <= 30:
+        return 0.7
+    if depth <= 35:
+        return 0.9
+    return 1
+
+
+def linear_tree_shap_magic_faster(
+        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
+):
+    """
+    Not numerically stable but O(D) faster. Don't use this
+    """
+    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
+
+    max_cover_th = find_min_cover_for_numerical_stability_fast_calc(len(r))
+    fast_calc_r_indexes = [i for i, R_i in enumerate(r) if R_i >= max_cover_th]
+    slow_calc_r_indexes = [i for i, R_i in enumerate(r) if R_i < max_cover_th]
+    constitutions_vectors = [None] * len(r)
+
+    M_general = np.zeros((len(r)+1, len(p)))
+    M_general[0, :] = np.prod(r) * leaf_weight
+    for i, R_i in enumerate(r):
+        if i in slow_calc_r_indexes:
+            M_f_i = M_general[:-1].copy()
+            for j in range(i+1, len(r)):
+                # Multiply the polynomials by (y + q_i)
+                q_part = M_f_i * q_M[j]
+                # the y_part - shift M_general down one row, dropping the last row
+                M_f_i[1:] = M_f_i[:-1]
+                M_f_i[0] = 0
+                M_f_i += q_part
+
+            # Compute Shapley/Banzhaf values using the constructed polynomial
+            game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+            constitutions_vectors[i] = game_theory_metric_vector
+
+        # Multiply the polynomials by (y + q_i)
+        q_part = M_general * q_M[i]
+        # the y_part - shift M_general down one row, dropping the last row
+        M_general[1:] = M_general[:-1]
+        M_general[0] = 0
+        M_general += q_part
+
+    # Now M_general include the polynomials (y+q_0)*(y+q_1)*...*(y+q_k)
+
+    for i in fast_calc_r_indexes:
+        # Divide the polynomials by (y + q_i)
+        M_f_i = M_general[1:].copy()
+        for d in range(len(r) - 2, -1, -1):
+            M_f_i[d] = M_f_i[d] - M_f_i[d+1] * q_M[i]
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        constitutions_vectors[i] = game_theory_metric_vector
+
+
+    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T.copy()
+
+
 def linear_tree_shap_magic_longer_not_optimized(
         r: np.array, p: np.array, f_w: np.array, leaf_weight: float
 ):
@@ -251,7 +317,7 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
         if self.is_shapley:
             # assume features in path are unique
             f_w = self.f_ws[len(covers)]
-            s_matrix = linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
+            s_matrix = linear_tree_shap_magic_faster(covers, consumer_patterns, f_w, w)
         else:
             s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
         self.computation_time += time.time() - start_time

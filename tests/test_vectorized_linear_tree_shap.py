@@ -6,7 +6,7 @@ from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xg
 from woodelf.cube_metric import ShapleyValues, BanzhafValues
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
-    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap
+    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, linear_tree_shap_magic_faster
 
 FIXTURES = [testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
 
@@ -55,42 +55,13 @@ def test_linear_tree_shap_fast_banzhaf():
     )
 
 
-
-@pytest.mark.parametrize("D", list(range(5, 41, 5)))
-def test_linear_tree_shap_magic_high_depth(D):
-    # TODO fix numerical problems in high depths and low covers
-    rng = np.random.default_rng(42)
-    leaf_weight = 5
-    # Use minimum 0.7 cover so the np.prod(r) will stay large (the all_missing_prediction uses it)
-    r = rng.integers(low=70, high=100, size=D) / 100
-    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=80), np.array([(2 ** D) - 1])])
-    f_w = shapley_values_f_w(D)
-
-    shap_matrix = linear_tree_shap_magic(
-        r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
-    )
-    print(shap_matrix)
-    print(shap_matrix.sum(axis=1))
-    all_missing_prediction = np.prod(r)*leaf_weight
-
-    # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to
-    # the prediction when all features participate minus the prediction when all features are missing.
-    # When the pattern is 7 when all features participate the prediction reaches the leaf and is equal to "leaf_weight"
-    # on other patterns the prediction does not reach the leaf and the prediction is 0
-    tolerance = 0.000001 if D <= 30 else 0.0001 # Numerical problems after 30
-    np.testing.assert_allclose(
-        shap_matrix.sum(axis=1),
-        np.array([0 - all_missing_prediction] * 80 + [leaf_weight - all_missing_prediction]),
-        atol=tolerance
-    )
-
-
 @pytest.mark.parametrize("D", list(range(5, 61, 5)))
 def test_linear_tree_shap_magic_longer_high_depth(D):
     rng = np.random.default_rng(42)
     leaf_weight = 5
-    r = rng.integers(low=1, high=99, size=D) / 100
-    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=80), np.array([(2 ** D) - 1])])
+    consumer_size = 100000 // D # Test many consumers while this is still fast
+    r = rng.integers(low=1, high=9999, size=D) / 10000
+    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
     f_w = shapley_values_f_w(D)
 
     shap_matrix = linear_tree_shap_magic(
@@ -107,9 +78,66 @@ def test_linear_tree_shap_magic_longer_high_depth(D):
     tolerance = 0.000001
     np.testing.assert_allclose(
         shap_matrix.sum(axis=1),
-        np.array([0 - all_missing_prediction] * 80 + [leaf_weight - all_missing_prediction]),
+        np.array([0 - all_missing_prediction] * consumer_size + [leaf_weight - all_missing_prediction]),
         atol=tolerance
     )
+#
+#
+# @pytest.mark.parametrize("D", list(range(5, 61, 5)))
+# def test_linear_tree_shap_magic_longer_high_depth_2(D):
+#     rng = np.random.default_rng(42)
+#     leaf_weight = 5
+#     consumer_size = 100000 // D # Test many consumers while this is still fast
+#     r = rng.integers(low=1, high=9999, size=D) / 10000
+#     p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
+#     f_w = shapley_values_f_w(D)
+#
+#     shap_matrix = linear_tree_shap_magic_not_numerically_stable(
+#         r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
+#     )
+#     print(shap_matrix)
+#     print(shap_matrix.sum(axis=1))
+#     all_missing_prediction = np.prod(r)*leaf_weight
+#
+#     # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to
+#     # the prediction when all features participate minus the prediction when all features are missing.
+#     # When the pattern is 7 when all features participate the prediction reaches the leaf and is equal to "leaf_weight"
+#     # on other patterns the prediction does not reach the leaf and the prediction is 0
+#     tolerance = 0.000001
+#     np.testing.assert_allclose(
+#         shap_matrix.sum(axis=1),
+#         np.array([0 - all_missing_prediction] * consumer_size + [leaf_weight - all_missing_prediction]),
+#         atol=tolerance
+#     )
+
+
+@pytest.mark.parametrize("D", list(range(5, 61, 5)))
+def test_linear_tree_shap_magic_faster_high_depth(D):
+    rng = np.random.default_rng(42)
+    leaf_weight = 5
+    consumer_size = 100000 // D # Test many consumers while this is still fast
+    r = rng.integers(low=1, high=9999, size=D) / 10000
+    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
+    f_w = shapley_values_f_w(D)
+
+    shap_matrix = linear_tree_shap_magic_faster(
+        r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
+    )
+    print(shap_matrix)
+    print(shap_matrix.sum(axis=1))
+    all_missing_prediction = np.prod(r)*leaf_weight
+
+    # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to
+    # the prediction when all features participate minus the prediction when all features are missing.
+    # When the pattern is 7 when all features participate the prediction reaches the leaf and is equal to "leaf_weight"
+    # on other patterns the prediction does not reach the leaf and the prediction is 0
+    tolerance = 0.000001
+    np.testing.assert_allclose(
+        shap_matrix.sum(axis=1),
+        np.array([0 - all_missing_prediction] * consumer_size + [leaf_weight - all_missing_prediction]),
+        atol=tolerance
+    )
+
 
 @pytest.mark.parametrize("D", list(range(5, 61, 5)))
 def test_linear_tree_shap_fast_banzhaf_many_depths(D):
