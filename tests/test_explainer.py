@@ -149,6 +149,15 @@ def test_expected_value_property(trainset, testset, xgb_model):
     woodelf_explainer = WoodelfExplainer(xgb_model, trainset, feature_perturbation='interventional')
     assert abs(explainer.expected_value - woodelf_explainer.expected_value) < TOLERANCE
 
+    explainer = shap.TreeExplainer(xgb_model, trainset)
+    woodelf_explainer = WoodelfExplainer(xgb_model, trainset)
+    assert abs(explainer.expected_value - woodelf_explainer.expected_value) < TOLERANCE
+
+    # Test object dtype
+    trainset["card1"] = trainset["card1"].astype(object)
+    woodelf_explainer = WoodelfExplainer(xgb_model, trainset)
+    assert abs(explainer.expected_value - woodelf_explainer.expected_value) < TOLERANCE
+
 
 def test_call(trainset, testset, xgb_model):
     # TODO slightly different base_values results on path-dependent

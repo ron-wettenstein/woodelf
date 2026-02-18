@@ -74,9 +74,6 @@ For visualization, pass the returned output to any of the shap plots:
 import shap
 
 shap.summary_plot(background_values, X_test)
-shap.plots.waterfall(background_values[0])
-shap.plots.force(background_values[0])
-...
 ```
 
 

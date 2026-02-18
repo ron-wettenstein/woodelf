@@ -212,13 +212,23 @@ class WoodelfExplainer:
     @property
     def expected_value(self):
         # Use shap expected_value implementation...
-        from shap.explainers import TreeExplainer
-        explainer = TreeExplainer(
-            self.raw_model, self.background_data,
-            feature_perturbation=self.feature_perturbation, model_output=self.model_output
-        )
-        return explainer.expected_value
-
+        if self.background_data is None:
+            from shap.explainers import TreeExplainer
+            explainer = TreeExplainer(
+                self.raw_model, feature_perturbation=self.feature_perturbation, model_output=self.model_output
+            )
+            return explainer.expected_value
+        else:
+            try:
+                from shap.explainers import TreeExplainer
+                explainer = TreeExplainer(
+                    self.raw_model, self.background_data, feature_perturbation=self.feature_perturbation, model_output=self.model_output
+                )
+                return explainer.expected_value
+            except TypeError:
+                # Handle the case the DataFrame have a dtype object column
+                from shap.explainers._tree import TreeEnsemble
+                return TreeEnsemble(self.raw_model, model_output=self.model_output).predict(self.background_data).mean(0)
 
     def __call__(self, consumer_data, interactions: bool = False):
         from shap import Explanation
@@ -231,15 +241,16 @@ class WoodelfExplainer:
             v = self.shap_values(consumer_data)
 
         # the Explanation object expects an `expected_value` for each row
-        if hasattr(self.expected_value, "__len__") and len(self.expected_value) > 1:
+        expected_value = self.expected_value
+        if hasattr(expected_value, "__len__") and len(expected_value) > 1:
             # `expected_value` is a list / array of numbers, length k, e.g. for multi-output scenarios
             # we repeat it N times along the first axis, so ev_tiled.shape == (N, k)
             num_rows = v.shape[0]
-            ev_tiled = np.tile(self.expected_value, (num_rows, 1))
+            ev_tiled = np.tile(expected_value, (num_rows, 1))
         else:
             # `expected_value` is a scalar / array of 1 number, so we simply repeat it for every row in `v`
             # ev_tiled.shape == (N,)
-            ev_tiled = np.tile(self.expected_value, v.shape[0])
+            ev_tiled = np.tile(expected_value, v.shape[0])
 
         return Explanation(
             v,
