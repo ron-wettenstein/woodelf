@@ -316,3 +316,50 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             f"M time: {round(self.matrices_init_time, 2)} sec, " +
             f"s time: {round(self.s_computation_time, 2)} sec (f prepare time: {self.f_prepare_time})"
         )
+
+
+class HighDepthPathToMatricesPaperVersion(HighDepthPathToMatrices):
+    """
+    Include the code that will be provided in a paper that will be published soon :)
+    Do not use this in practise as this is slightly slower than the default method.
+    We do test that iti is equivalent to it in our Pytests.
+    """
+
+    @staticmethod
+    def StrassenLikeMult(M_diag, f, D):
+        idx = np.arange(len(f))
+        for d in range(D - 1, -1, -1):
+            f_copy = f.copy()
+            f_copy[:-2 ** d] = f[2 ** d:]
+            f_copy[idx & (1 << d) != 0] = 0
+            f = f + f_copy
+
+        f_reverse = f[::-1]
+        s = M_diag * f_reverse
+        for d in range(0, D, 1):
+            s_copy = s.copy()
+            s_copy[2 ** d:] = s[:-2 ** d]
+            s_copy[idx & (1 << d) == 0] = 0
+            s = s + s_copy
+        return s
+
+    def build_matrices(self):
+        for depth in range(1, self.max_depth+1):
+            dl = self.map_patterns_to_cube(list(range(depth)))
+            matrices = self.build_patterns_to_values_sparse_matrix(dl, self.metric, path_length=depth)
+            self.matrices_frs_subsets[depth] = list(matrices.keys())
+            self.matrices[depth] = [np.array(matrices[k]) for k in self.matrices_frs_subsets[depth]]
+
+    def get_s_matrices(self, features_in_path: List, f: np.array, w: float, path_dependent: bool = False):
+        depth = len(features_in_path)
+        start_time = time.time()
+
+        frs2feature_name = self.frs_subsets_to_feature_subsets(features_in_path, depth)
+        s_vectors = {}
+        for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
+            feature_subset = frs2feature_name[frs_subset]
+            m_daig = self.matrices[depth][index]
+            s_vectors[feature_subset] = self.StressenLikeMult(m_daig, f, depth) * w
+
+        self.s_computation_time += time.time() - start_time
+        return s_vectors
