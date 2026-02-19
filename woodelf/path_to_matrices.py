@@ -336,7 +336,7 @@ class HighDepthPathToMatricesPaperVersion(HighDepthPathToMatrices):
 
         f_reverse = f[::-1]
         s = M_diag * f_reverse
-        for d in range(0, D, 1):
+        for d in range(D):
             s_copy = s.copy()
             s_copy[2 ** d:] = s[:-2 ** d]
             s_copy[idx & (1 << d) == 0] = 0
@@ -359,7 +359,7 @@ class HighDepthPathToMatricesPaperVersion(HighDepthPathToMatrices):
         for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
             feature_subset = frs2feature_name[frs_subset]
             m_daig = self.matrices[depth][index]
-            s_vectors[feature_subset] = self.StressenLikeMult(m_daig, f, depth) * w
+            s_vectors[feature_subset] = self.StrassenLikeMult(m_daig, f, depth) * w
 
         self.s_computation_time += time.time() - start_time
         return s_vectors
