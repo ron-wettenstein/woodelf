@@ -414,7 +414,7 @@ def woodelf_for_high_depth(
 
 
     values = {}
-    for tree_index, tree in tqdm(enumerate(model_obj.trees), desc="Preprocessing the trees and computing SHAP"):
+    for tree_index, tree in tqdm(list(enumerate(model_obj.trees)), desc="Preprocessing the trees and computing SHAP"):
         woodelf_for_high_depth_single_tree(
             tree, consumer_data, background_data, values, path_to_matrices_calculator, GPU,
             use_neighbor_leaf_trick, global_importance,
