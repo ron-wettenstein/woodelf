@@ -112,7 +112,7 @@ def test_compute_f_of_neighbor(simple_path):
     patterns = {index: p for index, p in compute_patterns_generator(unique_feature_path[0], data)}
     f_leaf_5 = compute_f(patterns[5], path_depth=2)
     f_leaf_4 = compute_f(patterns[4], path_depth=2)
-    np.testing.assert_allclose(f_leaf_4, compute_f_of_neighbor(f_leaf_5))
+    np.testing.assert_allclose(f_leaf_4, compute_f_of_neighbor(f_leaf_5, GPU=False))
 
 
 @pytest.mark.parametrize("use_neighbor_leaf_trick, metric_cls", [

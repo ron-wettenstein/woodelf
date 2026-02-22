@@ -5,6 +5,13 @@ import time
 
 from woodelf.cube_metric import CubeMetric
 
+try:
+    import cupy as cp
+    IMPORTED_CP = True
+except ModuleNotFoundError as e:
+    cp = None
+    IMPORTED_CP = False
+
 
 class PathToMatricesAbstractCls:
     """
@@ -256,20 +263,29 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             dl = self.map_patterns_to_cube(list(range(depth)))
             matrices = self.build_patterns_to_values_sparse_matrix(dl, self.metric, path_length=depth)
             self.matrices_frs_subsets[depth] = list(matrices.keys())
-            self.matrices[depth] = np.array([matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=np.float32).T
+            if self.GPU:
+                if not IMPORTED_CP:
+                    raise ImportError("Couldn't import CuPy. To use GPU, please install Cu{y via 'pip install cupy'")
+                self.matrices[depth] = cp.array([matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=cp.float32).T
+            else:
+                self.matrices[depth] = np.array([matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=np.float32).T
 
 
     def get_s_matrices(self, features_in_path: List, f: np.array, w: float, path_dependent: bool = False):
         depth = len(features_in_path)
         start_time = time.time()
+        if self.GPU:
+            idx = cp.arange(len(f))
+        else:
+            idx = np.arange(len(f))
+
         if not path_dependent:
             start_time_f_prepare = time.time()
-            f = self.prepare_f(depth, f)
+            f = self._prepare_f(depth, f, self.GPU)
             self.f_prepare_time += time.time() - start_time_f_prepare
 
         matrices = self.matrices[depth]
         frs2feature_name = self.frs_subsets_to_feature_subsets(features_in_path, depth)
-        idx = np.arange(len(f))
         s_matrix = matrices * f[::-1].reshape(-1, 1) # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
         for d in range(0, depth, 1):
             s_matrix_copy = s_matrix.copy()
@@ -302,8 +318,12 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         return frs2feature_name
 
     @staticmethod
-    def prepare_f(depth, f):
-        idx = np.arange(len(f))
+    def _prepare_f(depth, f, GPU):
+        if GPU:
+            idx = cp.arange(len(f))
+        else:
+            idx = np.arange(len(f))
+
         for d in range(depth - 1, -1, -1):
             f_copy = f.copy()
             f_copy[:-2 ** d] = f[2 ** d:]  # shift the array to the left 2**d bits

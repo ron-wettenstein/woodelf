@@ -83,9 +83,7 @@ def compute_f(patterns, path_depth: int, GPU: bool = False):
     Do it more efficiently using bincount
     """
     if GPU:
-        f = cp.bincount(patterns, minlength=2 ** path_depth) / len(patterns)
-        return cp.asnumpy( f )[:2 ** path_depth]
-
+        return cp.bincount(patterns, minlength=2 ** path_depth) / len(patterns)
     return np.bincount(patterns, minlength=2 ** path_depth) / len(patterns)
 
 def compute_path_dependent_f(path: List[DecisionTreeNode], unique_features_in_path: List[Any], prepare_f: bool = False):
@@ -118,7 +116,7 @@ def compute_path_dependent_f(path: List[DecisionTreeNode], unique_features_in_pa
     return f.astype(np.float32)
 
 
-def compute_f_of_neighbor(neighbor_f):
+def compute_f_of_neighbor(neighbor_f, GPU):
     """
     neighbor leaves have similar patterns (only the last bit is different)
     For efficiency we reuse the frequencies computed for the neighbor.
@@ -135,6 +133,8 @@ def compute_f_of_neighbor(neighbor_f):
     for i in range(0, len(neighbor_f), 2):
         frqs.append(neighbor_f[i + 1])
         frqs.append(neighbor_f[i])
+    if GPU:
+        return cp.array(frqs, dtype=cp.float32)
     return np.array(frqs, dtype=np.float32)
 
 def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bool, global_importance: bool = False):
@@ -150,14 +150,17 @@ def compute_values_using_s_vectors(values, s_vectors, consumer_patterns, GPU: bo
         # This is where the numpy indexing occur (improvement 6 of Sec. 9.1):
         current_contribution = replacements_array[consumer_patterns]
         if global_importance:
-            current_contribution = np.mean(current_contribution)
+            if GPU:
+                current_contribution = cp.mean(current_contribution)
+            else:
+                current_contribution = np.mean(current_contribution)
 
         if feature not in values:
             values[feature] = current_contribution
         else:
             values[feature] += current_contribution
 
-def combine_neighbor_leaves_s_vectors(s_left, s_right):
+def combine_neighbor_leaves_s_vectors(s_left, s_right, GPU):
     """
     If both the right and left nodes are leaves use improvement 3 of Sec. 9.1 (improvement of line 26)
     See also the comment in compute_f_of_neighbor.
@@ -178,7 +181,10 @@ def combine_neighbor_leaves_s_vectors(s_left, s_right):
         for i in range(0, len(s_right_vec), 2):
             swapped_s_right.append(s_right_vec[i + 1])
             swapped_s_right.append(s_right_vec[i])
-        s_combined[feature] = s_left[feature] + np.array(swapped_s_right, dtype=s_right_vec.dtype)
+        if GPU:
+            s_combined[feature] = s_left[feature] + cp.array(swapped_s_right, dtype=s_right_vec.dtype)
+        else:
+            s_combined[feature] = s_left[feature] + np.array(swapped_s_right, dtype=s_right_vec.dtype)
     return s_combined
 
 def compute_background_s_vectors_for_leaf_node(
@@ -203,6 +209,8 @@ def compute_path_dependent_s_vectors_for_leaf_node(
 ):
     if isinstance(path_to_matrices_calculator, HighDepthPathToMatrices):
         f = compute_path_dependent_f(path + [leaf], unique_features_in_path, prepare_f=True)
+        if path_to_matrices_calculator.GPU:
+            f = cp.asarray(f)
         return path_to_matrices_calculator.get_s_matrices(unique_features_in_path, f, leaf.value, path_dependent=True)
 
     f = compute_path_dependent_f(path + [leaf], unique_features_in_path)
@@ -220,7 +228,7 @@ def compute_background_s_vectors_for_two_neighbor_leaves(
     else:
         depth = len(unique_features_in_path)
         left_f = compute_f(left_background_patterns, depth, GPU)
-        right_f = compute_f_of_neighbor(left_f)
+        right_f = compute_f_of_neighbor(left_f, GPU)
 
     if cache_to_fill is not None:
         cache_to_fill[right_leaf.index] = right_f
@@ -240,6 +248,9 @@ def compute_path_dependent_s_vectors_two_neighbor_leaves(
     right_f = compute_path_dependent_f(path + [right_leaf], unique_features_in_path, prepare_f=prepare_f)
 
     if isinstance(path_to_matrices_calculator, HighDepthPathToMatrices):
+        if path_to_matrices_calculator.GPU:
+            left_f = cp.asarray(left_f)
+            right_f = cp.asarray(right_f)
         left_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, left_f, left_leaf.value, path_dependent=True)
         right_s_vectors = path_to_matrices_calculator.get_s_matrices(unique_features_in_path, right_f, right_leaf.value, path_dependent=True)
     else:
@@ -354,7 +365,7 @@ def woodelf_for_high_depth_single_tree(
                     node.left, node.right, path + [node], unique_features_in_path, path_to_matrices_calculator
                 )
 
-            combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors)
+            combined_vectors = combine_neighbor_leaves_s_vectors(left_s_vectors, right_s_vectors, GPU)
             compute_values_using_s_vectors(values, combined_vectors, consumer_patterns[node.left.index], GPU, global_importance)
 
         else:
@@ -403,7 +414,8 @@ def woodelf_for_high_depth(
         path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=model_obj.max_depth, GPU=GPU)
     if GPU:
         consumer_data = get_cupy_data(model_obj, consumer_data)
-        background_data = get_cupy_data(model_obj, background_data)
+        if background_data is not None:
+            background_data = get_cupy_data(model_obj, background_data)
 
     data_len = len(consumer_data) + (0 if background_data is None else len(background_data))
     if model_obj.max_depth > 12 or data_len < 10 * (2 ** model_obj.max_depth):

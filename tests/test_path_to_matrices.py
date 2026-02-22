@@ -16,7 +16,7 @@ def test_prepare_f():
 
     # Path dependent f
     original_f = np.array([l1*l2*l3, l1*l2*r3, l1*r2*l3, l1*r2*r3, r1*l2*l3, r1*l2*r3, r1*r2*l3, r1*r2*r3])
-    actual_f = HighDepthPathToMatrices.prepare_f(depth=3, f=original_f)
+    actual_f = HighDepthPathToMatrices._prepare_f(depth=3, f=original_f, GPU=False)
 
     # Prepared path dependent f
     l1,l2,l3=1,1,1
