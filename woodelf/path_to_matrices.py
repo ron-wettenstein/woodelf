@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import numpy as np
 import scipy
 import time
@@ -26,7 +26,7 @@ class PathToMatricesAbstractCls:
     def get_values_matrices(self, features_in_path: List):
         raise NotImplemented
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float, path_dependent: bool = False):
+    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         raise NotImplemented
 
     def dump(self, file_path: str):
@@ -172,7 +172,7 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
         self.m_computation_time += time.time() - start_time
         return matrixes_for_the_given_features
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float, path_dependent: bool = False):
+    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         matrices = self.get_values_matrices(features_in_path)
         start_time = time.time()
         s_vectors = {}
@@ -194,15 +194,17 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
         )
 
 class HighDepthPathToMatrices(PathToMatricesAbstractCls):
-    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
+    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False, use_neighbor_leaf_trick: bool = True):
         super().__init__(metric, max_depth, GPU)
         self.s_computation_time = 0
         self.f_prepare_time = 0
+        self.use_neighbor_leaf_trick = use_neighbor_leaf_trick
 
         start_time = time.time()
         self.matrices = {}
+        self.neighbor_matrices = {}
         self.matrices_frs_subsets = {}
-        self.build_matrices()
+        self._build_matrices()
         self.matrices_init_time = time.time() - start_time
 
     @classmethod
@@ -258,7 +260,7 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         matrices = {feature_subset: values for feature_subset, values in matrix_details.items()}
         return matrices
 
-    def build_matrices(self):
+    def _build_matrices(self):
         for depth in range(1, self.max_depth+1):
             dl = self.map_patterns_to_cube(list(range(depth)))
             matrices = self.build_patterns_to_values_sparse_matrix(dl, self.metric, path_length=depth)
@@ -270,8 +272,7 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             else:
                 self.matrices[depth] = np.array([matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=np.float32).T
 
-
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float, path_dependent: bool = False):
+    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         depth = len(features_in_path)
         start_time = time.time()
         if self.GPU:
@@ -279,14 +280,13 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         else:
             idx = np.arange(len(f))
 
-        if not path_dependent:
-            start_time_f_prepare = time.time()
-            f = self._prepare_f(depth, f, self.GPU)
-            self.f_prepare_time += time.time() - start_time_f_prepare
+        start_time_f_prepare = time.time()
+        f = self._prepare_f(depth, f, self.GPU)
+        self.f_prepare_time += time.time() - start_time_f_prepare
 
-        matrices = self.matrices[depth]
+        matrix_diagonals = self.matrices[depth]
         frs2feature_name = self.frs_subsets_to_feature_subsets(features_in_path, depth)
-        s_matrix = matrices * f[::-1].reshape(-1, 1) # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
+        s_matrix = matrix_diagonals * f[::-1].reshape(-1, 1) # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
         for d in range(0, depth, 1):
             s_matrix_copy = s_matrix.copy()
             s_matrix_copy[2 ** d:, :] = s_matrix[:-2 ** d, :]  # shift the array to the left 2**d bits
@@ -363,14 +363,14 @@ class HighDepthPathToMatricesPaperVersion(HighDepthPathToMatrices):
             s = s + s_copy
         return s
 
-    def build_matrices(self):
+    def _build_matrices(self):
         for depth in range(1, self.max_depth+1):
             dl = self.map_patterns_to_cube(list(range(depth)))
             matrices = self.build_patterns_to_values_sparse_matrix(dl, self.metric, path_length=depth)
             self.matrices_frs_subsets[depth] = list(matrices.keys())
             self.matrices[depth] = [np.array(matrices[k]) for k in self.matrices_frs_subsets[depth]]
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float, path_dependent: bool = False):
+    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         depth = len(features_in_path)
         start_time = time.time()
 

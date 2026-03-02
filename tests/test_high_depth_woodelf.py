@@ -11,8 +11,9 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
 from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.high_depth_woodelf import (
-    compute_path_dependent_f, compute_patterns_generator, woodelf_for_high_depth, compute_f, compute_f_of_neighbor
+    compute_path_dependent_f, woodelf_for_high_depth, compute_f
 )
+from woodelf.decision_patterns import decision_patterns_generator
 import numpy as np
 import pytest
 import xgboost as xgb
@@ -83,7 +84,7 @@ def test_compute_path_dependent_f_on_a_full_model(trainset, xgb_model):
 def test_compute_patterns_generator(simple_path):
     data = pd.DataFrame({"a": [7,8,4,3,0,-1], "b": [4,2,5,2,9,1]})
     simple_path[0].depth = 3
-    patterns = {index: p for index, p in compute_patterns_generator(simple_path[0], data)}
+    patterns = {l.index: p for l, p in decision_patterns_generator(simple_path[0], data)}
     np.testing.assert_equal(patterns[7], np.array([0,1,0,1,2,3]))
     np.testing.assert_equal(patterns[6], np.array([0,1,2,3,0,1]))
     np.testing.assert_equal(patterns[4], np.array([1,0,3,2,3,2]))
@@ -93,26 +94,26 @@ def test_compute_patterns_generator(simple_path):
 def test_compute_f(simple_path):
     data = pd.DataFrame({"a": [7, 8, 4, 3, 0, -1], "b": [4, 2, 5, 2, 9, 1]})
     simple_path[0].depth = 3
-    patterns = {index: p for index, p in compute_patterns_generator(simple_path[0], data)}
+    patterns = {l.index: p for l, p in decision_patterns_generator(simple_path[0], data)}
     f_leaf_7 = compute_f(patterns[7], path_depth=2)
     f_leaf_6 = compute_f(patterns[6], path_depth=2)
     np.testing.assert_allclose(f_leaf_7, np.array([2,2,1,1]) / 6)
     np.testing.assert_allclose(f_leaf_6, np.array([2,2,1,1]) / 6)
 
-def test_compute_f_of_neighbor(simple_path):
-    data = pd.DataFrame({"a": [7, 8, 4, 3, 0, -1], "b": [4, 2, 5, 2, 9, 1]})
-
-    # (a<5) -cover=0.5-> (b<3) -cover=0.6-> (leaf: 4)
-    new_leaf = leaf(4, index=5, cover=simple_path[0].left.left.cover)
-    unique_feature_path = [simple_path[0], simple_path[1], new_leaf]
-    simple_path[0].depth = 2
-    simple_path[1].left = new_leaf
-    new_leaf.parent = simple_path[1].left
-
-    patterns = {index: p for index, p in compute_patterns_generator(unique_feature_path[0], data)}
-    f_leaf_5 = compute_f(patterns[5], path_depth=2)
-    f_leaf_4 = compute_f(patterns[4], path_depth=2)
-    np.testing.assert_allclose(f_leaf_4, compute_f_of_neighbor(f_leaf_5, GPU=False))
+# def test_compute_f_of_neighbor(simple_path):
+#     data = pd.DataFrame({"a": [7, 8, 4, 3, 0, -1], "b": [4, 2, 5, 2, 9, 1]})
+#
+#     # (a<5) -cover=0.5-> (b<3) -cover=0.6-> (leaf: 4)
+#     new_leaf = leaf(4, index=5, cover=simple_path[0].left.left.cover)
+#     unique_feature_path = [simple_path[0], simple_path[1], new_leaf]
+#     simple_path[0].depth = 2
+#     simple_path[1].left = new_leaf
+#     new_leaf.parent = simple_path[1].left
+#
+#     patterns = {l.index: p for l, p in decision_patterns_generator(simple_path[0], data)}
+#     f_leaf_5 = compute_f(patterns[5], path_depth=2)
+#     f_leaf_4 = compute_f(patterns[4], path_depth=2)
+#     np.testing.assert_allclose(f_leaf_4, compute_f_of_neighbor(f_leaf_5, GPU=False))
 
 
 @pytest.mark.parametrize("use_neighbor_leaf_trick, metric_cls", [

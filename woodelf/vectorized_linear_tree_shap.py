@@ -7,7 +7,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from woodelf.decision_trees_ensemble import DecisionTreeNode
-from woodelf.high_depth_woodelf import compute_patterns_generator
+from woodelf.decision_patterns import decision_patterns_generator
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
 
@@ -164,9 +164,10 @@ def linear_tree_shap_magic_not_numerically_stable(
     constitutions_vectors = []
     for i in range(len(r)):
         # Divide the polynomials by (y + q_i)
-        M_f_i = M_general[1:].copy()
+        M_f_i = np.zeros((len(r), len(p)))
+        M_f_i[len(r) - 1] = M_general[len(r)]
         for d in range(len(r) - 2, -1, -1):
-            M_f_i[d] = M_f_i[d] - M_f_i[d+1] * q_M[i]
+            M_f_i[d] = M_general[d+1] - M_f_i[d+1] * q_M[i]
 
         # Compute Shapley/Banzhaf values using the constructed polynomial
         game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
@@ -174,6 +175,55 @@ def linear_tree_shap_magic_not_numerically_stable(
 
     M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
     return (M * (q_M - 1)).T.copy()
+
+
+def linear_tree_shap_magic_try7(
+        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
+):
+    """
+    Not numerically stable but O(D) faster. Don't use this
+    """
+    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
+
+    # constitutions_vectors = []
+    # for i in range(len(r)):
+    #     M_f_i = np.zeros((len(r), len(p)))
+    #     M_f_i[0, :] = np.prod(r) * leaf_weight
+    #     for j, R_j in enumerate(r):
+    #         if i == j:
+    #             continue
+    #         # Multiply the polynomials by (1+y*q_i)
+    #         M_f_i[1:] += M_f_i[:-1] * q_M[j]
+    #     game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+    #     constitutions_vectors.append(game_theory_metric_vector)
+    # M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    # return (M * (q_M - 1)).T.copy()
+
+
+    M_general = np.zeros((len(r)+1, len(p)))
+    M_general[0, :] = np.prod(r) * leaf_weight
+    for i, R_i in enumerate(r):
+        # Multiply the polynomials by (1+y*q_i)
+        M_general[1:] += M_general[:-1] * q_M[i]
+
+
+    # Now M_general include the polynomials (y+q_0)*(y+q_1)*...*(y+q_k)
+
+    constitutions_vectors = []
+    for i in range(len(r)):
+        # Divide the polynomials by (1+y*q_i)
+        M_f_i = np.zeros((len(r), len(p)))
+        M_f_i[0] = M_general[0]
+        for d in range(1, len(r)-1):
+            M_f_i[d] = M_general[d] - M_f_i[d-1] * q_M[i]
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        constitutions_vectors.append(game_theory_metric_vector)
+
+    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T.copy()
+
 
 
 def find_min_cover_for_numerical_stability_fast_calc(depth):
@@ -240,6 +290,50 @@ def linear_tree_shap_magic_faster(
 
     M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
     return (M * (q_M - 1)).T.copy()
+
+
+def linear_tree_shap_magic_try6(
+        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
+):
+    """
+    Not numerically stable but O(D) faster. Don't use this
+    """
+    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
+
+    max_cover_th = find_min_cover_for_numerical_stability_fast_calc(len(r))
+    fast_calc_r_indexes = [i for i, R_i in enumerate(r) if R_i >= max_cover_th]
+    slow_calc_r_indexes = [i for i, R_i in enumerate(r) if R_i < max_cover_th]
+    constitutions_vectors = [None] * len(r)
+
+    # TODO the code reverse the matrix
+    zero_row = np.zeros((1, len(p)))
+    M_general = np.full(len(p), np.prod(r) * leaf_weight)
+    for i, R_i in enumerate(r):
+        if i in slow_calc_r_indexes:
+            M_f_i = M_general.copy()
+            for j in range(i+1, len(r)):
+                M_f_i = np.vstack([M_f_i, zero_row]) + np.vstack([zero_row, M_f_i * q_M[j]])
+
+            # Compute Shapley/Banzhaf values using the constructed polynomial
+            game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+            constitutions_vectors[i] = game_theory_metric_vector
+
+        M_general = np.vstack([M_general, zero_row]) + np.vstack([zero_row, M_general * q_M[i]])
+
+    for i in fast_calc_r_indexes:
+        # Divide the polynomials by (y + q_i)
+        M_f_i = M_general[:-1].copy()
+        for d in range(1, len(r)):
+            M_f_i[d] = M_f_i[d] - M_f_i[d-1] * q_M[i]
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        constitutions_vectors[i] = game_theory_metric_vector
+
+
+    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T.copy()
+
 
 
 def linear_tree_shap_magic_longer_not_optimized(
@@ -357,16 +451,17 @@ def vectorized_linear_tree_shap_for_a_single_tree(
         leaf_index_to_unique_features_in_path[leaf.index] = unique_features_in_path
         leaf_index_to_weight[leaf.index] = leaf.value
 
-    for leaf_index, consumer_patterns in compute_patterns_generator(tree, consumer_data, GPU):
-        unique_patterns, inverse = np.unique(consumer_patterns, return_inverse=True)
+    for leaf, consumer_patterns in decision_patterns_generator(tree, consumer_data, GPU):
+        # unique_patterns, inverse = np.unique(consumer_patterns, return_inverse=True)
+        inverse, unique_patterns = pd.factorize(consumer_patterns, sort=False)
         s_matrix = p2m.get_s_matrix(
-            covers=leaf_index_to_covers[leaf_index],
+            covers=leaf_index_to_covers[leaf.index],
             consumer_patterns=unique_patterns,
-            w=leaf_index_to_weight[leaf_index]
+            w=leaf_index_to_weight[leaf.index]
         )
 
         # TODO why np indexing on a matrix is slower than vector by vector! contribution_values = s_matrix[inverse]
-        for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf_index]):
+        for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
             if feature not in values:
                 values[feature] = s_matrix[:, index][inverse]
             else:
