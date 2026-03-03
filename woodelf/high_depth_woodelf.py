@@ -5,7 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from woodelf.cube_metric import CubeMetric
-from woodelf.decision_patterns import decision_patterns_generator
+from woodelf.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import PathToMatricesAbstractCls, HighDepthPathToMatrices
@@ -161,19 +161,12 @@ def woodelf_for_high_depth_single_tree(
 
     for leaf, consumer_patterns in consumer_patterns_generator:
         path = leaves_to_path[leaf.index]
-        path_features = [n.feature_name for n in path]
         unique_features_in_path = []
         for n in path:
             if n.feature_name not in unique_features_in_path:
                 unique_features_in_path.append(n.feature_name)
 
-        # It is an ignored right leaf situation if:
-        ignored_neighbor = (
-                use_neighbor_leaf_trick and # 1. We allow this trick.
-                leaf.parent is not None and leaf == leaf.parent.left and leaf.parent.right.is_leaf() and # 2. This is left leaf with a right neighbor leaf
-                leaf.parent.feature_name not in path_features[:-1] # 3. The feature of the current leaf does not repeat in the path
-        )
-        w_neighbor = leaf.parent.right.value if ignored_neighbor else None
+        w_neighbor = leaf.parent.right.value if ignore_right_neighbor(leaf, path, use_neighbor_leaf_trick) else None
 
         if is_background:
             leaf_b, background_patterns = next(background_patterns_generator)
