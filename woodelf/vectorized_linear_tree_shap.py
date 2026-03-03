@@ -51,7 +51,50 @@ def linear_tree_shap_magic(
     q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
     constitutions_vectors = []
     M_shared = np.zeros((len(r), len(p)))
-    M_shared[0, :] = np.prod(r) * leaf_weight
+    M_shared[0, :] = np.prod(r)
+    for i in range(len(r)):
+        M_f_i = M_shared.copy()
+        for j in range(max(i-1, 0), len(r)):
+            if j == i:
+                M_shared = M_f_i.copy()
+                continue
+            # Multiply the polynomials by (y + q_i)
+            q_part = M_f_i * q_M[j]
+            # the y_part - shift M_general down one row, dropping the last row
+            M_f_i[1:] = M_f_i[:-1]
+            M_f_i[0] = 0
+            M_f_i += q_part
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0) * leaf_weight
+        constitutions_vectors.append(game_theory_metric_vector)
+
+    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T.copy()
+
+
+def linear_tree_shap_magic_for_neighbors(
+        r: np.array, p: np.array, f_w: np.array, left_leaf_weight: float, right_leaf_weight: float
+):
+    """
+    Compute the Shapley/Banzhaf values contribution of a single leaf on all the provided
+    consumer decision patterns.
+    r: The vector of R0...Rk - the cover rations of traversing with the path for all the unique features in the path. (k <= D).
+    p: The consumer patterns vector: Pc_1, Pc_2, ..., Pc_n. (n <= |C|).
+    f_w: The Shapley values/Banzhaf values weights vector per coalition size of coalitions 0,1,...,k
+    We assume |f_w| = |r| and that f_w is a row vector
+    leaf_weight: The leaf weight
+
+    Return a matrix with the Shapley/Banzhaf values contributions. The matrix rows are decision patterns (with the same
+    over as in the input p) and the columns are features contributions of the path features
+    (in the same order as the features cover appear in the input r)
+    """
+    # Longer, but numerically stable
+
+    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
+    constitutions_vectors = []
+    M_shared = np.zeros((len(r), len(p)))
+    M_shared[0, :] = np.prod(r)
     for i in range(len(r)):
         M_f_i = M_shared.copy()
         for j in range(max(i-1, 0), len(r)):
@@ -71,6 +114,110 @@ def linear_tree_shap_magic(
 
     M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
     return (M * (q_M - 1)).T.copy()
+
+def _poly_mul_y_plus_q_inplace(P: np.ndarray, q: np.ndarray) -> None:
+    """
+    In-place multiply polynomial P(y) by (y + q) for many columns at once.
+
+    P: shape (k, n). Row t = coefficient of y^t, same convention as your code.
+    q: shape (n,) broadcast across rows.
+
+    Keeps degree capped at k-1 by dropping the last coefficient on shift (same as your code).
+    """
+    # q_part = P * q  (broadcast q over rows)
+    q_part = P * q  # shape (k, n)
+
+    # y_part: shift coefficients up by 1: new[t] = old[t-1]
+    # do it in-place safely by shifting "down" in memory
+    P[1:] = P[:-1]
+    P[0] = 0.0
+
+    # add q_part (which corresponds to q * old_P)
+    P += q_part
+
+
+def linear_tree_shap_magic_blocked(
+    r: np.ndarray, p: np.ndarray, f_w: np.ndarray, leaf_weight: float
+) -> np.ndarray:
+    """
+    O(k^2.5 * n) version using sqrt-blocking, while preserving the stable
+    shift+add multiplication scheme.
+
+    Returns: shape (n, k) like your original (M * (q_M - 1)).T
+    """
+    k = int(len(r))
+    n = int(len(p))
+
+    # Your code: q_M = bits_matrix(p, k) * (1/r.reshape(-1,1))
+    # Assume bits_matrix(p, k) returns shape (k, n) with 0/1 entries.
+    q_M = bits_matrix(p, k) * (1/r.reshape(-1, 1))
+
+    # base polynomial: constant term = prod(r) * leaf_weight, rest 0
+    base_const = float(np.prod(r) * leaf_weight)
+    base_poly = np.zeros((k, n))
+    base_poly[0, :] = base_const
+
+    # choose block size B ~ sqrt(k)
+    B = int(np.ceil(np.sqrt(k)))
+    G = int(np.ceil(k / B))
+
+    # output: rows are patterns, cols are features (k)
+    result = np.empty((n, k))
+
+    # Precompute index blocks
+    blocks = [list(range(start, min(start + B, k))) for start in range(0, k, B)]
+
+    half = G // 2
+    top_blocks = blocks[:half]
+    bot_blocks = blocks[half:]
+
+    # flatten indices for each half
+    top_idx = [j for blk in top_blocks for j in blk]
+    bot_idx = [j for blk in bot_blocks for j in blk]
+
+    # Precompute: multiply all factors in the top half once, and all in bottom half once
+    P_top_half = base_poly.copy()
+    for j in top_idx:
+        _poly_mul_y_plus_q_inplace(P_top_half, q_M[j])
+
+    P_bot_half = base_poly.copy()
+    for j in bot_idx:
+        _poly_mul_y_plus_q_inplace(P_bot_half, q_M[j])
+
+    # For each block g compute P_out[g] = product over (y + q_j) for j not in block
+    for block_index, block in enumerate(blocks):
+
+        in_block = np.zeros(k, dtype=bool)
+        in_block[block] = True
+        if block_index < half:
+            P_shared = P_bot_half.copy()
+            in_block[bot_idx] = True
+            to_compute_for_global_p = np.nonzero(~in_block)[0]
+        else:
+            P_shared = P_top_half.copy()
+            in_block[top_idx] = True
+            to_compute_for_global_p = np.nonzero(~in_block)[0]
+
+        for j in to_compute_for_global_p:
+            _poly_mul_y_plus_q_inplace(P_shared, q_M[j])
+
+        # For each i in this block, finish the local multiplications excluding i
+        for i in range(block[0], block[-1]+1):
+            P = P_shared.copy()
+            # multiply by all (y + q_j) for j in block, j != i
+            for j in range(max(i-1,block[0]), block[-1]+1):
+                if j == i:
+                    P_shared = P.copy()
+                    continue
+                _poly_mul_y_plus_q_inplace(P, q_M[j])
+
+            # game_theory_metric_vector = sum_t P[t,:] * f_w[t]
+            metric = (P * f_w).sum(axis=0)  # shape (n,)
+
+            # final multiply by (q_i - 1) as in your return (M*(q_M-1)).T
+            result[:, i] = metric * (q_M[i] - 1.0)
+
+    return result
 
 
 def linear_tree_shap_magic_optimization_try(
@@ -150,7 +297,7 @@ def linear_tree_shap_magic_not_numerically_stable(
     q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
 
     M_general = np.zeros((len(r)+1, len(p)))
-    M_general[0, :] = np.prod(r) * leaf_weight
+    M_general[0, :] = np.prod(r)
     for i, R_i in enumerate(r):
         # Multiply the polynomials by (y + q_i)
         q_part = M_general * q_M[i]
@@ -170,7 +317,7 @@ def linear_tree_shap_magic_not_numerically_stable(
             M_f_i[d] = M_general[d+1] - M_f_i[d+1] * q_M[i]
 
         # Compute Shapley/Banzhaf values using the constructed polynomial
-        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0) * leaf_weight
         constitutions_vectors.append(game_theory_metric_vector)
 
     M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
@@ -292,6 +439,69 @@ def linear_tree_shap_magic_faster(
     return (M * (q_M - 1)).T.copy()
 
 
+def linear_tree_shap_magic_faster_v2(
+        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
+):
+    """
+    Not numerically stable but O(D) faster. Don't use this
+    """
+    q_M = bits_matrix(p, len(r)) * (1 / r.reshape(-1, 1))
+
+    max_cover_th = find_min_cover_for_numerical_stability_fast_calc(len(r))
+    fast_calc_r = [(i, R_i) for i, R_i in enumerate(r) if R_i >= max_cover_th]
+    slow_calc_r = [(i, R_i) for i, R_i in enumerate(r) if R_i < max_cover_th]
+    constitutions_vectors = [None] * len(r)
+
+    M_general = np.zeros((len(r) + 1, len(p)))
+    M_general[0, :] = np.prod(r) * leaf_weight
+    for i, R_i in fast_calc_r:
+        # Multiply the polynomials by (y + q_i)
+        q_part = M_general * q_M[i]
+        # the y_part - shift M_general down one row, dropping the last row
+        M_general[1:] = M_general[:-1]
+        M_general[0] = 0
+        M_general += q_part
+
+    visited_indecies = []
+    for i, R_i in slow_calc_r:
+        M_f_i = M_general[:-1].copy()
+        visited_indecies.append(i)
+        for j, R_j in slow_calc_r:
+            if j in visited_indecies:
+                continue
+            # Multiply the polynomials by (y + q_j)
+            q_part = M_f_i * q_M[j]
+            # the y_part - shift M_general down one row, dropping the last row
+            M_f_i[1:] = M_f_i[:-1]
+            M_f_i[0] = 0
+            M_f_i += q_part
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        constitutions_vectors[i] = game_theory_metric_vector
+
+        # Multiply the polynomials by (y + q_i)
+        q_part = M_general * q_M[i]
+        # the y_part - shift M_general down one row, dropping the last row
+        M_general[1:] = M_general[:-1]
+        M_general[0] = 0
+        M_general += q_part
+
+    # Now M_general include the polynomials (y+q_0)*(y+q_1)*...*(y+q_k)
+
+    for i, R_i in fast_calc_r:
+        # Divide the polynomials by (y + q_i)
+        M_f_i = M_general[1:].copy()
+        for d in range(len(r) - 2, -1, -1):
+            M_f_i[d] = M_f_i[d] - M_f_i[d + 1] * q_M[i]
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
+        constitutions_vectors[i] = game_theory_metric_vector
+
+    M = np.array(constitutions_vectors)  # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T.copy()
+
 def linear_tree_shap_magic_try6(
         r: np.array, p: np.array, f_w: np.array, leaf_weight: float
 ):
@@ -411,7 +621,7 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
         if self.is_shapley:
             # assume features in path are unique
             f_w = self.f_ws[len(covers)]
-            s_matrix = linear_tree_shap_magic_faster(covers, consumer_patterns, f_w, w)
+            s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
         else:
             s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
         self.computation_time += time.time() - start_time

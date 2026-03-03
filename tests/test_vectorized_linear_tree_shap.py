@@ -7,7 +7,7 @@ from woodelf.cube_metric import ShapleyValues, BanzhafValues
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
     linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, linear_tree_shap_magic_faster, linear_tree_shap_magic_try6, \
-    linear_tree_shap_magic_try7, linear_tree_shap_magic_not_numerically_stable
+    linear_tree_shap_magic_try7, linear_tree_shap_magic_not_numerically_stable, linear_tree_shap_magic_blocked, linear_tree_shap_magic_faster_v2
 
 FIXTURES = [testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
 
@@ -60,12 +60,39 @@ def test_linear_tree_shap_fast_banzhaf():
 def test_linear_tree_shap_magic_longer_high_depth(D):
     rng = np.random.default_rng(42)
     leaf_weight = 5
-    consumer_size = 100000 // D # Test many consumers while this is still fast
+    consumer_size = 1000000 // D # Test many consumers while this is still fast
     r = rng.integers(low=1, high=9999, size=D) / 10000
     p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
     f_w = shapley_values_f_w(D)
 
     shap_matrix = linear_tree_shap_magic(
+        r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
+    )
+    print(shap_matrix)
+    print(shap_matrix.sum(axis=1))
+    all_missing_prediction = np.prod(r)*leaf_weight
+
+    # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to
+    # the prediction when all features participate minus the prediction when all features are missing.
+    # When the pattern is 7 when all features participate the prediction reaches the leaf and is equal to "leaf_weight"
+    # on other patterns the prediction does not reach the leaf and the prediction is 0
+    tolerance = 0.000001
+    np.testing.assert_allclose(
+        shap_matrix.sum(axis=1),
+        np.array([0 - all_missing_prediction] * consumer_size + [leaf_weight - all_missing_prediction]),
+        atol=tolerance
+    )
+
+def test_debug():
+    D=36
+    rng = np.random.default_rng(42)
+    leaf_weight = 5
+    consumer_size = 1000000 // D # Test many consumers while this is still fast
+    r = rng.integers(low=1, high=9999, size=D) / 10000
+    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
+    f_w = shapley_values_f_w(D)
+
+    shap_matrix = linear_tree_shap_magic_blocked(
         r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
     )
     print(shap_matrix)
