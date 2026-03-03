@@ -1,13 +1,13 @@
 import time
 from math import factorial
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
 from woodelf.decision_trees_ensemble import DecisionTreeNode
-from woodelf.decision_patterns import decision_patterns_generator
+from woodelf.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
 
@@ -73,6 +73,29 @@ def linear_tree_shap_magic(
     return (M * (q_M - 1)).T.copy()
 
 
+def get_neighbors_shap_from_polynomials(
+        M_f_i: np.array, R_i: float, q_M_left: np.array, q_M_right: np.array, f_w: np.array, left_leaf_weight: float, right_leaf_weight: float
+):
+    M_left = M_f_i.copy()
+    # Multiply the polynomials by (y + q_i)
+    q_part = M_left * q_M_left
+    # the y_part - shift M_general down one row, dropping the last row
+    M_left[1:] = M_left[:-1]
+    M_left[0] = 0
+    M_left += q_part
+    left_game_theory_metric_vector = (M_left * f_w).sum(axis=0) * left_leaf_weight * R_i
+
+    M_right = M_f_i.copy()
+    # Multiply the polynomials by (y + q_i)
+    q_part = M_right * q_M_right
+    # the y_part - shift M_general down one row, dropping the last row
+    M_right[1:] = M_right[:-1]
+    M_right[0] = 0
+    M_right += q_part
+    right_game_theory_metric_vector = (M_right * f_w).sum(axis=0) * right_leaf_weight * (1 - R_i)
+
+    return left_game_theory_metric_vector, right_game_theory_metric_vector
+
 def linear_tree_shap_magic_for_neighbors(
         r: np.array, p: np.array, f_w: np.array, left_leaf_weight: float, right_leaf_weight: float
 ):
@@ -91,13 +114,18 @@ def linear_tree_shap_magic_for_neighbors(
     """
     # Longer, but numerically stable
 
-    q_M = bits_matrix(p, len(r)) * (1/r.reshape(-1, 1))
-    constitutions_vectors = []
+    patterns_M = bits_matrix(p, len(r))
+    q_M = patterns_M[:-1] * (1/r[:-1].reshape(-1, 1))
+    R_last = r[-1]
+    last_row_q_M_left = patterns_M[-1] * (1/R_last)
+    last_row_q_M_right = (-(patterns_M[-1]-1)) * (1/(1-R_last)) # replace 0s and 1s and multiply by 1/(1-R_last)
+    left_constitutions_vectors = []
+    right_constitutions_vectors = []
     M_shared = np.zeros((len(r), len(p)))
-    M_shared[0, :] = np.prod(r)
-    for i in range(len(r)):
+    M_shared[0, :] = np.prod(r[:-1])
+    for i in range(len(r)-1):
         M_f_i = M_shared.copy()
-        for j in range(max(i-1, 0), len(r)):
+        for j in range(max(i-1, 0), len(r)-1):
             if j == i:
                 M_shared = M_f_i.copy()
                 continue
@@ -109,11 +137,29 @@ def linear_tree_shap_magic_for_neighbors(
             M_f_i += q_part
 
         # Compute Shapley/Banzhaf values using the constructed polynomial
-        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0)
-        constitutions_vectors.append(game_theory_metric_vector)
+        left_game_theory_metric_vector, right_game_theory_metric_vector = get_neighbors_shap_from_polynomials(
+            M_f_i, r[-1], last_row_q_M_left, last_row_q_M_right, f_w, left_leaf_weight, right_leaf_weight
+        )
+        left_constitutions_vectors.append(left_game_theory_metric_vector)
+        right_constitutions_vectors.append(right_game_theory_metric_vector)
 
-    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
-    return (M * (q_M - 1)).T.copy()
+    q_part = M_shared * q_M[len(r)-2]
+    M_shared[1:] = M_shared[:-1]
+    M_shared[0] = 0
+    M_shared += q_part
+    left_constitutions_vectors.append((M_shared * f_w).sum(axis=0) * left_leaf_weight * R_last)
+    right_constitutions_vectors.append((M_shared * f_w).sum(axis=0) * right_leaf_weight * (1-R_last))
+
+
+
+    M_left = np.array(left_constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    q_M_left = np.vstack([q_M, last_row_q_M_left])
+    result_left = (M_left * (q_M_left - 1)).T.copy()
+
+    M_right = np.array(right_constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    q_M_right = np.vstack([q_M, last_row_q_M_right])
+    result_right = (M_right * (q_M_right - 1)).T.copy()
+    return result_left + result_right
 
 def _poly_mul_y_plus_q_inplace(P: np.ndarray, q: np.ndarray) -> None:
     """
@@ -616,14 +662,20 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
 
         self.computation_time = 0
 
-    def get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float):
+    def get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float, w_neighbor: Optional[float] = None):
         start_time = time.time()
         if self.is_shapley:
             # assume features in path are unique
             f_w = self.f_ws[len(covers)]
-            s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
+            if w_neighbor is None:
+                s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
+            else:
+                s_matrix = linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
         else:
-            s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
+            if w_neighbor is not None:
+                raise NotImplemented()
+            else:
+                s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
         self.computation_time += time.time() - start_time
         return s_matrix
 
@@ -650,24 +702,27 @@ def get_covers_vector(path: List[DecisionTreeNode], unique_features_in_path: Lis
 
 
 def vectorized_linear_tree_shap_for_a_single_tree(
-        tree: DecisionTreeNode, consumer_data: pd.DataFrame, values: Dict, p2m: LinearTreeShapPathToMatrices, GPU: bool
+        tree: DecisionTreeNode, consumer_data: pd.DataFrame, values: Dict, p2m: LinearTreeShapPathToMatrices, GPU: bool, use_neighbor_leaf_trick: bool
 ):
     leaf_index_to_covers = {}
     leaf_index_to_unique_features_in_path = {}
     leaf_index_to_weight = {}
+    leaf_index_to_path = {}
     for leaf, path in tree.get_all_leaves_with_paths(only_feature_names=False):
         unique_features_in_path = get_unique_features_in_path(path)
         leaf_index_to_covers[leaf.index] = np.array(get_covers_vector(path + [leaf], unique_features_in_path))
         leaf_index_to_unique_features_in_path[leaf.index] = unique_features_in_path
         leaf_index_to_weight[leaf.index] = leaf.value
+        leaf_index_to_path[leaf.index] = path
 
-    for leaf, consumer_patterns in decision_patterns_generator(tree, consumer_data, GPU):
+    for leaf, consumer_patterns in decision_patterns_generator(tree, consumer_data, GPU, ignore_neighbor_leaf=use_neighbor_leaf_trick):
         # unique_patterns, inverse = np.unique(consumer_patterns, return_inverse=True)
         inverse, unique_patterns = pd.factorize(consumer_patterns, sort=False)
         s_matrix = p2m.get_s_matrix(
             covers=leaf_index_to_covers[leaf.index],
             consumer_patterns=unique_patterns,
-            w=leaf_index_to_weight[leaf.index]
+            w=leaf_index_to_weight[leaf.index],
+            w_neighbor=leaf.parent.right.value if ignore_right_neighbor(leaf, leaf_index_to_path[leaf.index], use_neighbor_leaf_trick) else None
         )
 
         # TODO why np indexing on a matrix is slower than vector by vector! contribution_values = s_matrix[inverse]
@@ -678,11 +733,13 @@ def vectorized_linear_tree_shap_for_a_single_tree(
                 values[feature] += s_matrix[:, index][inverse]
 
 
-def vectorized_linear_tree_shap(model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False):
+def vectorized_linear_tree_shap(
+        model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False, use_neighbor_leaf_trick: bool = False
+):
     model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
     values = {}
     for tree in tqdm(model.trees, desc="Preprocessing the trees and computing SHAP"):
-        vectorized_linear_tree_shap_for_a_single_tree(tree, consumer_data, values, p2m, GPU)
+        vectorized_linear_tree_shap_for_a_single_tree(tree, consumer_data, values, p2m, GPU, use_neighbor_leaf_trick=use_neighbor_leaf_trick)
     p2m.present_statistics()
     return values
