@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.lts_algo import improved_linear_tree_shap_magic
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
 
@@ -115,9 +116,9 @@ def linear_tree_shap_magic_for_neighbors(
     # Longer, but numerically stable
 
     patterns_M = bits_matrix(p, len(r))
-    q_M = patterns_M[:-1] * (1/r[:-1].reshape(-1, 1))
+    q_M = patterns_M * (1/r.reshape(-1, 1))
     R_last = r[-1]
-    last_row_q_M_left = patterns_M[-1] * (1/R_last)
+    last_row_q_M_left = q_M[-1]
     last_row_q_M_right = (-(patterns_M[-1]-1)) * (1/(1-R_last)) # replace 0s and 1s and multiply by 1/(1-R_last)
     left_constitutions_vectors = []
     right_constitutions_vectors = []
@@ -153,11 +154,12 @@ def linear_tree_shap_magic_for_neighbors(
 
 
     M_left = np.array(left_constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
-    q_M_left = np.vstack([q_M, last_row_q_M_left])
+    q_M_left = q_M
     result_left = (M_left * (q_M_left - 1)).T.copy()
 
     M_right = np.array(right_constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
-    q_M_right = np.vstack([q_M, last_row_q_M_right])
+    q_M_right = q_M.copy()
+    q_M_right[-1]=last_row_q_M_right
     result_right = (M_right * (q_M_right - 1)).T.copy()
     return result_left + result_right
 
@@ -668,7 +670,8 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
             # assume features in path are unique
             f_w = self.f_ws[len(covers)]
             if w_neighbor is None:
-                s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
+                # s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
+                s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
             else:
                 s_matrix = linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
         else:
