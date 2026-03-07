@@ -31,6 +31,15 @@ def bits_matrix(x: np.ndarray, k: int) -> np.ndarray:
     return ((x[None, :] >> shifts) & 1).astype(np.uint8)
 
 
+def neg_bits_matrix(x: np.ndarray, k: int) -> np.ndarray:
+    """
+    x: shape (n,), integers
+    returns: shape (k, n), rows are bits (k-1),...,1,0 (2^(k-1) down to LSB)
+    """
+    # ensure x is unsigned (np.uint) for fast bit ops
+    shifts = np.arange(k-1, -1, -1, dtype=np.uint64)[:, None]  # (5,1): 4,3,2,1,0
+    return (((x[None, :] >> shifts) + 1) & 1).astype(np.uint8)
+
 def linear_tree_shap_magic(
         r: np.array, p: np.array, f_w: np.array, leaf_weight: float
 ):
@@ -336,7 +345,7 @@ def linear_tree_shap_magic_for_banzhaf(
     return (M * (q_M - 1)).T.copy()
 
 
-def linear_tree_shap_magic_not_numerically_stable(
+def linear_tree_shap_magic_not_numerically_stable_backward(
         r: np.array, p: np.array, f_w: np.array, leaf_weight: float
 ):
     """
@@ -363,6 +372,45 @@ def linear_tree_shap_magic_not_numerically_stable(
         M_f_i[len(r) - 1] = M_general[len(r)]
         for d in range(len(r) - 2, -1, -1):
             M_f_i[d] = M_general[d+1] - M_f_i[d+1] * q_M[i]
+
+        # Compute Shapley/Banzhaf values using the constructed polynomial
+        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0) * leaf_weight
+        constitutions_vectors.append(game_theory_metric_vector)
+
+    M = np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
+    return (M * (q_M - 1)).T.copy()
+
+
+def linear_tree_shap_magic_not_numerically_stable_forward(
+        r: np.array, p: np.array, f_w: np.array, leaf_weight: float
+):
+    """
+    Not numerically stable but O(D) faster. Don't use this
+    """
+    b_M = bits_matrix(p, len(r))
+    q_M = b_M * (1/r.reshape(-1, 1))
+    one_over_q_M = b_M * r.reshape(-1, 1)
+
+    M_general = np.zeros((len(r)+1, len(p)))
+    M_general[0, :] = np.prod(r)
+    for i, R_i in enumerate(r):
+        # Multiply the polynomials by (y + q_i)
+        q_part = M_general * q_M[i]
+        # the y_part - shift M_general down one row, dropping the last row
+        M_general[1:] = M_general[:-1]
+        M_general[0] = 0
+        M_general += q_part
+
+    # Now M_general include the polynomials (y+q_0)*(y+q_1)*...*(y+q_k)
+
+    neg_b_M = neg_bits_matrix(p, len(r))
+    constitutions_vectors = []
+    for i in range(len(r)):
+        # Divide the polynomials by (y + q_i)
+        M_f_i = np.zeros((len(r), len(p)))
+        M_f_i[0] = M_general[0] * one_over_q_M[i] + M_general[1] * neg_b_M[i]
+        for d in range(1, len(r)):
+            M_f_i[d] = (M_general[d] - M_f_i[d-1]) * one_over_q_M[i] + M_general[d+1] * neg_b_M[i]
 
         # Compute Shapley/Banzhaf values using the constructed polynomial
         game_theory_metric_vector = (M_f_i * f_w).sum(axis=0) * leaf_weight
@@ -671,7 +719,10 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
             f_w = self.f_ws[len(covers)]
             if w_neighbor is None:
                 # s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
-                s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
+                if len(covers) <= 36:
+                    s_matrix = linear_tree_shap_magic_not_numerically_stable_forward(covers, consumer_patterns, f_w, w)
+                else:
+                    s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
             else:
                 s_matrix = linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
         else:
