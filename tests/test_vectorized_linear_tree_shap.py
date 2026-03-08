@@ -4,12 +4,10 @@ import shap
 
 from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, assert_shap_package_is_same_as_woodelf
 from woodelf.cube_metric import ShapleyValues, BanzhafValues
-from woodelf.high_depth_woodelf import neighbor_vector
+from woodelf.lts_algo import linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward_for_neighbors, linear_tree_shap_division_forward
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 from woodelf.vectorized_linear_tree_shap import linear_tree_shap_magic, shapley_values_f_w, \
-    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, linear_tree_shap_magic_faster, linear_tree_shap_magic_try6, \
-    linear_tree_shap_magic_try7, linear_tree_shap_magic_blocked, linear_tree_shap_magic_faster_v2, \
-    linear_tree_shap_magic_for_neighbors, linear_tree_shap_magic_not_numerically_stable_forward, linear_tree_shap_magic_not_numerically_stable_backward
+    linear_tree_shap_magic_for_banzhaf, banzhaf_values_f_w, vectorized_linear_tree_shap, linear_tree_shap_magic_not_numerically_stable_forward
 
 FIXTURES = [testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
 
@@ -57,7 +55,8 @@ def test_linear_tree_shap_fast_banzhaf():
         fast_code_matrix.sum(axis=1)
     )
 
-def test_linear_tree_shap_for_neighbors():
+@pytest.mark.parametrize("lts_method", [linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward_for_neighbors])
+def test_linear_tree_shap_for_neighbors(lts_method):
     D = 5
     rng = np.random.default_rng(42)
     left_leaf_weight = 5
@@ -67,7 +66,7 @@ def test_linear_tree_shap_for_neighbors():
     p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
     f_w = shapley_values_f_w(D)
 
-    left_shap_matrix_using_neighbors = linear_tree_shap_magic_for_neighbors(
+    left_shap_matrix_using_neighbors = lts_method(
         r=r, p=p.astype(np.uint64),f_w=f_w, left_leaf_weight=left_leaf_weight, right_leaf_weight=0
     )
     left_shap_matrix = linear_tree_shap_magic(
@@ -81,7 +80,7 @@ def test_linear_tree_shap_for_neighbors():
         atol=tolerance
     )
 
-    right_shap_matrix_using_neighbors = linear_tree_shap_magic_for_neighbors(
+    right_shap_matrix_using_neighbors = lts_method(
         r=r, p=p.astype(np.uint64),f_w=f_w, left_leaf_weight=0, right_leaf_weight=right_leaf_weight
     )
     r_of_right = np.array(list(r[:-1]) + [1 - r[-1]])
@@ -98,7 +97,7 @@ def test_linear_tree_shap_for_neighbors():
         atol=tolerance
     )
 
-    shap_matrix_using_neighbors = linear_tree_shap_magic_for_neighbors(
+    shap_matrix_using_neighbors = lts_method(
         r=r, p=p.astype(np.uint64),f_w=f_w, left_leaf_weight=left_leaf_weight, right_leaf_weight=right_leaf_weight
     )
 
@@ -121,7 +120,7 @@ def test_linear_tree_shap_magic_longer_high_depth(D):
 
 
         if D <= 36:
-            shap_matrix = linear_tree_shap_magic_not_numerically_stable_forward(
+            shap_matrix = linear_tree_shap_division_forward(
                 r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
             )
         else:

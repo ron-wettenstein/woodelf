@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.decision_patterns import decision_patterns_generator, ignore_right_neighbor
-from woodelf.lts_algo import improved_linear_tree_shap_magic
+from woodelf.lts_algo import improved_linear_tree_shap_magic, linear_tree_shap_division_forward_for_neighbors
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
 
@@ -724,7 +724,10 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
                 else:
                     s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
             else:
-                s_matrix = linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
+                if len(covers) <= 36:
+                    s_matrix = linear_tree_shap_division_forward_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
+                else:
+                    s_matrix = linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
         else:
             if w_neighbor is not None:
                 raise NotImplemented()
