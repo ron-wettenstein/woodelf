@@ -10,7 +10,7 @@ from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.lts_polynomial_multiplication import (
     improved_linear_tree_shap_magic, linear_tree_shap_division_forward_for_neighbors, improved_linear_tree_shap_magic_for_neighbors,
-    linear_tree_shap_magic_for_banzhaf, linear_tree_shap_division_forward
+    linear_tree_shap_magic_for_banzhaf, linear_tree_shap_division_forward, linear_tree_shap_magic
 )
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
@@ -70,6 +70,59 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
         print(f"LinearTreeShapPathToMatrices took {round(self.computation_time, 2)}")
 
 
+class LinearTreeShapPathToMatricesSimpleNeighborTrickAbstract(LinearTreeShapPathToMatrices):
+
+    def poly_mult_shap_func(self, covers: np.array, consumer_patterns: np.array, f_w: np.array, w: float):
+        raise NotImplemented()
+
+    def poly_mult_banzhaf_func(self, covers: np.array, consumer_patterns: np.array, w: float):
+        return linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
+
+    def get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float, w_neighbor: Optional[float] = None):
+        start_time = time.time()
+        if self.is_shapley:
+            # assume features in path are unique
+            f_w = self.f_ws[len(covers)]
+            if w_neighbor is None:
+                s_matrix = self.poly_mult_shap_func(covers, consumer_patterns, f_w, w)
+            else:
+                s_matrix_left = self.poly_mult_shap_func(covers, consumer_patterns, f_w, w)
+                covers_of_right = np.array(list(covers[:-1]) + [1 - covers[-1]])
+                consumer_patterns_right = consumer_patterns.copy()
+                consumer_patterns_right[consumer_patterns % 2 == 0] += 1
+                consumer_patterns_right[consumer_patterns % 2 == 1] -= 1
+                s_matrix_right = self.poly_mult_shap_func(
+                    covers_of_right, consumer_patterns_right.astype(np.uint64), f_w, w_neighbor
+                )
+                return s_matrix_left + s_matrix_right
+        else:
+            if w_neighbor is None:
+                s_matrix = self.poly_mult_banzhaf_func(covers, consumer_patterns, w)
+            else:
+                s_matrix_left = self.poly_mult_banzhaf_func(covers, consumer_patterns, w)
+                covers_of_right = np.array(list(covers[:-1]) + [1 - covers[-1]])
+                consumer_patterns_right = consumer_patterns.copy()
+                consumer_patterns_right[consumer_patterns % 2 == 0] += 1
+                consumer_patterns_right[consumer_patterns % 2 == 1] -= 1
+                s_matrix_right = self.poly_mult_banzhaf_func(covers_of_right, consumer_patterns_right.astype(np.uint64), w_neighbor)
+                return s_matrix_left + s_matrix_right
+        self.computation_time += time.time() - start_time
+        return s_matrix
+
+
+class LinearTreeShapPathToMatricesSimple(LinearTreeShapPathToMatricesSimpleNeighborTrickAbstract):
+
+    def poly_mult_shap_func(self, covers: np.array, consumer_patterns: np.array, f_w: np.array, w: float):
+        return linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
+
+
+class LinearTreeShapPathToMatricesImproved(LinearTreeShapPathToMatricesSimpleNeighborTrickAbstract):
+
+    def poly_mult_shap_func(self, covers: np.array, consumer_patterns: np.array, f_w: np.array, w: float):
+        if len(covers) <= 36:
+            return linear_tree_shap_division_forward(covers, consumer_patterns, f_w, w)
+        return improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
+
 
 def get_unique_features_in_path(path: List[DecisionTreeNode]):
     unique_features_in_path = []
@@ -121,10 +174,14 @@ def vectorized_linear_tree_shap_for_a_single_tree(
 
 
 def vectorized_linear_tree_shap(
-        model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False, use_neighbor_leaf_trick: bool = False
+        model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False, use_neighbor_leaf_trick: bool = False,
+        p2m_class = None
 ):
     model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
-    p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
+    if p2m_class is None:
+        p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
+    else:
+        p2m = p2m_class(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
     values = {}
     for tree in tqdm(model.trees, desc="Preprocessing the trees and computing SHAP"):
         vectorized_linear_tree_shap_for_a_single_tree(tree, consumer_data, values, p2m, GPU, use_neighbor_leaf_trick=use_neighbor_leaf_trick)
