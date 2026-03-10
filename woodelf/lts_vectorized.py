@@ -66,7 +66,7 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
                 consumer_patterns_right[consumer_patterns % 2 == 0] += 1
                 consumer_patterns_right[consumer_patterns % 2 == 1] -= 1
                 s_matrix_right = linear_tree_shap_magic_for_banzhaf(covers_of_right, consumer_patterns_right.astype(np.uint64), w_neighbor)
-                return s_matrix_left + s_matrix_right
+                s_matrix = s_matrix_left + s_matrix_right
             else:
                 s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
         self.computation_time += time.time() - start_time
@@ -100,7 +100,7 @@ class LinearTreeShapPathToMatricesSimpleNeighborTrickAbstract(LinearTreeShapPath
                 s_matrix_right = self.poly_mult_shap_func(
                     covers_of_right, consumer_patterns_right.astype(np.uint64), f_w, w_neighbor
                 )
-                return s_matrix_left + s_matrix_right
+                s_matrix = s_matrix_left + s_matrix_right
         else:
             if w_neighbor is None:
                 s_matrix = self.poly_mult_banzhaf_func(covers, consumer_patterns, w)
@@ -111,7 +111,7 @@ class LinearTreeShapPathToMatricesSimpleNeighborTrickAbstract(LinearTreeShapPath
                 consumer_patterns_right[consumer_patterns % 2 == 0] += 1
                 consumer_patterns_right[consumer_patterns % 2 == 1] -= 1
                 s_matrix_right = self.poly_mult_banzhaf_func(covers_of_right, consumer_patterns_right.astype(np.uint64), w_neighbor)
-                return s_matrix_left + s_matrix_right
+                s_matrix = s_matrix_left + s_matrix_right
         self.computation_time += time.time() - start_time
         return s_matrix
 
