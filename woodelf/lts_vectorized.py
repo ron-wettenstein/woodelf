@@ -60,7 +60,13 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
                     s_matrix = improved_linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
         else:
             if w_neighbor is not None:
-                raise NotImplemented()
+                s_matrix_left = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
+                covers_of_right = np.array(list(covers[:-1]) + [1 - covers[-1]])
+                consumer_patterns_right = consumer_patterns.copy()
+                consumer_patterns_right[consumer_patterns % 2 == 0] += 1
+                consumer_patterns_right[consumer_patterns % 2 == 1] -= 1
+                s_matrix_right = linear_tree_shap_magic_for_banzhaf(covers_of_right, consumer_patterns_right.astype(np.uint64), w_neighbor)
+                return s_matrix_left + s_matrix_right
             else:
                 s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
         self.computation_time += time.time() - start_time
@@ -174,12 +180,15 @@ def vectorized_linear_tree_shap_for_a_single_tree(
 
 
 def vectorized_linear_tree_shap(
-        model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False, use_neighbor_leaf_trick: bool = False,
+        model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False, use_neighbor_leaf_trick: bool = True,
         p2m_class = None
 ):
     model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if p2m_class is None:
-        p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
+        if len(consumer_data) <= 100:
+            p2m = LinearTreeShapPathToMatricesSimple(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
+        else:
+            p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
     else:
         p2m = p2m_class(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
     values = {}
