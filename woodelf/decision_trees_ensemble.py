@@ -27,7 +27,6 @@ class DecisionTreeNode:
         self.left = left
         self.nan_go_left = nan_go_left
         self.cover = cover
-        self.pc_pb_to_cube = None
         self.feature_contribution_replacement_values = feature_contribution_replacement_values
         self.parent = -1
         self.depth=None
