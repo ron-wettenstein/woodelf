@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 import shap
 
+from woodelf.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.explainer import WoodelfExplainer
 from shared_fixtures_and_utils import testset, trainset, xgb_model, xgb_model_depth_16
+from woodelf.parse_models import load_decision_tree_ensemble_model
 
 FIXTURES = [testset, trainset, xgb_model, xgb_model_depth_16]
 
@@ -78,6 +80,20 @@ def test_woodelf_explainer_with_xgboost_model_of_depth_16(trainset, testset, xgb
     print("woodelf took: ", time.time() - start_time)
 
     np.testing.assert_allclose(woodelf_values, shap_package_values, atol=TOLERANCE, strict=True)
+
+
+def test_tree_limit(trainset, testset, xgb_model):
+    model_obj = load_decision_tree_ensemble_model(xgb_model, list(trainset.columns))
+    woodelf_explainer = WoodelfExplainer(xgb_model, feature_perturbation='tree_path_dependent')
+    tree_limit_values = woodelf_explainer.shap_values(testset, tree_limit=2)
+
+    trimmed_model_obj = DecisionTreesEnsemble(model_obj.trees[:2])
+    woodelf_explainer = WoodelfExplainer(trimmed_model_obj, feature_perturbation='tree_path_dependent')
+    manual_trimmed_values = woodelf_explainer.shap_values(testset)
+
+
+    np.testing.assert_allclose(manual_trimmed_values, tree_limit_values, atol=TOLERANCE, strict=True)
+
 
 def test_excluding_only_zero_contributions(trainset, testset, xgb_model):
     woodelf_explainer = WoodelfExplainer(xgb_model, trainset, feature_perturbation='tree_path_dependent')

@@ -154,7 +154,7 @@ class WoodelfExplainer:
             self.cache = [{} for i in range(len(self.model.trees))] if self.use_cache() else None
             self.cache_filled = False
 
-        model = self.model if tree_limit is not None else DecisionTreesEnsemble(self.model.trees[:tree_limit])
+        model = self.model if tree_limit is None else DecisionTreesEnsemble(self.model.trees[:tree_limit])
         cache_kwargs = {}
         if self.cache is not None:
             if self.cache_filled:
