@@ -170,6 +170,7 @@ def vectorized_linear_tree_shap_for_a_single_tree(
             w=leaf_index_to_weight[leaf.index],
             w_neighbor=leaf.parent.right.value if ignore_right_neighbor(leaf, leaf_index_to_path[leaf.index], use_neighbor_leaf_trick) else None
         )
+        s_matrix = s_matrix.astype(np.float32)
 
         # TODO why np indexing on a matrix is slower than vector by vector! contribution_values = s_matrix[inverse]
         for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
@@ -180,15 +181,19 @@ def vectorized_linear_tree_shap_for_a_single_tree(
 
 
 def vectorized_linear_tree_shap(
-        model, consumer_data: pd.DataFrame, is_shapley: bool = True, GPU: bool = False, use_neighbor_leaf_trick: bool = True,
-        p2m_class = None
+        model, consumer_data: pd.DataFrame, is_shapley: bool = True, is_banzhaf: bool = False, GPU: bool = False, use_neighbor_leaf_trick: bool = True,
+        p2m_class = None, model_was_loaded: bool = False
 ):
-    model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+    assert is_shapley or is_banzhaf
+
+    if not model_was_loaded:
+        model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+
     if p2m_class is None:
         if len(consumer_data) <= 100:
-            p2m = LinearTreeShapPathToMatricesSimple(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
+            p2m = LinearTreeShapPathToMatricesSimple(is_shapley, is_banzhaf=is_banzhaf, max_depth=model.max_depth, GPU=GPU)
         else:
-            p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
+            p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=is_banzhaf, max_depth=model.max_depth, GPU=GPU)
     else:
         p2m = p2m_class(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
     values = {}

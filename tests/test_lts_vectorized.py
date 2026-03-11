@@ -35,7 +35,7 @@ def test_linear_tree_banzhaf_on_a_model(testset, xgb_model):
     )
 
     vectorized_linear_tree_shap_values = vectorized_linear_tree_shap(
-        xgb_model, testset, is_shapley=False, GPU=False
+        xgb_model, testset, is_shapley=False, is_banzhaf=True, GPU=False
     )
 
     for feature in simple_woodelf_shap_values:
