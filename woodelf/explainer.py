@@ -192,7 +192,7 @@ class WoodelfExplainer:
             woodelf_values, as_df: bool, exclude_zero_contribution_features: bool, columns: List[str],
             iv: bool, consumer_data: pd.DataFrame
     ):
-        assert not as_df or not iv or not exclude_zero_contribution_features, (
+        assert as_df or not iv or not exclude_zero_contribution_features, (
             "Can not exclude zero contributions in interaction values and return them as a 3D np array."
         )
         zeros_array = np.zeros(len(consumer_data), dtype=np.float32)
