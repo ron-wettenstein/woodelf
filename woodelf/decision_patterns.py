@@ -105,6 +105,9 @@ def decision_patterns_generator(
     nodes_to_visit_left = [tree]
     nodes_to_visit_right = []
 
+    if tree.depth <= 1:
+        ignore_neighbor_leaf = False
+
     int_dtype = GPU_get_int_dtype_from_depth(tree.depth) if GPU else get_int_dtype_from_depth(tree.depth)
     patterns = init_patterns_dict(tree, data, GPU)
     nodes_to_path = tree.get_nodes_to_path_dict()
