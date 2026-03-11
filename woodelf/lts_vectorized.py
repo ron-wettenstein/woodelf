@@ -49,15 +49,9 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
             f_w = self.f_ws[len(covers)]
             if w_neighbor is None:
                 # s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
-                if len(covers) <= 36:
-                    s_matrix = linear_tree_shap_division_forward(covers, consumer_patterns, f_w, w)
-                else:
-                    s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
+                s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
             else:
-                if len(covers) <= 36:
-                    s_matrix = linear_tree_shap_division_forward_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
-                else:
-                    s_matrix = improved_linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
+                s_matrix = improved_linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
         else:
             if w_neighbor is not None:
                 s_matrix_left = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
