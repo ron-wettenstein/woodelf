@@ -8,6 +8,7 @@ from woodelf.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionVal
     BanzhafInteractionValues
 from woodelf.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
+from woodelf.lts_vectorized import vectorized_linear_tree_shap
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.path_to_matrices import PathToMatricesAbstractCls
 
@@ -165,10 +166,21 @@ class WoodelfExplainer:
                 cache_kwargs["cache_to_fill"] = self.cache
                 self.cache_filled = True # will fill the cache now
 
-        woodelf_values = woodelf_for_high_depth(
-            model, consumer_data, self.background_data, metric, GPU=self.GPU,
-            path_to_matrices_calculator=path_to_matrices_calculator, model_was_loaded=True, **cache_kwargs
-        )
+        if (    # Use Vectorized LinearTreeSHAP on Path-Dependent SHAP/Banzhaf when the trees have a high depth.
+                self.background_data is None and self.cache is None and
+                (isinstance(metric, ShapleyValues) or isinstance(metric, BanzhafValues))
+                and model.max_depth > 10
+        ):
+            woodelf_values = vectorized_linear_tree_shap(
+                model, consumer_data,
+                is_shapley=isinstance(metric, ShapleyValues), is_banzhaf=isinstance(metric, BanzhafValues),
+                GPU=self.GPU, model_was_loaded=True
+            )
+        else:
+            woodelf_values = woodelf_for_high_depth(
+                model, consumer_data, self.background_data, metric, GPU=self.GPU,
+                path_to_matrices_calculator=path_to_matrices_calculator, model_was_loaded=True, **cache_kwargs
+            )
 
         return self._output_formatting(
             woodelf_values, as_df, exclude_zero_contribution_features, list(consumer_data.columns),
