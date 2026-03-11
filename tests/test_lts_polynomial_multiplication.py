@@ -103,58 +103,58 @@ def test_linear_tree_shap_fast_banzhaf():
 
 @pytest.mark.parametrize("lts_method", [linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward_for_neighbors, improved_linear_tree_shap_magic_for_neighbors])
 def test_linear_tree_shap_for_neighbors(lts_method):
-    D = 20
-    rng = np.random.default_rng(42)
-    left_leaf_weight = 5
-    right_leaf_weight = 3
-    consumer_size = 10 # Test many consumers while this is still fast
-    r = rng.integers(low=1, high=9999, size=D) / 10000
-    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
-    f_w = shapley_values_f_w(D)
+    for D in [2,3,4,5,10,15,20,25,30,35,40]:
+        rng = np.random.default_rng(42)
+        left_leaf_weight = 5
+        right_leaf_weight = 3
+        consumer_size = 10 # Test many consumers while this is still fast
+        r = rng.integers(low=1, high=9999, size=D) / 10000
+        p = np.concat([rng.integers(low=0, high=(2 ** D) - 1, size=consumer_size), np.array([(2 ** D) - 1])])
+        f_w = shapley_values_f_w(D)
 
-    left_shap_matrix_using_neighbors = lts_method(
-        r=r, p=p.astype(np.uint64),f_w=f_w, left_leaf_weight=left_leaf_weight, right_leaf_weight=0
-    )
-    left_shap_matrix = linear_tree_shap_magic(
-        r=r, p=p.astype(np.uint64), f_w=f_w, leaf_weight=left_leaf_weight
-    )
+        left_shap_matrix_using_neighbors = lts_method(
+            r=r, p=p.astype(np.uint64),f_w=f_w, left_leaf_weight=left_leaf_weight, right_leaf_weight=0
+        )
+        left_shap_matrix = linear_tree_shap_magic(
+            r=r, p=p.astype(np.uint64), f_w=f_w, leaf_weight=left_leaf_weight
+        )
 
-    tolerance = 0.000001
-    np.testing.assert_allclose(
-        left_shap_matrix_using_neighbors,
-        left_shap_matrix,
-        atol=tolerance
-    )
+        tolerance = 0.000001
+        np.testing.assert_allclose(
+            left_shap_matrix_using_neighbors,
+            left_shap_matrix,
+            atol=tolerance
+        )
 
-    right_shap_matrix_using_neighbors = lts_method(
-        r=r, p=p.astype(np.uint64),f_w=f_w, left_leaf_weight=0, right_leaf_weight=right_leaf_weight
-    )
-    r_of_right = np.array(list(r[:-1]) + [1 - r[-1]])
-    p_right = p.copy()
-    p_right[p % 2 == 0] += 1
-    p_right[p % 2 == 1] -= 1
-    right_shap_matrix = linear_tree_shap_magic(
-        r=r_of_right, p=p_right.astype(np.uint64), f_w=f_w, leaf_weight=right_leaf_weight
-    )
+        right_shap_matrix_using_neighbors = lts_method(
+            r=r, p=p.astype(np.uint64),f_w=f_w, left_leaf_weight=0, right_leaf_weight=right_leaf_weight
+        )
+        r_of_right = np.array(list(r[:-1]) + [1 - r[-1]])
+        p_right = p.copy()
+        p_right[p % 2 == 0] += 1
+        p_right[p % 2 == 1] -= 1
+        right_shap_matrix = linear_tree_shap_magic(
+            r=r_of_right, p=p_right.astype(np.uint64), f_w=f_w, leaf_weight=right_leaf_weight
+        )
 
-    np.testing.assert_allclose(
-        right_shap_matrix_using_neighbors,
-        right_shap_matrix,
-        atol=tolerance
-    )
+        np.testing.assert_allclose(
+            right_shap_matrix_using_neighbors,
+            right_shap_matrix,
+            atol=tolerance
+        )
 
-    shap_matrix_using_neighbors = lts_method(
-        r=r, p=p.astype(np.uint64),f_w=f_w, left_leaf_weight=left_leaf_weight, right_leaf_weight=right_leaf_weight
-    )
+        shap_matrix_using_neighbors = lts_method(
+            r=r, p=p.astype(np.uint64),f_w=f_w, left_leaf_weight=left_leaf_weight, right_leaf_weight=right_leaf_weight
+        )
 
-    np.testing.assert_allclose(
-        left_shap_matrix_using_neighbors + right_shap_matrix_using_neighbors,
-        shap_matrix_using_neighbors,
-        atol=tolerance
-    )
+        np.testing.assert_allclose(
+            left_shap_matrix_using_neighbors + right_shap_matrix_using_neighbors,
+            shap_matrix_using_neighbors,
+            atol=tolerance
+        )
 
 
-@pytest.mark.parametrize("D", list(range(5, 61, 5)) + [36])
+@pytest.mark.parametrize("D", list(range(1,10)) + list(range(10, 61, 5)) + [36])
 def test_linear_tree_shap_magic_longer_high_depth(D):
     rng = np.random.default_rng(42)
     leaf_weight = 5
@@ -164,17 +164,11 @@ def test_linear_tree_shap_magic_longer_high_depth(D):
         for i in range(10):
             # generate many random ratios vectors (many r vectors)
             r = rng.integers(low=low, high=high, size=D) / 10000
-            p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
+            p = np.concat([rng.integers(low=0, high=(2 ** D) - 1, size=consumer_size), np.array([(2 ** D) - 1])])
             f_w = shapley_values_f_w(D)
 
-            if D <= 36:
-                shap_matrix = linear_tree_shap_division_forward(
-                    r=r, p=p.astype(np.uint64),f_w=f_w, leaf_weight=leaf_weight
-                )
-            else:
-                shap_matrix = improved_linear_tree_shap_magic(
-                    r=r, p=p.astype(np.uint64),f_w=f_w, w=leaf_weight
-                )
+
+            shap_matrix = improved_linear_tree_shap_magic(r=r, p=p.astype(np.uint64),f_w=f_w, w=leaf_weight)
             all_missing_prediction = np.prod(r)*leaf_weight
 
             # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to

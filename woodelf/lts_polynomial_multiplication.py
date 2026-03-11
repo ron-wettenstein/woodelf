@@ -127,6 +127,10 @@ def recursive_linear_tree_shap(P: np.array, r: np.array, q_M: np.array, f_w: np.
 
 def improved_linear_tree_shap_magic(r: np.array, p: np.array, f_w: np.array, w: float):
     q_M = bits_matrix(p, len(r)) * (1 / r.reshape(-1, 1))
+    if len(r) <= 6:
+        initial_P = compute_P(r, q_M, start_index=0, end_index=0)
+        M = compute_contribution_vectors_from_initial_P(initial_P, q_M, f_w, w, start_index=0, end_index=len(r))
+        return (M * (q_M - 1)).T.copy()
 
     top_P = compute_P(r, q_M, start_index=0, end_index=len(r)//2)
     bottom_P = compute_P(r, q_M, start_index=len(r)//2, end_index=len(r))
@@ -220,16 +224,22 @@ def improved_linear_tree_shap_magic_for_neighbors(r: np.array, p: np.array, f_w:
 
     M_general = np.zeros((len(r), len(p)))
     M_general[0, :] = np.prod(r[:-1])
-    top_P = continue_P_compute(M_general, q_M, start_index=0, end_index=(len(r)-1)//2)
-    bottom_P = continue_P_compute(M_general, q_M, start_index=(len(r)-1)//2, end_index=len(r)-1)
+    if len(r) <= 6:
+        R_last = r[-1]
+        M_left, M_right = compute_contribution_vectors_from_initial_P_for_neighbors(
+            M_general, q_M, b_M, f_w, left_leaf_weight, right_leaf_weight, R_last, start_index=0, end_index=len(r)-1
+        )
+    else:
+        top_P = continue_P_compute(M_general, q_M, start_index=0, end_index=(len(r)-1)//2)
+        bottom_P = continue_P_compute(M_general, q_M, start_index=(len(r)-1)//2, end_index=len(r)-1)
 
-    bottom_contribs_left, bottom_contribs_right = recursive_linear_tree_shap_for_neighbors(top_P, r, q_M, b_M, f_w, left_leaf_weight, right_leaf_weight, start_index=(len(r)-1)//2, end_index=len(r)-1)
-    top_contribs_left, top_contribs_right = recursive_linear_tree_shap_for_neighbors(bottom_P, r, q_M, b_M, f_w, left_leaf_weight, right_leaf_weight, start_index=0, end_index=(len(r)-1)//2)
-    M_left = np.vstack([top_contribs_left, bottom_contribs_left])
+        bottom_contribs_left, bottom_contribs_right = recursive_linear_tree_shap_for_neighbors(top_P, r, q_M, b_M, f_w, left_leaf_weight, right_leaf_weight, start_index=(len(r)-1)//2, end_index=len(r)-1)
+        top_contribs_left, top_contribs_right = recursive_linear_tree_shap_for_neighbors(bottom_P, r, q_M, b_M, f_w, left_leaf_weight, right_leaf_weight, start_index=0, end_index=(len(r)-1)//2)
+        M_left = np.vstack([top_contribs_left, bottom_contribs_left])
+        M_right = np.vstack([top_contribs_right, bottom_contribs_right])
+
     q_M_left = q_M
     result_left = (M_left * (q_M_left - 1)).T.copy()
-
-    M_right = np.vstack([top_contribs_right, bottom_contribs_right])
     q_M_right = q_M.copy()
     last_row_q_M_right = neg_b_M[-1] * (1 / (1 - r[-1]))
     q_M_right[-1]=last_row_q_M_right
@@ -239,7 +249,7 @@ def improved_linear_tree_shap_magic_for_neighbors(r: np.array, p: np.array, f_w:
 
 ############################################################################################################################################################
 #
-#        The simple approach of naive polynomial multiplication - This is used in testing and also useful for understanding the recursive approach
+#  The simple approach of naive polynomial multiplication - This is used in testing and in low depth and also useful for understanding the recursive approach
 #
 ############################################################################################################################################################
 
