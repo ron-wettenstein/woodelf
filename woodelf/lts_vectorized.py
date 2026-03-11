@@ -184,10 +184,7 @@ def vectorized_linear_tree_shap(
         model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
 
     if p2m_class is None:
-        if len(consumer_data) <= 100:
-            p2m = LinearTreeShapPathToMatricesSimple(is_shapley, is_banzhaf=is_banzhaf, max_depth=model.max_depth, GPU=GPU)
-        else:
-            p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=is_banzhaf, max_depth=model.max_depth, GPU=GPU)
+        p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=is_banzhaf, max_depth=model.max_depth, GPU=GPU)
     else:
         p2m = p2m_class(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
     values = {}
