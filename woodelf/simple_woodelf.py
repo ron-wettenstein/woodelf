@@ -31,7 +31,8 @@ def get_int_dtype_from_depth(depth):
         return np.uint16
     if depth <= 32:
         return np.uint32
-    return np.uint64
+    # np.bincount does not support uint64
+    return np.int64
 
 
 def GPU_get_int_dtype_from_depth(depth):
@@ -44,7 +45,8 @@ def GPU_get_int_dtype_from_depth(depth):
         return cp.uint16
     if depth <= 32:
         return cp.uint32
-    return cp.uint64
+    # cp.bincount does not support uint64
+    return cp.int64
 
 
 def calc_decision_patterns(tree, data, depth, GPU=False):

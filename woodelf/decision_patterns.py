@@ -16,9 +16,7 @@ except ModuleNotFoundError as e:
     IMPORTED_CP = False
 
 
-def init_patterns_dict(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool):
-    # Use a tight uint type for efficiency. This is improvement 5 of Sec. 9.1
-    int_dtype = GPU_get_int_dtype_from_depth(tree.depth) if GPU else get_int_dtype_from_depth(tree.depth)
+def init_patterns_dict(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool, int_dtype):
     if GPU:
         data_length = len(data[list(data.keys())[0]])
         root_pattern = cp.zeros(data_length, dtype=int_dtype)
@@ -108,8 +106,10 @@ def decision_patterns_generator(
     if tree.depth <= 1:
         ignore_neighbor_leaf = False
 
-    int_dtype = GPU_get_int_dtype_from_depth(tree.depth) if GPU else get_int_dtype_from_depth(tree.depth)
-    patterns = init_patterns_dict(tree, data, GPU)
+    # As we use unique feature decision patterns the length of each pattern can not be longer by the max_depth or the number of unique feature in the dataset
+    effective_max_decision_pattern_length = min(tree.depth, len(data.columns))
+    int_dtype = GPU_get_int_dtype_from_depth(effective_max_decision_pattern_length) if GPU else get_int_dtype_from_depth(effective_max_decision_pattern_length)
+    patterns = init_patterns_dict(tree, data, GPU, int_dtype)
     nodes_to_path = tree.get_nodes_to_path_dict()
     while len(nodes_to_visit_left) > 0 or len(nodes_to_visit_right) > 0: # Implements a DFS
         if len(nodes_to_visit_left) > 0:
