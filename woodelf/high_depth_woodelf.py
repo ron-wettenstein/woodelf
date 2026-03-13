@@ -218,8 +218,10 @@ def woodelf_for_high_depth(
     else:
         model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
 
+    # As we use unique feature decision patterns the length of each pattern can not be longer by the max_depth or the number of unique feature in the dataset
+    effective_max_decision_pattern_length = min(model_obj.max_depth, len(consumer_data.columns))
     if path_to_matrices_calculator is None:
-        path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=model_obj.max_depth, GPU=GPU)
+        path_to_matrices_calculator = HighDepthPathToMatrices(metric=metric, max_depth=effective_max_decision_pattern_length, GPU=GPU)
     if GPU:
         consumer_data = get_cupy_data(model_obj, consumer_data)
         if background_data is not None:
