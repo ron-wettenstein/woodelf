@@ -107,7 +107,8 @@ def decision_patterns_generator(
         ignore_neighbor_leaf = False
 
     # As we use unique feature decision patterns the length of each pattern can not be longer by the max_depth or the number of unique feature in the dataset
-    effective_max_decision_pattern_length = min(tree.depth, len(data.columns))
+    features = list(data.columns) if not GPU else list(data.keys())
+    effective_max_decision_pattern_length = min(tree.depth, len(features))
     int_dtype = GPU_get_int_dtype_from_depth(effective_max_decision_pattern_length) if GPU else get_int_dtype_from_depth(effective_max_decision_pattern_length)
     patterns = init_patterns_dict(tree, data, GPU, int_dtype)
     nodes_to_path = tree.get_nodes_to_path_dict()
