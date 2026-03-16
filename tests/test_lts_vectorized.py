@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 import shap
 
-from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, assert_shap_package_is_same_as_woodelf
+from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, assert_shap_package_is_same_as_woodelf, \
+    assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.cube_metric import ShapleyValues, BanzhafValues
 from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.lts_vectorized import vectorized_linear_tree_shap, LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, \
@@ -76,6 +77,23 @@ def test_single_leaf_tree(testset):
 
 
 @pytest.mark.parametrize("p2m_class", [LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, LinearTreeShapPathToMatricesImproved, LinearTreeShapV6PathToMatrices])
+def test_linear_tree_shap_iv_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):
+    for model in [xgb_model_depth_16, xgb_model_depth_22]:
+
+        linear_tree_shap_iv_values = vectorized_linear_tree_shap(
+            model, testset, is_shapley=True, GPU=False, is_interaction_values=True, use_neighbor_leaf_trick=False
+        )
+
+        explainer = shap.TreeExplainer(model)
+        shap_iv_package_values = explainer.shap_interaction_values(testset)
+
+        # for (f1, f2) in linear_tree_shap_iv_values:
+        #     linear_tree_shap_iv_values[(f1, f2)] = linear_tree_shap_iv_values[(f1, f2)] / 100
+
+        assert_shap_package_is_same_as_woodelf_on_interaction_values(linear_tree_shap_iv_values, shap_iv_package_values, testset, TOLERANCE)
+
+
+@pytest.mark.parametrize("p2m_class", [LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, LinearTreeShapPathToMatricesImproved])
 def test_lts_on_different_ploy_mult_algos_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22, p2m_class):
     for model in [xgb_model_depth_16, xgb_model_depth_22]:
 
