@@ -382,6 +382,46 @@ def linear_tree_shap_magic_for_neighbors(
 #
 ############################################################################################################################################################
 
+def extract_bit(patterns: np.ndarray, i: int):
+    """
+    patterns: np.array of integers
+    i: bit index to extract (0 = LSB)
+
+    Returns:
+        new_patterns : patterns with bit i removed
+        bit_series   : array of the extracted bits (0/1)
+    """
+
+    # extract the bit
+    bit_series = (patterns >> i) & 1
+
+    # split lower and upper parts
+    lower = patterns & ((1 << i) - 1)     # bits below i
+    upper = patterns >> (i + 1)           # bits above i
+
+    # compress
+    new_patterns = lower + (upper << i)
+
+    return new_patterns, bit_series
+
+def improved_linear_tree_shap_iv(r: np.array, p: np.array, f_w: np.array, w: float):
+    assert len(f_w) == len(r) - 1
+    shaps = []
+    for i, ratio in enumerate(r):
+        extracted_patterns, ibit = extract_bit(p, len(r) - 1 - i)
+        new_r = np.concatenate([r[:i], r[i+1:]])
+        shap_excluding_i = improved_linear_tree_shap_magic(new_r, extracted_patterns, f_w, w)
+        shaps_i = (2*ibit.astype(np.int8) - 1)[:, None] * shap_excluding_i # if traverse with the path mult by 1 if not mult by -1
+        shaps_i = (shaps_i / 2) # * ratio should I?
+        shaps.append(shaps_i)
+    return shaps
+
+############################################################################################################################################################
+#
+#         Division Forward - Do not use it as it slower than the "improved" approach above. Keep it here as it might be useful someday
+#
+############################################################################################################################################################
+
 
 def linear_tree_shap_division_forward(
         r: np.array, p: np.array, f_w: np.array, leaf_weight: float

@@ -10,7 +10,7 @@ from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.lts_polynomial_multiplication import (
     improved_linear_tree_shap_magic, linear_tree_shap_division_forward_for_neighbors, improved_linear_tree_shap_magic_for_neighbors,
-    linear_tree_shap_magic_for_banzhaf, linear_tree_shap_division_forward, linear_tree_shap_magic
+    linear_tree_shap_magic_for_banzhaf, linear_tree_shap_division_forward, linear_tree_shap_magic, improved_linear_tree_shap_iv
 )
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
@@ -26,10 +26,11 @@ def banzhaf_values_f_w(depth):
 
 class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls as its API is different
 
-    def __init__(self, is_shapley: bool, is_banzhaf: bool, max_depth: int, GPU: bool = False):
+    def __init__(self, is_shapley: bool, is_banzhaf: bool, max_depth: int, is_interaction_values: bool=False, GPU: bool = False):
         self.max_depth = max_depth
         self.GPU = GPU
         self.is_shapley = is_shapley
+        self.is_interaction_values = is_interaction_values
         if is_shapley:
             assert not is_banzhaf
         if is_banzhaf:
@@ -37,8 +38,12 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
 
         self.f_ws = None
         if is_shapley:
+            if self.is_interaction_values:
+                max_range = max_depth
+            else:
+                max_range = max_depth + 1
             # None f_ws for depth 0, in the rest use shapley_values_f_w(depth)
-            self.f_ws = [None] + [shapley_values_f_w(depth) for depth in range(1, max_depth+1)]
+            self.f_ws = [None] + [shapley_values_f_w(depth) for depth in range(1, max_range)]
 
         self.computation_time = 0
 
@@ -46,12 +51,16 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
         start_time = time.time()
         if self.is_shapley:
             # assume features in path are unique
-            f_w = self.f_ws[len(covers)]
-            if w_neighbor is None:
-                # s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
-                s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
+            f_w = self.f_ws[len(covers)-1] if self.is_interaction_values else self.f_ws[len(covers)]
+            if self.is_interaction_values:
+                assert w_neighbor is None
+                s_matrix = improved_linear_tree_shap_iv(covers, consumer_patterns, f_w, w)
             else:
-                s_matrix = improved_linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
+                if w_neighbor is None:
+                    # s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
+                    s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
+                else:
+                    s_matrix = improved_linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
         else:
             if w_neighbor is not None:
                 s_matrix_left = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
@@ -88,7 +97,8 @@ def get_covers_vector(path: List[DecisionTreeNode], unique_features_in_path: Lis
 
 
 def vectorized_linear_tree_shap_for_a_single_tree(
-        tree: DecisionTreeNode, consumer_data: pd.DataFrame, values: Dict, p2m: LinearTreeShapPathToMatrices, GPU: bool, use_neighbor_leaf_trick: bool
+        tree: DecisionTreeNode, consumer_data: pd.DataFrame, values: Dict, is_interaction_values: bool,
+        p2m: LinearTreeShapPathToMatrices, GPU: bool, use_neighbor_leaf_trick: bool
 ):
     leaf_index_to_covers = {}
     leaf_index_to_unique_features_in_path = {}
@@ -110,19 +120,32 @@ def vectorized_linear_tree_shap_for_a_single_tree(
             w=leaf_index_to_weight[leaf.index],
             w_neighbor=leaf.parent.right.value if ignore_right_neighbor(leaf, leaf_index_to_path[leaf.index], use_neighbor_leaf_trick) else None
         )
-        s_matrix = s_matrix.astype(np.float32)
+        if not is_interaction_values:
+            s_matrix = s_matrix.astype(np.float32)
 
-        # TODO why np indexing on a matrix is slower than vector by vector! contribution_values = s_matrix[inverse]
-        for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
-            if feature not in values:
-                values[feature] = s_matrix[:, index][inverse]
-            else:
-                values[feature] += s_matrix[:, index][inverse]
+            # TODO why np indexing on a matrix is slower than vector by vector! contribution_values = s_matrix[inverse]
+            for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
+                if feature not in values:
+                    values[feature] = s_matrix[:, index][inverse]
+                else:
+                    values[feature] += s_matrix[:, index][inverse]
+
+        else:
+            features_in_path = leaf_index_to_unique_features_in_path[leaf.index]
+            for i, feature1 in enumerate(features_in_path):
+                s_matrix_i = s_matrix[i].astype(np.float32)
+                for j, feature2 in enumerate(features_in_path):
+                    if i != j:
+                        f2_index = j if j < i else j - 1
+                        if (feature1, feature2) not in values:
+                            values[(feature1, feature2)] = s_matrix_i[:, f2_index][inverse]
+                        else:
+                            values[(feature1, feature2)] += s_matrix_i[:, f2_index][inverse]
 
 
 def vectorized_linear_tree_shap(
-        model, consumer_data: pd.DataFrame, is_shapley: bool = True, is_banzhaf: bool = False, GPU: bool = False, use_neighbor_leaf_trick: bool = True,
-        p2m_class = None, model_was_loaded: bool = False
+        model, consumer_data: pd.DataFrame, is_shapley: bool = True, is_banzhaf: bool = False, GPU: bool = False, is_interaction_values: bool = False,
+        use_neighbor_leaf_trick: bool = True, p2m_class = None, model_was_loaded: bool = False
 ):
     assert is_shapley or is_banzhaf
 
@@ -130,12 +153,14 @@ def vectorized_linear_tree_shap(
         model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
 
     if p2m_class is None:
-        p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=is_banzhaf, max_depth=model.max_depth, GPU=GPU)
+        p2m = LinearTreeShapPathToMatrices(is_shapley, is_banzhaf=is_banzhaf, is_interaction_values=is_interaction_values, max_depth=model.max_depth, GPU=GPU)
     else:
         p2m = p2m_class(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
     values = {}
     for tree in tqdm(model.trees, desc="Preprocessing the trees and computing SHAP"):
-        vectorized_linear_tree_shap_for_a_single_tree(tree, consumer_data, values, p2m, GPU, use_neighbor_leaf_trick=use_neighbor_leaf_trick)
+        vectorized_linear_tree_shap_for_a_single_tree(
+            tree, consumer_data, values, is_interaction_values, p2m, GPU, use_neighbor_leaf_trick=use_neighbor_leaf_trick
+        )
     p2m.present_statistics()
     return values
 
