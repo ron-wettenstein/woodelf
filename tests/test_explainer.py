@@ -3,6 +3,7 @@ import time
 import numpy as np
 import pandas as pd
 import shap
+import xgboost as xgb
 
 from woodelf.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.explainer import WoodelfExplainer
@@ -175,6 +176,18 @@ def test_expected_value_property(trainset, testset, xgb_model):
     # Running 'shap.TreeExplainer(xgb_model, trainset)' will crash on TypeError
     assert abs(explainer.expected_value - woodelf_explainer.expected_value) < TOLERANCE
 
+
+def test_additivity(trainset, testset, xgb_model):
+    prediction = xgb_model.predict(xgb.DMatrix(testset))
+
+    bg_explainer = WoodelfExplainer(xgb_model, trainset)
+    background_shap = bg_explainer.shap_values(testset)
+
+    additivity_result = background_shap.sum(axis=1) + bg_explainer.expected_value
+    additivity_result = additivity_result.astype(np.float32)
+    np.testing.assert_allclose(prediction, additivity_result, atol=TOLERANCE, strict=True)
+
+    # Additivity in this form is not supported in Path-Dependent SHAP (also not supported by the shap package)
 
 def test_call(trainset, testset, xgb_model):
     # TODO slightly different base_values results on path-dependent
