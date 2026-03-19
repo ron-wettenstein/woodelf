@@ -136,19 +136,17 @@ shap_sample_3 = explainer.shap_values(X_test.sample(100))
 
 ## Citations
 
-To cite our package and algorithm, please refer to our AAAI 2026 paper. The paper was accepted to AAAI 2026 and will be published soon.
-For now, refer to its [arXiv version](https://arxiv.org/abs/2511.09376). 
+To cite our package and algorithm, please refer to our AAAI 2026 paper.  
 
 ```bibtex
-@misc{nadel2025decisiontreesbooleanlogic,
-      title={From Decision Trees to Boolean Logic: A Fast and Unified SHAP Algorithm}, 
-      author={Alexander Nadel and Ron Wettenstein},
-      year={2025},
-      eprint={2511.09376},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2511.09376}, 
-}
+@article{Nadel_Wettenstein_2026, 
+    author={Nadel, Alexander and Wettenstein, Ron}, 
+    title={From Decision Trees to Boolean Logic: A Fast and Unified SHAP Algorithm}, 
+    journal={Proceedings of the AAAI Conference on Artificial Intelligence}, 
+    year={2026}, month={Mar.}, volume={40}, number={29}, pages={24476-24485} 
+    url={https://ojs.aaai.org/index.php/AAAI/article/view/39630}, 
+    DOI={10.1609/aaai.v40i29.39630}, 
+}}
 ```
 
 ## Contact & Collaboration
