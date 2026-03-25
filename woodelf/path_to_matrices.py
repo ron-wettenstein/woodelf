@@ -198,6 +198,8 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         super().__init__(metric, max_depth, GPU)
         self.s_computation_time = 0
         self.f_prepare_time = 0
+        self.s_computation_calls = 0
+        self.total_f_sizes = 0
         self.use_neighbor_leaf_trick = use_neighbor_leaf_trick
 
         start_time = time.time()
@@ -274,6 +276,8 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
 
     def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         depth = len(features_in_path)
+        self.s_computation_calls += 1
+        self.total_f_sizes += np.sum(f != 0)
         start_time = time.time()
         if self.GPU:
             idx = cp.arange(len(f))
@@ -332,9 +336,11 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         return f
 
     def present_statistics(self):
+        mean_f_size = self.total_f_sizes / self.s_computation_calls if self.s_computation_calls > 0 else 0
         print(
             f"M time: {round(self.matrices_init_time, 2)} sec, " +
-            f"s time: {round(self.s_computation_time, 2)} sec (f prepare time: {self.f_prepare_time})"
+            f"s time: {round(self.s_computation_time, 2)} sec ({self.s_computation_calls} get_s_matrices calls, " +
+            f"f prepare time: {self.f_prepare_time}, f mean non zero size: {mean_f_size})"
         )
 
 
@@ -372,6 +378,8 @@ class HighDepthPathToMatricesPaperVersion(HighDepthPathToMatrices):
 
     def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         depth = len(features_in_path)
+        self.s_computation_calls += 1
+        self.total_f_sizes += np.sum(f != 0)
         start_time = time.time()
 
         frs2feature_name = self.frs_subsets_to_feature_subsets(features_in_path, depth)
