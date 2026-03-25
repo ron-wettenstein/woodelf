@@ -5,7 +5,7 @@ import shap
 from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, assert_shap_package_is_same_as_woodelf
 from woodelf.cube_metric import ShapleyValues, BanzhafValues
 from woodelf.lts_vectorized import vectorized_linear_tree_shap, LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, \
-    LinearTreeShapPathToMatricesImproved
+    LinearTreeShapPathToMatricesImproved, LinearTreeShapV6PathToMatrices
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 
 FIXTURES = [testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
@@ -60,7 +60,7 @@ def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_
         assert_shap_package_is_same_as_woodelf(linear_tree_shap_values_neighbor_leaf_trick, shap_package_values, testset, TOLERANCE)
 
 
-@pytest.mark.parametrize("p2m_class", [LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, LinearTreeShapPathToMatricesImproved])
+@pytest.mark.parametrize("p2m_class", [LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, LinearTreeShapPathToMatricesImproved, LinearTreeShapV6PathToMatrices])
 def test_lts_on_different_ploy_mult_algos_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22, p2m_class):
     for model in [xgb_model_depth_16, xgb_model_depth_22]:
 

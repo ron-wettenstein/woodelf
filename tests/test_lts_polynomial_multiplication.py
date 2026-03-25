@@ -3,7 +3,7 @@ import pytest
 
 from woodelf.lts_polynomial_multiplication import compute_P, bits_matrix, continue_P_compute, improved_linear_tree_shap_magic, linear_tree_shap_magic_blocked, \
     linear_tree_shap_magic, linear_tree_shap_magic_for_banzhaf, linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward_for_neighbors, \
-    improved_linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward
+    improved_linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward, linear_tree_shap_v6
 from woodelf.lts_vectorized import shapley_values_f_w, banzhaf_values_f_w
 
 
@@ -181,6 +181,34 @@ def test_linear_tree_shap_magic_longer_high_depth(D):
                 np.array([0 - all_missing_prediction] * consumer_size + [leaf_weight - all_missing_prediction]),
                 atol=tolerance
             )
+
+
+@pytest.mark.parametrize("D", list(range(1,10)) + list(range(10, 61, 5)) + [36])
+def test_linear_tree_shap_magic_longer_high_depth_v6(D):
+    rng = np.random.default_rng(42)
+    leaf_weight = 5
+    consumer_size = 6 # Test many consumers while this is still fast
+    # This tends to be numerically unstable when there are many close to 1 ratios
+    for low, high in [(1, 10000), (5000, 10000), (9000, 10000), (9990, 10000), (1, 5000), (1, 10)]:
+        for i in range(10):
+            # generate many random ratios vectors (many r vectors)
+            r = rng.integers(low=low, high=high, size=D) / 10000
+            p = np.concat([rng.integers(low=0, high=(2 ** D) - 1, size=consumer_size), np.array([(2 ** D) - 1])])
+
+            shap_matrix = linear_tree_shap_v6(r=r, p=p, leaf_value=leaf_weight)
+            all_missing_prediction = np.prod(r)*leaf_weight
+
+            # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to
+            # the prediction when all features participate minus the prediction when all features are missing.
+            # When the pattern is 7 when all features participate the prediction reaches the leaf and is equal to "leaf_weight"
+            # on other patterns the prediction does not reach the leaf and the prediction is 0
+            tolerance = 0.000001
+            np.testing.assert_allclose(
+                shap_matrix.sum(axis=1),
+                np.array([0 - all_missing_prediction] * consumer_size + [leaf_weight - all_missing_prediction]),
+                atol=tolerance
+            )
+
 
 
 @pytest.mark.parametrize("D", list(range(5, 61, 5)))

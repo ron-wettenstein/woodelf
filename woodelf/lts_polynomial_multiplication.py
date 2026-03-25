@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import itertools
 import numpy as np
 
 
@@ -465,6 +468,203 @@ def linear_tree_shap_division_forward_for_neighbors(
     q_M_right[-1]=last_row_q_M_right
     result_right = (M_right * (q_M_right - 1)).T.copy()
     return result_left + result_right
+
+
+############################################################################################################################################################
+#
+#         Division Forward - Do not use it as it slower than the "improved" approach above. Keep it here as it might be useful someday
+#
+############################################################################################################################################################
+
+
+DTYPE = np.float64
+N_QUAD = 16
+_nodes_15, _weights_15 = np.polynomial.legendre.leggauss(N_QUAD)
+QUAD_NODES   = DTYPE(0.5) * (_nodes_15.astype(DTYPE) + DTYPE(1.0))   # (n_quad,)
+QUAD_WEIGHTS = DTYPE(0.5) * _weights_15.astype(DTYPE)                 # (n_quad,)
+
+
+def linear_tree_shap_v6(
+    r: np.ndarray,
+    p: np.ndarray,
+    leaf_value: float = 1.0,
+) -> np.ndarray:
+    """
+    SHAP values for m unique decision patterns on a root-to-leaf path of length n.
+
+    Parameters
+    ----------
+    r : array, shape (n,)
+        Edge weights for each depth: r[d] = child_cover / parent_cover.
+        n = len(r) is the path length.
+    p : int array, shape (m,)
+        Unique bitmask integers, built exactly as v6 builds them:
+            dp = (dp << 1) | satisfies   at each depth
+        After n depths, bit (n-1-d) from the LSB is the satisfies flag at depth d.
+    leaf_value : float, default 1.0
+        Value stored in the leaf node.
+
+    Returns
+    -------
+    phi : array, shape (m, n)
+        phi[i, d] = SHAP value of the feature at depth d for pattern i.
+    """
+    r  = np.asarray(r, dtype=DTYPE)
+    dp = np.asarray(p, dtype=np.int64)   # (m,)
+    m  = len(dp)
+    n  = len(r)                                          # path length
+
+    # Unpack bitmasks → binary matrix satisfies[i, d] = 1 if pattern i goes in
+    # the path direction at depth d.  bit (n-1-d) from LSB encodes depth d.
+    shifts    = np.arange(n - 1, -1, -1, dtype=np.int64)             # [n-1, ..., 0]
+    satisfies = ((dp[:, None] >> shifts[None, :]) & 1).astype(DTYPE) # (m, n)
+
+    w_e    = r                                 # (n,)  r[d] is the edge weight at depth d
+    w_prod = float(np.prod(r))
+
+    # p_up = 1 always (unseen), so p_e = satisfies / w_e
+    p_e     = satisfies / w_e[None, :]         # (m, n)
+    alpha_e = p_e - DTYPE(1.0)                 # (m, n)
+
+    # Linear factor at each (pattern, depth, quadrature point):
+    #   linear_factors[i, d, k] = 1 + alpha_e[i, d] * t_k
+    linear_factors = DTYPE(1.0) + alpha_e[:, :, None] * QUAD_NODES[None, None, :]  # (m, n, n_quad)
+
+    # Exclusive prefix products: prefix[i, d, k] = prod_{d' < d} linear_factors[i, d', k]
+    prefix = np.ones((m, n, N_QUAD), dtype=DTYPE)
+    for d in range(1, n):
+        prefix[:, d, :] = prefix[:, d - 1, :] * linear_factors[:, d - 1, :]
+
+    # Exclusive suffix products: suffix[i, d, k] = prod_{d' > d} linear_factors[i, d', k]
+    suffix = np.ones((m, n, N_QUAD), dtype=DTYPE)
+    for d in range(n - 2, -1, -1):
+        suffix[:, d, :] = suffix[:, d + 1, :] * linear_factors[:, d + 1, :]
+
+    # Leave-one-out integral: prefix * suffix omits factor d → integrand without feature d
+    phi = alpha_e * (leaf_value * w_prod) * ((prefix * suffix) @ QUAD_WEIGHTS)  # (m, n)
+    return phi
+
+
+def linear_tree_shap_v6_for_neighbors(
+    r: np.ndarray,
+    decision_patterns: np.ndarray,
+    w1: float = 1.0,
+    w2: float = 1.0,
+) -> np.ndarray:
+    """
+    SHAP values for two sibling leaves (sharing the same parent) simultaneously.
+
+    The two leaves differ only at the last edge: the left leaf goes in the path
+    direction at depth n-1, the right leaf goes the other way.
+
+    Parameters
+    ----------
+    r : array, shape (n,)
+        Edge weights for the LEFT leaf's path: r[d] = child_cover / parent_cover.
+        r[n-1] is the left leaf's edge weight.
+        Right leaf edge weight = 1 - r[n-1]  (covers sum at each split).
+    decision_patterns : int array, shape (m,)
+        Bitmasks for the LEFT leaf (n bits, same convention as shap_path).
+        The right leaf's bitmasks are dp XOR 1 (LSB flipped).
+    w1, w2 : float
+        Leaf values for the left and right leaf respectively.
+
+    Returns
+    -------
+    phi_left  : array, shape (m, n)
+    phi_right : array, shape (m, n)
+
+    Shared work
+    -----------
+    Both leaves share the same path for depths 0..n-2, so the following are
+    computed once and reused:
+      - linear_factors[:, 0:n-1, :]   (m, n-1, n_quad)
+      - prefix[:, :, :]               (m, n,   n_quad)  — prefix at depth n-1
+                                                           is the product of all
+                                                           shared factors
+      - suffix_no_last[:, :, :]       (m, n-1, n_quad)  — suffix of shared factors
+      - leave_one_out_shared           (m, n-1, n_quad)  = prefix[:, :n-1] * suffix_no_last
+      - integral_last                  (m,)              = prefix[:, n-1] @ weights
+
+    Per-leaf extra cost: one (m, n_quad) multiply + one (m, n-1) matmul each.
+    """
+    r  = np.asarray(r, dtype=DTYPE)
+    dp = np.asarray(decision_patterns, dtype=np.int64)   # (m,)
+    m  = len(dp)
+    n  = len(r)                                          # total path length
+
+    # ── Unpack all n bits ──────────────────────────────────────────────────
+    shifts    = np.arange(n - 1, -1, -1, dtype=np.int64)              # [n-1, …, 0]
+    satisfies = ((dp[:, None] >> shifts[None, :]) & 1).astype(DTYPE)  # (m, n)
+
+    # ── Edge weights ──────────────────────────────────────────────────────
+    w_e = r                                               # (n,)  r[d] IS the edge weight
+    # Right leaf's last edge weight: covers sum to 1 at each split.
+    w_e_right_last = DTYPE(1.0) - r[n - 1]
+
+    w_prod_left  = float(np.prod(r))
+    w_prod_right = float(np.prod(r[:n - 1])) * float(w_e_right_last)
+
+    # ── Shared: depths 0..n-2 ─────────────────────────────────────────────
+    satisfies_shared = satisfies[:, :n - 1]               # (m, n-1)
+    p_e_shared       = satisfies_shared / w_e[None, :n-1] # (m, n-1)
+    alpha_e_shared   = p_e_shared - DTYPE(1.0)            # (m, n-1)
+
+    lf_shared = (DTYPE(1.0)
+                 + alpha_e_shared[:, :, None] * QUAD_NODES[None, None, :])  # (m, n-1, n_quad)
+
+    # Prefix over ALL n depths (based only on shared factors since last factor
+    # is not included until we know which leaf we're computing).
+    # prefix[i, d, k] = prod_{d'<d, d'<n-1} lf_shared[i, d', k]
+    prefix = np.ones((m, n, N_QUAD), dtype=DTYPE)
+    for d in range(1, n):
+        prefix[:, d, :] = prefix[:, d - 1, :] * lf_shared[:, d - 1, :]
+    # prefix[:, n-1, :] is now the full product of all shared factors.
+
+    # Exclusive suffix of shared factors (no last factor):
+    # suffix_no_last[i, d, k] = prod_{d'=d+1}^{n-2} lf_shared[i, d', k]
+    suffix_no_last = np.ones((m, n - 1, N_QUAD), dtype=DTYPE)
+    for d in range(n - 3, -1, -1):
+        suffix_no_last[:, d, :] = suffix_no_last[:, d + 1, :] * lf_shared[:, d + 1, :]
+
+    # Leave-one-out for shared depths — same for both leaves before multiplying
+    # in the leaf-specific last factor.
+    leave_one_out_shared = prefix[:, :n - 1, :] * suffix_no_last   # (m, n-1, n_quad)
+
+    # Integral at the last depth reuses prefix[:, n-1, :] (suffix = 1 there).
+    integral_last = prefix[:, n - 1, :] @ QUAD_WEIGHTS              # (m,)
+
+    # ── Per-leaf computation ───────────────────────────────────────────────
+    def _phi_leaf(satisfies_last, w_e_last, leaf_value, w_prod):
+        # Depth n-1 factors (leaf-specific)
+        alpha_e_last = satisfies_last / w_e_last - DTYPE(1.0)        # (m,)
+        lf_last      = (DTYPE(1.0)
+                        + alpha_e_last[:, None] * QUAD_NODES[None, :])  # (m, n_quad)
+
+        scale = DTYPE(leaf_value * w_prod)
+
+        # Shared depths: multiply leave_one_out_shared by this leaf's last factor
+        integrals_shared = (
+            leave_one_out_shared * lf_last[:, None, :]   # (m, n-1, n_quad)
+        ) @ QUAD_WEIGHTS                                              # (m, n-1)
+        phi_shared = alpha_e_shared * scale * integrals_shared        # (m, n-1)
+
+        # Last depth: suffix is 1, so integrand = prefix[:, n-1, :]
+        phi_last = alpha_e_last * scale * integral_last               # (m,)
+
+        return np.concatenate([phi_shared, phi_last[:, None]], axis=1)  # (m, n)
+
+    phi_left  = _phi_leaf(satisfies[:, n - 1],          w_e[n - 1],    w1, w_prod_left)
+    phi_right = _phi_leaf(DTYPE(1.0) - satisfies[:, n - 1], w_e_right_last, w2, w_prod_right)
+    return phi_left + phi_right
+
+
+
+
+
+
+
+
 
 ############################################################################################################################################################
 #

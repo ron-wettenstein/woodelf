@@ -10,7 +10,7 @@ from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.lts_polynomial_multiplication import (
     improved_linear_tree_shap_magic, linear_tree_shap_division_forward_for_neighbors, improved_linear_tree_shap_magic_for_neighbors,
-    linear_tree_shap_magic_for_banzhaf, linear_tree_shap_division_forward, linear_tree_shap_magic
+    linear_tree_shap_magic_for_banzhaf, linear_tree_shap_division_forward, linear_tree_shap_magic, linear_tree_shap_v6, linear_tree_shap_v6_for_neighbors
 )
 from woodelf.parse_models import load_decision_tree_ensemble_model
 
@@ -198,7 +198,6 @@ class LinearTreeShapPathToMatricesSimpleNeighborTrickAbstract(LinearTreeShapPath
         self.computation_time += time.time() - start_time
         return s_matrix
 
-
 class LinearTreeShapPathToMatricesSimple(LinearTreeShapPathToMatricesSimpleNeighborTrickAbstract):
 
     def poly_mult_shap_func(self, covers: np.array, consumer_patterns: np.array, f_w: np.array, w: float):
@@ -211,3 +210,27 @@ class LinearTreeShapPathToMatricesImproved(LinearTreeShapPathToMatricesSimpleNei
         if len(covers) <= 36:
             return linear_tree_shap_division_forward(covers, consumer_patterns, f_w, w)
         return improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
+
+
+class LinearTreeShapV6PathToMatrices(LinearTreeShapPathToMatrices):
+
+    def get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float, w_neighbor: Optional[float] = None):
+        start_time = time.time()
+        if self.is_shapley:
+            if w_neighbor is None:
+                s_matrix = linear_tree_shap_v6(covers, consumer_patterns, w)
+            else:
+                s_matrix = linear_tree_shap_v6_for_neighbors(covers, consumer_patterns, w, w_neighbor)
+        else:
+            if w_neighbor is None:
+                s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
+            else:
+                s_matrix_left = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
+                covers_of_right = np.array(list(covers[:-1]) + [1 - covers[-1]])
+                consumer_patterns_right = consumer_patterns.copy()
+                consumer_patterns_right[consumer_patterns % 2 == 0] += 1
+                consumer_patterns_right[consumer_patterns % 2 == 1] -= 1
+                s_matrix_right = linear_tree_shap_magic_for_banzhaf(covers_of_right, consumer_patterns_right.astype(np.uint64), w_neighbor)
+                s_matrix = s_matrix_left + s_matrix_right
+        self.computation_time += time.time() - start_time
+        return s_matrix
