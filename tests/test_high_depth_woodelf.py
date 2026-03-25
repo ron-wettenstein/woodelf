@@ -197,7 +197,7 @@ def test_calculate_path_dependent_metric_for_high_depth(
         np.testing.assert_allclose(simple_woodelf_values[feature], high_depth_woodelf_values[feature], atol=TOLERANCE)
 
 
-def test_shap_on_depth_16_xgboost(testset, xgb_model_depth_16):
+def test_path_dependent_shap_on_depth_16_xgboost(testset, xgb_model_depth_16):
     start_time = time.time()
     explainer = shap.TreeExplainer(xgb_model_depth_16)
     shap_package_values = explainer.shap_values(testset)
@@ -207,6 +207,22 @@ def test_shap_on_depth_16_xgboost(testset, xgb_model_depth_16):
     start_time = time.time()
     high_depth_woodelf_values = woodelf_for_high_depth(
         xgb_model_depth_16, testset, background_data=None, metric=ShapleyValues()
+    )
+    print("high depth woodelf took: ", time.time() - start_time)
+
+    assert_shap_package_is_same_as_woodelf(high_depth_woodelf_values, shap_package_values, testset, TOLERANCE)
+
+
+def test_background_shap_on_depth_16_xgboost(testset, trainset, xgb_model_depth_16):
+    start_time = time.time()
+    explainer = shap.TreeExplainer(xgb_model_depth_16, trainset.head(10))
+    shap_package_values = explainer.shap_values(testset)
+    print("shap took: ", time.time() - start_time)
+
+    print(testset.shape)
+    start_time = time.time()
+    high_depth_woodelf_values = woodelf_for_high_depth(
+        xgb_model_depth_16, testset, background_data=trainset.head(10), metric=ShapleyValues()
     )
     print("high depth woodelf took: ", time.time() - start_time)
 
