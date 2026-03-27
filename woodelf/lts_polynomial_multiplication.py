@@ -472,7 +472,7 @@ def linear_tree_shap_division_forward_for_neighbors(
 
 ############################################################################################################################################################
 #
-#         Division Forward - Do not use it as it slower than the "improved" approach above. Keep it here as it might be useful someday
+#         V6 approach
 #
 ############################################################################################################################################################
 
@@ -488,6 +488,8 @@ def linear_tree_shap_v6(
     r: np.ndarray,
     p: np.ndarray,
     leaf_value: float = 1.0,
+    quad_nodes = None,
+    quad_weights = None
 ) -> np.ndarray:
     """
     SHAP values for m unique decision patterns on a root-to-leaf path of length n.
@@ -513,6 +515,11 @@ def linear_tree_shap_v6(
     dp = np.asarray(p, dtype=np.int64)   # (m,)
     m  = len(dp)
     n  = len(r)                                          # path length
+    if quad_nodes is None:
+        quad_nodes=QUAD_NODES
+    if quad_weights is None:
+        quad_weights=QUAD_WEIGHTS
+    n_quads = len(quad_nodes)
 
     # Unpack bitmasks → binary matrix satisfies[i, d] = 1 if pattern i goes in
     # the path direction at depth d.  bit (n-1-d) from LSB encodes depth d.
@@ -528,20 +535,20 @@ def linear_tree_shap_v6(
 
     # Linear factor at each (pattern, depth, quadrature point):
     #   linear_factors[i, d, k] = 1 + alpha_e[i, d] * t_k
-    linear_factors = DTYPE(1.0) + alpha_e[:, :, None] * QUAD_NODES[None, None, :]  # (m, n, n_quad)
+    linear_factors = DTYPE(1.0) + alpha_e[:, :, None] * quad_nodes[None, None, :]  # (m, n, n_quad)
 
     # Exclusive prefix products: prefix[i, d, k] = prod_{d' < d} linear_factors[i, d', k]
-    prefix = np.ones((m, n, N_QUAD), dtype=DTYPE)
+    prefix = np.ones((m, n, n_quads), dtype=DTYPE)
     for d in range(1, n):
         prefix[:, d, :] = prefix[:, d - 1, :] * linear_factors[:, d - 1, :]
 
     # Exclusive suffix products: suffix[i, d, k] = prod_{d' > d} linear_factors[i, d', k]
-    suffix = np.ones((m, n, N_QUAD), dtype=DTYPE)
+    suffix = np.ones((m, n, n_quads), dtype=DTYPE)
     for d in range(n - 2, -1, -1):
         suffix[:, d, :] = suffix[:, d + 1, :] * linear_factors[:, d + 1, :]
 
     # Leave-one-out integral: prefix * suffix omits factor d → integrand without feature d
-    phi = alpha_e * (leaf_value * w_prod) * ((prefix * suffix) @ QUAD_WEIGHTS)  # (m, n)
+    phi = alpha_e * (leaf_value * w_prod) * ((prefix * suffix) @ quad_weights)  # (m, n)
     return phi
 
 
@@ -550,6 +557,8 @@ def linear_tree_shap_v6_for_neighbors(
     decision_patterns: np.ndarray,
     w1: float = 1.0,
     w2: float = 1.0,
+    quad_nodes=None,
+    quad_weights=None
 ) -> np.ndarray:
     """
     SHAP values for two sibling leaves (sharing the same parent) simultaneously.
@@ -591,7 +600,13 @@ def linear_tree_shap_v6_for_neighbors(
     r  = np.asarray(r, dtype=DTYPE)
     dp = np.asarray(decision_patterns, dtype=np.int64)   # (m,)
     m  = len(dp)
-    n  = len(r)                                          # total path length
+    n  = len(r)
+    if quad_nodes is None:
+        quad_nodes = QUAD_NODES
+    if quad_weights is None:
+        quad_weights = QUAD_WEIGHTS
+    n_quads = len(quad_nodes)
+    # total path length
 
     # ── Unpack all n bits ──────────────────────────────────────────────────
     shifts    = np.arange(n - 1, -1, -1, dtype=np.int64)              # [n-1, …, 0]
@@ -611,19 +626,19 @@ def linear_tree_shap_v6_for_neighbors(
     alpha_e_shared   = p_e_shared - DTYPE(1.0)            # (m, n-1)
 
     lf_shared = (DTYPE(1.0)
-                 + alpha_e_shared[:, :, None] * QUAD_NODES[None, None, :])  # (m, n-1, n_quad)
+                 + alpha_e_shared[:, :, None] * quad_nodes[None, None, :])  # (m, n-1, n_quad)
 
     # Prefix over ALL n depths (based only on shared factors since last factor
     # is not included until we know which leaf we're computing).
     # prefix[i, d, k] = prod_{d'<d, d'<n-1} lf_shared[i, d', k]
-    prefix = np.ones((m, n, N_QUAD), dtype=DTYPE)
+    prefix = np.ones((m, n, n_quads), dtype=DTYPE)
     for d in range(1, n):
         prefix[:, d, :] = prefix[:, d - 1, :] * lf_shared[:, d - 1, :]
     # prefix[:, n-1, :] is now the full product of all shared factors.
 
     # Exclusive suffix of shared factors (no last factor):
     # suffix_no_last[i, d, k] = prod_{d'=d+1}^{n-2} lf_shared[i, d', k]
-    suffix_no_last = np.ones((m, n - 1, N_QUAD), dtype=DTYPE)
+    suffix_no_last = np.ones((m, n - 1, n_quads), dtype=DTYPE)
     for d in range(n - 3, -1, -1):
         suffix_no_last[:, d, :] = suffix_no_last[:, d + 1, :] * lf_shared[:, d + 1, :]
 
@@ -632,21 +647,21 @@ def linear_tree_shap_v6_for_neighbors(
     leave_one_out_shared = prefix[:, :n - 1, :] * suffix_no_last   # (m, n-1, n_quad)
 
     # Integral at the last depth reuses prefix[:, n-1, :] (suffix = 1 there).
-    integral_last = prefix[:, n - 1, :] @ QUAD_WEIGHTS              # (m,)
+    integral_last = prefix[:, n - 1, :] @ quad_weights              # (m,)
 
     # ── Per-leaf computation ───────────────────────────────────────────────
-    def _phi_leaf(satisfies_last, w_e_last, leaf_value, w_prod):
+    def _phi_leaf(satisfies_last, w_e_last, leaf_value, w_prod, c_quad_nodes, c_quad_weights):
         # Depth n-1 factors (leaf-specific)
         alpha_e_last = satisfies_last / w_e_last - DTYPE(1.0)        # (m,)
         lf_last      = (DTYPE(1.0)
-                        + alpha_e_last[:, None] * QUAD_NODES[None, :])  # (m, n_quad)
+                        + alpha_e_last[:, None] * c_quad_nodes[None, :])  # (m, n_quad)
 
         scale = DTYPE(leaf_value * w_prod)
 
         # Shared depths: multiply leave_one_out_shared by this leaf's last factor
         integrals_shared = (
             leave_one_out_shared * lf_last[:, None, :]   # (m, n-1, n_quad)
-        ) @ QUAD_WEIGHTS                                              # (m, n-1)
+        ) @ c_quad_weights                                              # (m, n-1)
         phi_shared = alpha_e_shared * scale * integrals_shared        # (m, n-1)
 
         # Last depth: suffix is 1, so integrand = prefix[:, n-1, :]
@@ -654,8 +669,8 @@ def linear_tree_shap_v6_for_neighbors(
 
         return np.concatenate([phi_shared, phi_last[:, None]], axis=1)  # (m, n)
 
-    phi_left  = _phi_leaf(satisfies[:, n - 1],          w_e[n - 1],    w1, w_prod_left)
-    phi_right = _phi_leaf(DTYPE(1.0) - satisfies[:, n - 1], w_e_right_last, w2, w_prod_right)
+    phi_left  = _phi_leaf(satisfies[:, n - 1],          w_e[n - 1],    w1, w_prod_left, quad_nodes, quad_weights)
+    phi_right = _phi_leaf(DTYPE(1.0) - satisfies[:, n - 1], w_e_right_last, w2, w_prod_right, quad_nodes, quad_weights)
     return phi_left + phi_right
 
 

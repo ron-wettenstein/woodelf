@@ -1,10 +1,12 @@
+import math
+
 import numpy as np
 import pytest
 
 from woodelf.lts_polynomial_multiplication import compute_P, bits_matrix, continue_P_compute, improved_linear_tree_shap_magic, linear_tree_shap_magic_blocked, \
     linear_tree_shap_magic, linear_tree_shap_magic_for_banzhaf, linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward_for_neighbors, \
     improved_linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward, linear_tree_shap_v6
-from woodelf.lts_vectorized import shapley_values_f_w, banzhaf_values_f_w
+from woodelf.lts_vectorized import shapley_values_f_w, banzhaf_values_f_w, LinearTreeShapV6PathToMatrices
 
 
 def test_continue_P_compute():
@@ -188,6 +190,9 @@ def test_linear_tree_shap_magic_longer_high_depth_v6(D):
     rng = np.random.default_rng(42)
     leaf_weight = 5
     consumer_size = 6 # Test many consumers while this is still fast
+
+    p2m = LinearTreeShapV6PathToMatrices(is_shapley=True, is_banzhaf=False, max_depth=D)
+    required_n_quads = min(max(int(math.ceil(D / 2)), 2), 16)
     # This tends to be numerically unstable when there are many close to 1 ratios
     for low, high in [(1, 10000), (5000, 10000), (9000, 10000), (9990, 10000), (1, 5000), (1, 10)]:
         for i in range(10):
@@ -195,7 +200,10 @@ def test_linear_tree_shap_magic_longer_high_depth_v6(D):
             r = rng.integers(low=low, high=high, size=D) / 10000
             p = np.concat([rng.integers(low=0, high=(2 ** D) - 1, size=consumer_size), np.array([(2 ** D) - 1])])
 
-            shap_matrix = linear_tree_shap_v6(r=r, p=p, leaf_value=leaf_weight)
+            shap_matrix = linear_tree_shap_v6(
+                r=r, p=p, leaf_value=leaf_weight,
+                quad_nodes=p2m.quad_nodes[required_n_quads], quad_weights=p2m.quad_weights[required_n_quads]
+            )
             all_missing_prediction = np.prod(r)*leaf_weight
 
             # Due to the efficiency property, the sum of all the features shapley values of each pattern must be equal to

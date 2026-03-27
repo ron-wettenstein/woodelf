@@ -1,3 +1,4 @@
+import math
 import time
 from math import factorial
 from typing import List, Any, Dict, Optional
@@ -214,13 +215,29 @@ class LinearTreeShapPathToMatricesImproved(LinearTreeShapPathToMatricesSimpleNei
 
 class LinearTreeShapV6PathToMatrices(LinearTreeShapPathToMatrices):
 
+    def __init__(self, is_shapley: bool, is_banzhaf: bool, max_depth: int, GPU: bool = False):
+        super().__init__(is_shapley, is_banzhaf, max_depth, GPU)
+        self.quad_nodes, self.quad_weights = self.compute_quads()
+
+    def compute_quads(self):
+        max_required_quads = min(max(int(math.ceil(self.max_depth / 2)), 2), 16)
+        quad_nodes = {}
+        quad_weights = {}
+        for n_quad in range(2, max_required_quads + 1):
+            _nodes, _weights = np.polynomial.legendre.leggauss(n_quad)
+            quad_nodes[n_quad] = np.float64(0.5) * (_nodes.astype(np.float64) + np.float64(1.0))  # (n_quad,)
+            quad_weights[n_quad] = np.float64(0.5) * _weights.astype(np.float64)  # (n_quad,)
+        return quad_nodes, quad_weights
+
     def get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float, w_neighbor: Optional[float] = None):
         start_time = time.time()
         if self.is_shapley:
+            # For D<4 use 2, for D > 32 use 16 for 4<=D<=32 use 0.5*D
+            n_quads = min(max(int(math.ceil(len(covers) / 2)), 2), 16)
             if w_neighbor is None:
-                s_matrix = linear_tree_shap_v6(covers, consumer_patterns, w)
+                s_matrix = linear_tree_shap_v6(covers, consumer_patterns, w, self.quad_nodes[n_quads], self.quad_weights[n_quads])
             else:
-                s_matrix = linear_tree_shap_v6_for_neighbors(covers, consumer_patterns, w, w_neighbor)
+                s_matrix = linear_tree_shap_v6_for_neighbors(covers, consumer_patterns, w, w_neighbor, self.quad_nodes[n_quads], self.quad_weights[n_quads])
         else:
             if w_neighbor is None:
                 s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
@@ -230,7 +247,7 @@ class LinearTreeShapV6PathToMatrices(LinearTreeShapPathToMatrices):
                 consumer_patterns_right = consumer_patterns.copy()
                 consumer_patterns_right[consumer_patterns % 2 == 0] += 1
                 consumer_patterns_right[consumer_patterns % 2 == 1] -= 1
-                s_matrix_right = linear_tree_shap_magic_for_banzhaf(covers_of_right, consumer_patterns_right.astype(np.uint64), w_neighbor)
+                s_matrix_right = linear_tree_shap_magic_for_banzhaf(covers_of_right, consumer_patterns_right.astype(np.int64), w_neighbor)
                 s_matrix = s_matrix_left + s_matrix_right
         self.computation_time += time.time() - start_time
         return s_matrix
