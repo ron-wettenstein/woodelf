@@ -1,4 +1,6 @@
 import os
+
+import joblib
 import pandas as pd
 import numpy as np
 import pytest
@@ -59,7 +61,11 @@ def testset() -> pd.DataFrame:
 
 @pytest.fixture
 def xgb_model() -> xgb.Booster:
-    return load_xgboost("IEEE-CIS_xgboost_model.json")
+    return load_xgboost(os.path.join(RESOURCES_PATH, "IEEE-CIS_xgboost_model.json"))
+
+@pytest.fixture
+def hist_gradient_boosting_model() -> xgb.Booster:
+    return joblib.load(os.path.join(RESOURCES_PATH, "hgb_model.joblib"))
 
 @pytest.fixture
 def xgb_model_depth_16() -> xgb.Booster:
