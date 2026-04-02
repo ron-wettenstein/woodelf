@@ -24,9 +24,6 @@ class PathToMatricesAbstractCls:
         self.max_depth = max_depth
         self.GPU = GPU
 
-    def get_values_matrices(self, features_in_path: List):
-        raise NotImplemented
-
     def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
         raise NotImplemented
 

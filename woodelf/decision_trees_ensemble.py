@@ -106,6 +106,8 @@ class DecisionTreeNode:
         If only_feature_names=False return the path nodes. The path returned are all the nodes from root node till
         the leaf, excluding the leaf itself.
         """
+        if self.is_leaf():
+            return []
         nodes_to_visit = [(self, [])]
         leaves = []
         while len(nodes_to_visit) > 0:

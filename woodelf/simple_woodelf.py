@@ -245,9 +245,11 @@ def calculation_given_preprocessed_tree_ensemble(
 
 def fill_mirror_pairs(values):
     all_keys = list(values.keys())
-    for f1, f2 in all_keys:  # TODO support more the length 2 subsets...
-        assert (f2, f1) not in values
-        values[(f2, f1)] = values[(f1, f2)]
+    for key in all_keys:
+        if len(key) == 2: # TODO support more the length 2 subsets...
+            f1, f2 = key
+            assert (f2, f1) not in values
+            values[(f2, f1)] = values[(f1, f2)]
 
 
 def calculate_background_metric(model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
