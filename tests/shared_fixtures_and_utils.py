@@ -4,6 +4,7 @@ import joblib
 import pandas as pd
 import numpy as np
 import pytest
+from sklearn.ensemble import HistGradientBoostingRegressor
 import xgboost as xgb
 
 # Include many shared fixtures, most of them are related to data creation & loading and model training & loading
@@ -64,7 +65,7 @@ def xgb_model() -> xgb.Booster:
     return load_xgboost(os.path.join(RESOURCES_PATH, "IEEE-CIS_xgboost_model.json"))
 
 @pytest.fixture
-def hist_gradient_boosting_model() -> xgb.Booster:
+def hist_gradient_boosting_model() -> HistGradientBoostingRegressor:
     return joblib.load(os.path.join(RESOURCES_PATH, "hgb_model.joblib"))
 
 @pytest.fixture

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from woodelf.lts_vectorized import get_covers_vector
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.simple_woodelf import get_int_dtype_from_depth
 from woodelf.cube_metric import PDIVOrder1Or2
@@ -151,9 +152,8 @@ def woodelf_pdp_joint(model, data: pd.DataFrame, k: int = 100, accurate: bool = 
     f2_points = {}
     for i, f1 in enumerate(data.columns):
         for j, f2 in enumerate(data.columns):
-            if f1 < f2:
-            # if f1 != f2:
-                pair = (f1, f2) # if f1 < f2 else (f2, f1)
+            if f1 != f2:
+                pair = (f1, f2)
                 pdvs[(f1,f2)] = base_pdv + pdivs.get((f1,), zero_array) + pdivs.get((f2,), zero_array) + pdivs.get(pair, zero_array)
                 points_part_index = first_different_bit(i,j,D)
                 f1_points[(f1,f2)] = points_parts[f1][points_part_index]
@@ -180,16 +180,22 @@ class PDPPathToMatrices: # doesn't inherit PathToMatricesAbstractCls as its API 
         self.GPU = GPU
         self.computation_time = 0
 
-    def get_s_matrix(self, consumer_patterns: np.array, background_patterns: np.array, w: float, D: int):
-        start_time = time.time()
+    def build_f_vector_and_only_positive_literals_values(self, background_patterns: np.array, D: int):
         int_type = get_int_dtype_from_depth(D)
         full = (int_type(1) << int_type(D)) - int_type(1)
         only_positive_literals =  np.mean(background_patterns == full)
-        bm_consumer = bits_matrix(consumer_patterns, D).T
+
         x = background_patterns[D - np.bitwise_count(background_patterns) == 1]
         zero_bit_location = D - 1 - np.log2(full ^ x).astype(np.uint16)
-        # zero_bit_location = np.log2(full ^ x).astype(np.uint16)
         f = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
+
+        return f, only_positive_literals
+
+
+    def get_s_matrix(self, consumer_patterns: np.array, background_patterns: np.array, w: float, D: int):
+        start_time = time.time()
+        bm_consumer = bits_matrix(consumer_patterns, D).T
+        f, only_positive_literals = self.build_f_vector_and_only_positive_literals_values(background_patterns, D)
         s_matrix = bm_consumer * f
         if only_positive_literals != 0:
             s_matrix[bm_consumer == 0] = -1 * only_positive_literals
@@ -201,6 +207,21 @@ class PDPPathToMatrices: # doesn't inherit PathToMatricesAbstractCls as its API 
         print(f"PDPPathToMatrices took {round(self.computation_time, 2)}")
 
 
+class EstimatedPDPPathToMatrices(PDPPathToMatrices):
+
+    def build_f_vector_and_only_positive_literals_values(self, background_patterns: np.array, D: int):
+        # background_patterns are actually cover values now...
+        covers = background_patterns
+        only_positive_literals = np.prod(covers)
+
+        f_list = []
+        for i in range(D):
+            current_covers = covers.copy()
+            current_covers[i] = 1 - covers[i]
+            f_list.append(np.prod(current_covers))
+
+        return np.array(f_list), only_positive_literals
+
 def get_unique_features_in_path(path: List[DecisionTreeNode]):
     unique_features_in_path = []
     for n in path:
@@ -210,26 +231,39 @@ def get_unique_features_in_path(path: List[DecisionTreeNode]):
 
 
 def fast_pdp_for_a_single_tree(
-    tree: DecisionTreeNode, consumer_data: pd.DataFrame, background_data: pd.DataFrame, values: Dict, p2m: PDPPathToMatrices, GPU: bool
+    tree: DecisionTreeNode, consumer_data: pd.DataFrame, background_data: pd.DataFrame, values: Dict, p2m: PDPPathToMatrices, GPU: bool, accurate: bool = True
 ):
     leaf_index_to_unique_features_in_path = {}
     leaf_index_to_weight = {}
+    leaf_index_to_covers = {}
     for leaf, path in tree.get_all_leaves_with_paths(only_feature_names=False):
         unique_features_in_path = get_unique_features_in_path(path)
         leaf_index_to_unique_features_in_path[leaf.index] = unique_features_in_path
         leaf_index_to_weight[leaf.index] = leaf.value
+        if not accurate:
+            leaf_index_to_covers[leaf.index] = np.array(get_covers_vector(path + [leaf], unique_features_in_path))
 
-    background_patterns_generator = decision_patterns_generator(tree, background_data, GPU, ignore_neighbor_leaf=False)
+    background_patterns_generator = None
+    if accurate:
+        background_patterns_generator = decision_patterns_generator(tree, background_data, GPU, ignore_neighbor_leaf=False)
     for leaf, consumer_patterns in decision_patterns_generator(tree, consumer_data, GPU, ignore_neighbor_leaf=False):
-        leaf_b, background_patterns = next(background_patterns_generator)
-        assert leaf_b.index == leaf.index
+        if accurate:
+            leaf_b, background_patterns = next(background_patterns_generator)
+            assert leaf_b.index == leaf.index
 
-        s_matrix = p2m.get_s_matrix(
-            consumer_patterns=consumer_patterns,
-            background_patterns=background_patterns,
-            w=leaf_index_to_weight[leaf.index],
-            D=len(leaf_index_to_unique_features_in_path[leaf.index])
-        )
+            s_matrix = p2m.get_s_matrix(
+                consumer_patterns=consumer_patterns,
+                background_patterns=background_patterns,
+                w=leaf_index_to_weight[leaf.index],
+                D=len(leaf_index_to_unique_features_in_path[leaf.index])
+            )
+        else:
+            s_matrix = p2m.get_s_matrix(
+                consumer_patterns=consumer_patterns,
+                background_patterns=leaf_index_to_covers[leaf.index],
+                w=leaf_index_to_weight[leaf.index],
+                D=len(leaf_index_to_unique_features_in_path[leaf.index])
+            )
         s_matrix = s_matrix.astype(np.float32)
 
         for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
@@ -239,7 +273,10 @@ def fast_pdp_for_a_single_tree(
                 values[feature] += s_matrix[:, index]
 
 
-def woodelf_fast_pdp(model, consumer_data: pd.DataFrame, background_data: pd.DataFrame, GPU: bool = False, model_was_loaded: bool = False, centered: bool = True):
+def woodelf_fast_pdp(
+        model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
+        GPU: bool = False, model_was_loaded: bool = False, centered: bool = True, accurate: bool = True
+):
     avg_prediction = 0
     if not model_was_loaded:
         avg_prediction = float(model.predict(background_data).mean())
@@ -248,10 +285,13 @@ def woodelf_fast_pdp(model, consumer_data: pd.DataFrame, background_data: pd.Dat
         if not centered:
             raise NotImplemented("Don't support centered=False on a loaded model")
 
-    p2m = PDPPathToMatrices(model.max_depth, GPU)
+    if accurate:
+        p2m = PDPPathToMatrices(model.max_depth, GPU)
+    else:
+        p2m = EstimatedPDPPathToMatrices(model.max_depth, GPU)
     pdvs = {}
     for tree in tqdm(model.trees, desc="Preprocessing the trees and computing PDP"):
-        fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2m, GPU)
+        fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2m, GPU, accurate=accurate)
     p2m.present_statistics()
     if centered:
         return pdvs
@@ -260,10 +300,11 @@ def woodelf_fast_pdp(model, consumer_data: pd.DataFrame, background_data: pd.Dat
         pdvs[f] += avg_prediction
     return pdvs
 
-def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, centered: bool = True,
+def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, centered: bool = True, accurate: bool = True,
                 percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False):
     """
     Compute all the PDVs needed in order to plot the PDP values of all the features. Use WOODELF!
+    when accurate is False estimate the PDP using the Path-Dependent approach
     """
     points_df = build_points_for_pdp(model, data, k, percentiles, sampled, seed, full_pdp)
-    return woodelf_fast_pdp(model, points_df, data, GPU, model_was_loaded=False, centered=centered), points_df
+    return woodelf_fast_pdp(model, points_df, data, GPU, model_was_loaded=False, centered=centered, accurate=accurate), points_df
