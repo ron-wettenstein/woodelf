@@ -169,8 +169,9 @@ def bits_matrix(x: np.ndarray, k: int) -> np.ndarray:
     returns: shape (k, n), rows are bits (k-1),...,1,0 (2^(k-1) down to LSB)
     """
     # ensure x is unsigned (np.uint) for fast bit ops
-    shifts = np.arange(k-1, -1, -1, dtype=np.uint64)[:, None]  # (5,1): 4,3,2,1,0
+    shifts = np.arange(k-1, -1, -1, dtype=np.uint8)[:, None]  # (5,1): 4,3,2,1,0
     return ((x[None, :] >> shifts) & 1).astype(np.uint8)
+
 
 
 class PDPPathToMatrices: # doesn't inherit PathToMatricesAbstractCls as its API is different
@@ -179,23 +180,39 @@ class PDPPathToMatrices: # doesn't inherit PathToMatricesAbstractCls as its API 
         self.max_depth = max_depth
         self.GPU = GPU
         self.computation_time = 0
+        self.compute_f_time = 0
 
     def build_f_vector_and_only_positive_literals_values(self, background_patterns: np.array, D: int):
+        x = background_patterns[np.bitwise_count(background_patterns) >= D - 1]
+
         int_type = get_int_dtype_from_depth(D)
-        full = (int_type(1) << int_type(D)) - int_type(1)
-        only_positive_literals =  np.mean(background_patterns == full)
+        full = int_type(2 ** D - 1)
+        orig_x_len = len(x)
+        x = x[x != full]
+        only_positive_literals =  (orig_x_len - len(x)) / len(background_patterns)
 
-        x = background_patterns[D - np.bitwise_count(background_patterns) == 1]
-        zero_bit_location = D - 1 - np.log2(full ^ x).astype(np.uint16)
+        zero_bit_location = np.bitwise_count(x + 1) - 1 # which is equivalent to: D - 1 - np.log2(full ^ x).astype(np.uint16)
         f = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
-
         return f, only_positive_literals
+
+        # Clearer but less optimized code:
+        # int_type = get_int_dtype_from_depth(D)
+        # full = int_type(2 ** D - 1)
+        # only_positive_literals =  np.sum(background_patterns == full) / len(background_patterns)
+        #
+        # x = background_patterns[D - np.bitwise_count(background_patterns) == 1]
+        # zero_bit_location = np.bitwise_count(x + 1) - 1 # which is equivalent to: D - 1 - np.log2(full ^ x).astype(np.uint16)
+        # f = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
+        #
+        # return f, only_positive_literals
 
 
     def get_s_matrix(self, consumer_patterns: np.array, background_patterns: np.array, w: float, D: int):
         start_time = time.time()
         bm_consumer = bits_matrix(consumer_patterns, D).T
+        f_start_time = time.time()
         f, only_positive_literals = self.build_f_vector_and_only_positive_literals_values(background_patterns, D)
+        self.compute_f_time += time.time() - f_start_time
         s_matrix = bm_consumer * f
         if only_positive_literals != 0:
             s_matrix[bm_consumer == 0] = -1 * only_positive_literals
@@ -204,7 +221,7 @@ class PDPPathToMatrices: # doesn't inherit PathToMatricesAbstractCls as its API 
         return s_matrix
 
     def present_statistics(self):
-        print(f"PDPPathToMatrices took {round(self.computation_time, 2)}")
+        print(f"PDPPathToMatrices took {round(self.computation_time, 2)}, computing f took {round(self.compute_f_time, 2)}")
 
 
 class EstimatedPDPPathToMatrices(PDPPathToMatrices):
