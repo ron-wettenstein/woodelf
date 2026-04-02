@@ -9,7 +9,7 @@ from tqdm import tqdm
 from woodelf.lts_vectorized import get_covers_vector
 from woodelf.parse_models import load_decision_tree_ensemble_model
 from woodelf.simple_woodelf import get_int_dtype_from_depth
-from woodelf.cube_metric import PDIVOrder1Or2
+from woodelf.cube_metric import PDIVOrder1Or2, CPDVMetric
 from woodelf.decision_patterns import decision_patterns_generator
 from woodelf.decision_trees_ensemble import DecisionTreeNode
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
@@ -292,24 +292,32 @@ def fast_pdp_for_a_single_tree(
 
 def woodelf_fast_pdp(
         model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
-        GPU: bool = False, model_was_loaded: bool = False, centered: bool = True, accurate: bool = True
+        GPU: bool = False, model_was_loaded: bool = False, centered: bool = True, accurate: bool = True, use_woodelfhd: bool = False
 ):
     avg_prediction = 0
     if not model_was_loaded:
         avg_prediction = float(model.predict(background_data).mean())
-        model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+        model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     else:
+        model_obj = model
         if not centered:
             raise NotImplemented("Don't support centered=False on a loaded model")
 
-    if accurate:
-        p2m = PDPPathToMatrices(model.max_depth, GPU)
+    if use_woodelfhd:
+        pdvs = woodelf_for_high_depth(
+            model, consumer_data=consumer_data, background_data=background_data if accurate else None,
+            metric=CPDVMetric(), GPU=GPU, use_neighbor_leaf_trick=True, global_importance=False
+        )
     else:
-        p2m = EstimatedPDPPathToMatrices(model.max_depth, GPU)
-    pdvs = {}
-    for tree in tqdm(model.trees, desc="Preprocessing the trees and computing PDP"):
-        fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2m, GPU, accurate=accurate)
-    p2m.present_statistics()
+        if accurate:
+            p2m = PDPPathToMatrices(model_obj.max_depth, GPU)
+        else:
+            p2m = EstimatedPDPPathToMatrices(model_obj.max_depth, GPU)
+        pdvs = {}
+        for tree in tqdm(model_obj.trees, desc="Preprocessing the trees and computing PDP"):
+            fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2m, GPU, accurate=accurate)
+        p2m.present_statistics()
+
     if centered:
         return pdvs
 
@@ -318,10 +326,16 @@ def woodelf_fast_pdp(
     return pdvs
 
 def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, centered: bool = True, accurate: bool = True,
-                percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False):
+                percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False,
+                use_woodelfhd: bool = False):
     """
     Compute all the PDVs needed in order to plot the PDP values of all the features. Use WOODELF!
     when accurate is False estimate the PDP using the Path-Dependent approach
     """
+    # Defaults should be:
+    # When accurate=False always have use_woodelfhd=False
+    # When accurate=False: if D <= 6 have use_woodelfhd=False else have use_woodelfhd=True
     points_df = build_points_for_pdp(model, data, k, percentiles, sampled, seed, full_pdp)
-    return woodelf_fast_pdp(model, points_df, data, GPU, model_was_loaded=False, centered=centered, accurate=accurate), points_df
+    return woodelf_fast_pdp(
+        model, points_df, data, GPU, model_was_loaded=False, centered=centered, accurate=accurate, use_woodelfhd=use_woodelfhd
+    ), points_df
