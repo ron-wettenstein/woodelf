@@ -48,7 +48,7 @@ def test_woodelf_pdp_estimation_vs_sklearn(trainset, hist_gradient_boosting_mode
 
 def test_pdp_iv_vs_naive_algorithm(trainset, hist_gradient_boosting_model):
     estimated_pdp_woodelf, f1_points, f2_points = woodelf_pdp_joint(
-        hist_gradient_boosting_model, data=trainset, k=5, accurate=True, centered=False, GPU=False, seed=42
+        hist_gradient_boosting_model, data=trainset, k=5, accurate=True, GPU=False, seed=42
     )
 
     pairs_indexes_10 = [(98, 2),

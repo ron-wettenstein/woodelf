@@ -121,8 +121,8 @@ def clip_result(pdvs, features, k):
     return clipped
 
 
-def woodelf_pdp_joint(model, data: pd.DataFrame, k: int = 100, accurate: bool = True, centered: bool = True, GPU: bool = False,
-                percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False, verbose: bool = True):
+def woodelf_pdp_joint(model, data: pd.DataFrame, k: int = 100, accurate: bool = True, GPU: bool = False,
+                      percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False, verbose: bool = True):
     """
     Compute all the PDVs needed in order to plot the PDP values of all the features. Use WOODELF!
     """
