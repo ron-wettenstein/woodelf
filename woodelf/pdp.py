@@ -339,3 +339,90 @@ def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, cent
     return woodelf_fast_pdp(
         model, points_df, data, GPU, model_was_loaded=False, centered=centered, accurate=accurate, use_woodelfhd=use_woodelfhd
     ), points_df
+
+
+# def features_dict_to_df(feature_to_values: dict, all_features, orig_df: pd.DataFrame) -> pd.DataFrame:
+#     """
+#     Build a DataFrame from a dict: feature -> 1D numpy array.
+#     """
+#     if not feature_to_values:
+#         n_rows = 0
+#     else:
+#         n_rows = max(len(v) for v in feature_to_values.values())
+#
+#     data = {}
+#
+#     for feature in all_features:
+#         arr = feature_to_values.get(feature, None)
+#
+#         # Get padding value (first value in original dataset)
+#         pad_value = orig_df[feature].iloc[0]
+#         dtype = orig_df[feature].dtype
+#
+#         if arr is None:
+#             # Fully padded column
+#             data[feature] = np.full(n_rows, pad_value, dtype=dtype)
+#             continue
+#
+#         arr = np.asarray(arr)
+#
+#         if arr.ndim != 1:
+#             raise ValueError(f"{feature} must be 1D")
+#
+#         if len(arr) == n_rows:
+#             # Already full
+#             if arr.dtype != dtype:
+#                 arr = arr.astype(dtype, copy=False)
+#             data[feature] = arr
+#             continue
+#
+#         # Pad
+#         padded = np.empty(n_rows, dtype=dtype)
+#         padded[:len(arr)] = arr
+#         padded[len(arr):] = pad_value
+#
+#         data[feature] = padded
+#
+#     return pd.DataFrame(data)
+#
+
+# def partial_dependence(
+#     estimator,
+#     X,
+#     features,
+#     *,
+#     sample_weight=None,
+#     categorical_features=None,
+#     feature_names=None,
+#     response_method="auto",
+#     percentiles=(0.05, 0.95),
+#     grid_resolution=100,
+#     custom_values=None,
+#     method="auto",
+#     kind="average",
+#     GPU: bool = False,
+#     centered: bool = False
+# ):
+#     assert kind == "average"
+#     assert method in ["auto", 'recursive']
+#     assert response_method in ["auto", "decision_function"], "Woodelf does not support response_method=predict_proba"
+#     assert categorical_features is None, "We do not support categorical features. Hope to include it in the future"
+#
+#     if not isinstance(X, pd.DataFrame):
+#         if feature_names is not None:
+#             X_df = pd.DataFrame(X, columns=feature_names)
+#         else:
+#             raise ValueError("X must be a DataFrame. If it is a numpy array its feature_names must be provided so we can internally build it as a DataFrame.")
+#     else:
+#         X_df = X
+#
+#     if custom_values is None:
+#         points_df = build_points_for_pdp(estimator, X, grid_resolution, percentiles)
+#         grid_values = {points_df[f].values for f in features}
+#     else:
+#         points_df = features_dict_to_df(custom_values, list(X_df.columns), orig_df=X_df)
+#         grid_values = custom_values
+#
+#     return woodelf_fast_pdp(
+#         estimator, points_df, X_df, GPU, model_was_loaded=False, centered=centered, accurate=method != 'recursive'
+#     ), grid_values
