@@ -261,7 +261,7 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         return matrices
 
     def _build_matrices(self):
-        for depth in range(1, self.max_depth+1):
+        for depth in range(0, self.max_depth+1):
             dl = self.map_patterns_to_cube(list(range(depth)))
             matrices = self.build_patterns_to_values_sparse_matrix(dl, self.metric, path_length=depth)
             self.matrices_frs_subsets[depth] = list(matrices.keys())

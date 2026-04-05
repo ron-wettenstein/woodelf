@@ -2,6 +2,7 @@ import time
 
 import pandas as pd
 import shap
+from numpy.ma.core import max_val
 from sklearn.datasets import make_classification
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, \
     ExtraTreesRegressor, ExtraTreesClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier, \
@@ -9,7 +10,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegr
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
-from woodelf.decision_trees_ensemble import DecisionTreeNode
+from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import (
     compute_path_dependent_f, woodelf_for_high_depth, compute_f
 )
@@ -256,6 +257,19 @@ def test_global_importance_flag(trainset, testset, xgb_model):
     )
     for feature in values:
         assert abs(np.mean(values[feature]) - global_values[feature]) < TOLERANCE
+
+def test_single_leaf_tree(trainset, testset):
+
+    leaf = DecisionTreeNode(feature_name=None, value=5, right=None, left=None, index=0, cover=1)
+    leaf.depth = 1
+    leaf.parent = None
+    single_leaf_tree = DecisionTreesEnsemble(trees=[leaf])
+
+    values = woodelf_for_high_depth(
+        single_leaf_tree, testset, background_data=trainset, metric=ShapleyValues(), model_was_loaded=True
+    )
+    for feature in values:
+        assert np.sum(np.abs(values[feature])) == 0
 
 
 @pytest.mark.parametrize("model_type, params", [
