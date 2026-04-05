@@ -107,7 +107,7 @@ class DecisionTreeNode:
         the leaf, excluding the leaf itself.
         """
         if self.is_leaf():
-            return []
+            return [(self, [])]
         nodes_to_visit = [(self, [])]
         leaves = []
         while len(nodes_to_visit) > 0:

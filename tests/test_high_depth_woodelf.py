@@ -271,6 +271,12 @@ def test_single_leaf_tree(trainset, testset):
     for feature in values:
         assert np.sum(np.abs(values[feature])) == 0
 
+    pd_values = woodelf_for_high_depth(
+        single_leaf_tree, testset, background_data=None, metric=ShapleyValues(), model_was_loaded=True
+    )
+    for feature in pd_values:
+        assert np.sum(np.abs(values[feature])) == 0
+
 
 @pytest.mark.parametrize("model_type, params", [
     (HistGradientBoostingRegressor, dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42)),
