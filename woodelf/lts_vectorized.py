@@ -80,6 +80,10 @@ def get_unique_features_in_path(path: List[DecisionTreeNode]):
 
 
 def get_covers_vector(path: List[DecisionTreeNode], unique_features_in_path: List[Any]):
+    if len(unique_features_in_path) == 0:
+        # If the leaf is the tree's root, it has cover of 1.
+        return [1]
+
     feature_index = {f: i for i, f in enumerate(unique_features_in_path)}
 
     proceed_covers = [1] * len(unique_features_in_path)
