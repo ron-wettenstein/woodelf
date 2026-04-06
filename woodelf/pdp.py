@@ -121,48 +121,6 @@ def clip_result(pdvs, features, k):
     return clipped
 
 
-def woodelf_pdp_joint(model, data: pd.DataFrame, k: int = 100, accurate: bool = True, GPU: bool = False,
-                      percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False, verbose: bool = True):
-    """
-    Compute all the PDVs needed in order to plot the PDP values of all the features. Use WOODELF!
-    """
-    start_time = time.time()
-    original_points_df = build_points_for_pdp(model, data, k, percentiles, sampled, seed, full_pdp)
-    if full_pdp:
-        k = len(original_points_df)
-
-    points_df = build_points_for_joint_pdp(original_points_df)
-    if verbose:
-        print(f"Building the points took: {time.time() - start_time} sec. The size of the created df {len(points_df)}")
-
-    metric = PDIVOrder1Or2()
-
-    pdivs = woodelf_for_high_depth(
-        model, consumer_data=points_df, background_data=data if accurate else None,
-        metric=metric, GPU=GPU, model_was_loaded = False
-    )
-    avg_prediction = float(model.predict(data).mean())
-    base_pdv = np.array([avg_prediction] * len(points_df))
-    zero_array = np.array([0] * len(points_df))
-    pdvs = {}
-
-    D = math.ceil(math.log2(len(points_df.columns)))
-    points_parts = {f: [points_df[f].values[i:i + k**2] for i in range(0, len(points_df[f]), k**2)] for f in data.columns}
-    f1_points = {}
-    f2_points = {}
-    for i, f1 in enumerate(data.columns):
-        for j, f2 in enumerate(data.columns):
-            if f1 != f2:
-                pair = (f1, f2)
-                pdvs[(f1,f2)] = base_pdv + pdivs.get((f1,), zero_array) + pdivs.get((f2,), zero_array) + pdivs.get(pair, zero_array)
-                points_part_index = first_different_bit(i,j,D)
-                f1_points[(f1,f2)] = points_parts[f1][points_part_index]
-                f2_points[(f1,f2)] = points_parts[f2][points_part_index]
-    clipped_pdvs = clip_result(pdvs, list(data.columns), k)
-    return clipped_pdvs, f1_points, f2_points
-
-
-
 def bits_matrix(x: np.ndarray, k: int) -> np.ndarray:
     """
     x: shape (n,), integers
@@ -173,14 +131,21 @@ def bits_matrix(x: np.ndarray, k: int) -> np.ndarray:
     return ((x[None, :] >> shifts) & 1).astype(np.uint8)
 
 
-
-class PDPPathToMatrices: # doesn't inherit PathToMatricesAbstractCls as its API is different
+class PDPPathToMatricesAbs:
 
     def __init__(self, max_depth: int, GPU: bool = False):
         self.max_depth = max_depth
         self.GPU = GPU
         self.computation_time = 0
         self.compute_f_time = 0
+
+    def get_s_matrix(self, consumer_patterns: np.array, background_patterns: np.array, w: float, D: int):
+        raise NotImplemented()
+
+    def present_statistics(self):
+        print(f"{self.__class__.__name__} took {round(self.computation_time, 2)}, computing f took {round(self.compute_f_time, 2)}")
+
+class PDPPathToMatrices(PDPPathToMatricesAbs): # doesn't inherit PathToMatricesAbstractCls as its API is different
 
     def build_f_vector_and_only_positive_literals_values(self, background_patterns: np.array, D: int):
         x = background_patterns[np.bitwise_count(background_patterns) >= D - 1]
@@ -220,10 +185,6 @@ class PDPPathToMatrices: # doesn't inherit PathToMatricesAbstractCls as its API 
         self.computation_time += time.time() - start_time
         return s_matrix
 
-    def present_statistics(self):
-        print(f"PDPPathToMatrices took {round(self.computation_time, 2)}, computing f took {round(self.compute_f_time, 2)}")
-
-
 class EstimatedPDPPathToMatrices(PDPPathToMatrices):
 
     def build_f_vector_and_only_positive_literals_values(self, background_patterns: np.array, D: int):
@@ -239,6 +200,66 @@ class EstimatedPDPPathToMatrices(PDPPathToMatrices):
 
         return np.array(f_list), only_positive_literals
 
+
+class PDPIVPathToMatrices(PDPPathToMatricesAbs): # doesn't inherit PathToMatricesAbstractCls as its API is different
+
+    def get_needed_b_vectors(self, background_patterns: np.array, D: int):
+        x_up_to_2_zero_bits = background_patterns[np.bitwise_count(background_patterns) >= D - 2]
+
+        x_up_to_1_zero_bit = x_up_to_2_zero_bits[np.bitwise_count(x_up_to_2_zero_bits) >= D - 1]
+
+        int_type = get_int_dtype_from_depth(D)
+        full = int_type(2 ** D - 1)
+        orig_x_len = len(x_up_to_1_zero_bit)
+        x_exactly_1_zero_bit = x_up_to_1_zero_bit[x_up_to_1_zero_bit != full]
+        only_positive_literals =  (orig_x_len - len(x_exactly_1_zero_bit)) / len(background_patterns)
+
+        zero_bit_location = np.bitwise_count(x_exactly_1_zero_bit + 1) - 1 # which is equivalent to: D - 1 - np.log2(full ^ x).astype(np.uint16)
+        f_1_zero_bit = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
+
+        i_idx, j_idx = np.triu_indices(D, k=1)
+        b_v_1 = f_1_zero_bit[j_idx]
+        b_v_2 = f_1_zero_bit[i_idx]
+
+        x_exactly_2_zero_bit = x_up_to_2_zero_bits[np.bitwise_count(x_up_to_2_zero_bits) == D - 2]
+
+        # bits_matrix row 0 is bit D-1, row D-1 is bit 0
+        bitpos_i = D - 1 - i_idx
+        bitpos_j = D - 1 - j_idx
+
+        full = (1 << D) - 1
+        wanted_patterns = full ^ ((1 << bitpos_i) | (1 << bitpos_j))
+
+        bg_unique, bg_counts = np.unique(x_exactly_2_zero_bit, return_counts=True)
+        bg_feq = bg_counts / len(background_patterns)
+        pos = np.searchsorted(bg_unique, wanted_patterns)
+        safe_pos = np.clip(pos, 0, len(bg_unique) - 1)
+
+        if len(bg_unique) == 0:
+            b_v_3 = np.zeros(len(wanted_patterns), dtype=float)
+        else:
+            b_v_3 = np.where(
+                (pos < len(bg_unique)) & (bg_unique[safe_pos] == wanted_patterns),
+                bg_feq[safe_pos],
+                0
+            )
+
+        return only_positive_literals, b_v_1, b_v_2, b_v_3
+
+
+    def get_s_matrix(self, consumer_patterns: np.array, background_patterns: np.array, w: float, D: int):
+        start_time = time.time()
+        bm_consumer = bits_matrix(consumer_patterns, D).T
+        i_idx, j_idx = np.triu_indices(D, k=1)
+        c_v = 2 * bm_consumer[:,i_idx] + bm_consumer[:,j_idx]
+        f_start_time = time.time()
+        only_positive_literals, b_v_1, b_v_2, b_v_3 = self.get_needed_b_vectors(background_patterns, D)
+        self.compute_f_time += time.time() - f_start_time
+        s_matrix = only_positive_literals * (c_v == 0) - b_v_1 * (c_v == 1) - b_v_2 * (c_v == 2) + b_v_3 * (c_v == 3)
+        s_matrix = w * s_matrix
+        self.computation_time += time.time() - start_time
+        return s_matrix
+
 def get_unique_features_in_path(path: List[DecisionTreeNode]):
     unique_features_in_path = []
     for n in path:
@@ -247,8 +268,16 @@ def get_unique_features_in_path(path: List[DecisionTreeNode]):
     return unique_features_in_path
 
 
+def triu_pair_to_index(i: int, j: int, D: int) -> int:
+    if i == j:
+        raise ValueError("Diagonal pair has no index in triu_indices(D, k=1)")
+    if i > j:
+        i, j = j, i
+    return i * (2 * D - i - 1) // 2 + (j - i - 1)
+
 def fast_pdp_for_a_single_tree(
-    tree: DecisionTreeNode, consumer_data: pd.DataFrame, background_data: pd.DataFrame, values: Dict, p2m: PDPPathToMatrices, GPU: bool, accurate: bool = True
+    tree: DecisionTreeNode, consumer_data: pd.DataFrame, background_data: pd.DataFrame, values: Dict, p2m: PDPPathToMatricesAbs, GPU: bool,
+    accurate: bool = True, interaction_values: bool = False
 ):
     leaf_index_to_unique_features_in_path = {}
     leaf_index_to_weight = {}
@@ -283,11 +312,24 @@ def fast_pdp_for_a_single_tree(
             )
         s_matrix = s_matrix.astype(np.float32)
 
-        for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
-            if feature not in values:
-                values[feature] = s_matrix[:, index]
-            else:
-                values[feature] += s_matrix[:, index]
+
+        if not interaction_values:
+            for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
+                if feature not in values:
+                    values[feature] = s_matrix[:, index]
+                else:
+                    values[feature] += s_matrix[:, index]
+        else:
+            d = len(leaf_index_to_unique_features_in_path[leaf.index])
+            for index1, feature1 in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
+                for index2, feature2 in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
+                    if index1 == index2:
+                        continue
+                    idx = triu_pair_to_index(index1, index2, d)
+                    if (feature1, feature2) not in values:
+                        values[(feature1, feature2)] = s_matrix[:, idx]
+                    else:
+                        values[(feature1, feature2)] += s_matrix[:, idx]
 
 
 def woodelf_fast_pdp(
@@ -325,6 +367,24 @@ def woodelf_fast_pdp(
         pdvs[f] += avg_prediction
     return pdvs
 
+def woodelf_fast_pdp_iv(
+        model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
+        GPU: bool = False,
+):
+    p2m = PDPPathToMatrices(model.max_depth, GPU)
+    p2m_iv = PDPIVPathToMatrices(model.max_depth, GPU)
+    pdvs = {}
+    pdivs = {}
+    for tree in tqdm(model.trees, desc="Preprocessing the trees and computing PDP"):
+        fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2m, GPU, accurate=True)
+        fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdivs, p2m_iv, GPU, accurate=True, interaction_values=True)
+    p2m.present_statistics()
+    p2m_iv.present_statistics()
+
+    for feature in pdvs:
+        pdivs[(feature,)] = pdvs[feature]
+    return pdivs
+
 def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, centered: bool = True, accurate: bool = True,
                 percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False,
                 use_woodelfhd: bool = False):
@@ -339,6 +399,49 @@ def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, cent
     return woodelf_fast_pdp(
         model, points_df, data, GPU, model_was_loaded=False, centered=centered, accurate=accurate, use_woodelfhd=use_woodelfhd
     ), points_df
+
+def woodelf_pdp_joint(model, data: pd.DataFrame, k: int = 100, accurate: bool = True, GPU: bool = False, use_woodelfhd: bool = False,
+                      percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False, verbose: bool = True):
+    """
+    Compute all the PDVs needed in order to plot the PDP values of all the features. Use WOODELF!
+    """
+    start_time = time.time()
+    original_points_df = build_points_for_pdp(model, data, k, percentiles, sampled, seed, full_pdp)
+    if full_pdp:
+        k = len(original_points_df)
+
+    points_df = build_points_for_joint_pdp(original_points_df)
+    if verbose:
+        print(f"Building the points took: {time.time() - start_time} sec. The size of the created df {len(points_df)}")
+
+    if not use_woodelfhd and accurate:
+        model_obj = load_decision_tree_ensemble_model(model, list(data.columns))
+        pdivs = woodelf_fast_pdp_iv(model_obj, consumer_data=points_df, background_data=data, GPU=GPU)
+    else:
+        metric = PDIVOrder1Or2()
+        pdivs = woodelf_for_high_depth(
+            model, consumer_data=points_df, background_data=data if accurate else None,
+            metric=metric, GPU=GPU, model_was_loaded=False
+        )
+    avg_prediction = float(model.predict(data).mean())
+    base_pdv = np.array([avg_prediction] * len(points_df))
+    zero_array = np.array([0] * len(points_df))
+    pdvs = {}
+
+    D = math.ceil(math.log2(len(points_df.columns)))
+    points_parts = {f: [points_df[f].values[i:i + k**2] for i in range(0, len(points_df[f]), k**2)] for f in data.columns}
+    f1_points = {}
+    f2_points = {}
+    for i, f1 in enumerate(data.columns):
+        for j, f2 in enumerate(data.columns):
+            if f1 != f2:
+                pdvs[(f1,f2)] = base_pdv + pdivs.get((f1,), zero_array) + pdivs.get((f2,), zero_array) + pdivs.get((f1, f2), zero_array)
+                points_part_index = first_different_bit(i,j,D)
+                f1_points[(f1,f2)] = points_parts[f1][points_part_index]
+                f2_points[(f1,f2)] = points_parts[f2][points_part_index]
+    clipped_pdvs = clip_result(pdvs, list(data.columns), k)
+    return clipped_pdvs, f1_points, f2_points
+
 
 
 # def features_dict_to_df(feature_to_values: dict, all_features, orig_df: pd.DataFrame) -> pd.DataFrame:

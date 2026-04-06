@@ -10,65 +10,33 @@ TOLERANCE = 0.00001
 
 def test_woodelf_pdp_vs_sklearn(trainset, hist_gradient_boosting_model):
     points_df = build_points_for_pdp(hist_gradient_boosting_model, trainset, k=5)
-    pdp_woodelf_values = woodelf_fast_pdp(
+    pdp_woodelf_fast_values = woodelf_fast_pdp(
         hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset, GPU = False, model_was_loaded = False, centered = False
     )
-
-    for f in trainset.columns:
-        estimated_pdp_result_sklean = sklearn.inspection.partial_dependence(
-            estimator=hist_gradient_boosting_model, X=trainset, features=[f], feature_names=[f],
-            custom_values={f: points_df[f]},
-            method='brute', kind='average'
-        )
-        if f not in pdp_woodelf_values:
-            # pdv should be all the mean prediction, so std should be zero
-            assert np.std(np.abs(estimated_pdp_result_sklean['average'][0])) < TOLERANCE
-        else:
-            assert np.max(np.abs(estimated_pdp_result_sklean['average'][0] - pdp_woodelf_values[f])) < TOLERANCE
-
-
-def test_woodelf_pdp_estimation_vs_sklearn(trainset, hist_gradient_boosting_model):
-    points_df = build_points_for_pdp(hist_gradient_boosting_model, trainset, k=5)
-    pdp_woodelf_values = woodelf_fast_pdp(
-        hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset, GPU=False, model_was_loaded=False, centered=True, accurate=False
-    )
-
-    for f in trainset.columns:
-        estimated_pdp_result_sklean = sklearn.inspection.partial_dependence(
-            estimator=hist_gradient_boosting_model, X=trainset, features=[f], feature_names=[f],
-            custom_values={f: points_df[f]},
-            method='recursion', kind='average'
-        )
-        if f not in pdp_woodelf_values:
-            # pdv should be all the mean prediction, so std should be zero
-            assert np.std(np.abs(estimated_pdp_result_sklean['average'][0])) < TOLERANCE
-        else:
-            assert np.max(np.abs(estimated_pdp_result_sklean['average'][0] - pdp_woodelf_values[f])) < TOLERANCE
-
-
-
-def test_woodelfhd_pdp_vs_sklearn(trainset, hist_gradient_boosting_model):
-    points_df = build_points_for_pdp(hist_gradient_boosting_model, trainset, k=5)
-    pdp_woodelf_values = woodelf_fast_pdp(
+    pdp_woodelfhd_values = woodelf_fast_pdp(
         hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset, GPU=False, model_was_loaded=False, centered=False, use_woodelfhd=True
     )
 
     for f in trainset.columns:
-        estimated_pdp_result_sklean = sklearn.inspection.partial_dependence(
+        pdp_result_sklean = sklearn.inspection.partial_dependence(
             estimator=hist_gradient_boosting_model, X=trainset, features=[f], feature_names=[f],
             custom_values={f: points_df[f]},
             method='brute', kind='average'
         )
-        if f not in pdp_woodelf_values:
+        if f not in pdp_woodelf_fast_values and f not in pdp_woodelfhd_values:
             # pdv should be all the mean prediction, so std should be zero
-            assert np.std(np.abs(estimated_pdp_result_sklean['average'][0])) < TOLERANCE
+            assert np.std(np.abs(pdp_result_sklean['average'][0])) < TOLERANCE
         else:
-            assert np.max(np.abs(estimated_pdp_result_sklean['average'][0] - pdp_woodelf_values[f])) < TOLERANCE
+            assert np.max(np.abs(pdp_result_sklean['average'][0] - pdp_woodelf_fast_values[f])) < TOLERANCE
+            assert np.max(np.abs(pdp_result_sklean['average'][0] - pdp_woodelfhd_values[f])) < TOLERANCE
 
 
-def test_woodelfhd_pdp_estimation_vs_sklearn(trainset, hist_gradient_boosting_model):
+def test_woodelf_pdp_estimation_vs_sklearn(trainset, hist_gradient_boosting_model):
     points_df = build_points_for_pdp(hist_gradient_boosting_model, trainset, k=5)
-    pdp_woodelf_values = woodelf_fast_pdp(
+    pdp_woodelf_fast_values = woodelf_fast_pdp(
+        hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset, GPU=False, model_was_loaded=False, centered=True, accurate=False
+    )
+    pdp_woodelfhd_values = woodelf_fast_pdp(
         hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset,
         GPU=False, model_was_loaded=False, centered=True, accurate=False, use_woodelfhd=True
     )
@@ -79,16 +47,21 @@ def test_woodelfhd_pdp_estimation_vs_sklearn(trainset, hist_gradient_boosting_mo
             custom_values={f: points_df[f]},
             method='recursion', kind='average'
         )
-        if f not in pdp_woodelf_values:
+        if f not in pdp_woodelf_fast_values and f not in pdp_woodelfhd_values:
             # pdv should be all the mean prediction, so std should be zero
             assert np.std(np.abs(estimated_pdp_result_sklean['average'][0])) < TOLERANCE
         else:
-            assert np.max(np.abs(estimated_pdp_result_sklean['average'][0] - pdp_woodelf_values[f])) < TOLERANCE
+            assert np.max(np.abs(estimated_pdp_result_sklean['average'][0] - pdp_woodelf_fast_values[f])) < TOLERANCE
+            assert np.max(np.abs(estimated_pdp_result_sklean['average'][0] - pdp_woodelfhd_values[f])) < TOLERANCE
 
 
 def test_pdp_iv_vs_naive_algorithm(trainset, hist_gradient_boosting_model):
-    estimated_pdp_woodelf, f1_points, f2_points = woodelf_pdp_joint(
+    pdp_iv_woodelf_fast, f1_points, f2_points = woodelf_pdp_joint(
         hist_gradient_boosting_model, data=trainset, k=5, accurate=True, GPU=False, seed=42
+    )
+
+    pdp_iv_woodelfhd, _, _ = woodelf_pdp_joint(
+        hist_gradient_boosting_model, data=trainset, k=5, accurate=True, GPU=False, seed=42, use_woodelfhd=True
     )
 
     pairs_indexes_10 = [(98, 2),
@@ -111,9 +84,12 @@ def test_pdp_iv_vs_naive_algorithm(trainset, hist_gradient_boosting_model):
             current_train[feature_1] = v1
             current_train[feature_2] = v2
             direct_computation = hist_gradient_boosting_model.predict(current_train).mean()
-            if (feature_1, feature_2) in estimated_pdp_woodelf:
-                woodelf_computation = estimated_pdp_woodelf[(feature_1, feature_2)][i]
+            if (feature_1, feature_2) in pdp_iv_woodelf_fast:
+                woodelf_fast_computation = pdp_iv_woodelf_fast[(feature_1, feature_2)][i]
+                woodelfhd_computation = pdp_iv_woodelfhd[(feature_1, feature_2)][i]
             else:
-                woodelf_computation = 0
+                woodelf_fast_computation = 0
+                woodelfhd_computation = 0
 
-            assert abs(direct_computation - woodelf_computation) < TOLERANCE, f"{(feature_1, feature_2)} ({f1, f2}) pdv do not agree: {direct_computation} != {woodelf_computation}  ({v1=}, {v2=})"
+            assert abs(direct_computation - woodelf_fast_computation) < TOLERANCE, f"{(feature_1, feature_2)} ({f1, f2}) pdv do not agree: {direct_computation} != {woodelf_fast_computation}  ({v1=}, {v2=})"
+            assert abs(direct_computation - woodelfhd_computation) < TOLERANCE, f"{(feature_1, feature_2)} ({f1, f2}) pdv do not agree: {direct_computation} != {woodelfhd_computation}  ({v1=}, {v2=})"
