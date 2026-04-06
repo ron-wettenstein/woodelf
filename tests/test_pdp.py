@@ -11,10 +11,12 @@ TOLERANCE = 0.00001
 def test_woodelf_pdp_vs_sklearn(trainset, hist_gradient_boosting_model):
     points_df = build_points_for_pdp(hist_gradient_boosting_model, trainset, k=5)
     pdp_woodelf_fast_values = woodelf_fast_pdp(
-        hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset, GPU = False, model_was_loaded = False, centered = False
+        hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset,
+        GPU=False, model_was_loaded = False, centered = False, use_woodelfhd=False
     )
     pdp_woodelfhd_values = woodelf_fast_pdp(
-        hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset, GPU=False, model_was_loaded=False, centered=False, use_woodelfhd=True
+        hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset,
+        GPU=False, model_was_loaded=False, centered=False, use_woodelfhd=True
     )
 
     for f in trainset.columns:
@@ -34,7 +36,8 @@ def test_woodelf_pdp_vs_sklearn(trainset, hist_gradient_boosting_model):
 def test_woodelf_pdp_estimation_vs_sklearn(trainset, hist_gradient_boosting_model):
     points_df = build_points_for_pdp(hist_gradient_boosting_model, trainset, k=5)
     pdp_woodelf_fast_values = woodelf_fast_pdp(
-        hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset, GPU=False, model_was_loaded=False, centered=True, accurate=False
+        hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset, GPU=False,
+        model_was_loaded=False, centered=True, accurate=False, use_woodelfhd=False
     )
     pdp_woodelfhd_values = woodelf_fast_pdp(
         hist_gradient_boosting_model, consumer_data=points_df, background_data=trainset,
@@ -57,7 +60,7 @@ def test_woodelf_pdp_estimation_vs_sklearn(trainset, hist_gradient_boosting_mode
 
 def test_pdp_iv_vs_naive_algorithm(trainset, hist_gradient_boosting_model):
     pdp_iv_woodelf_fast, f1_points, f2_points = woodelf_pdp_joint(
-        hist_gradient_boosting_model, data=trainset, k=5, accurate=True, GPU=False, seed=42
+        hist_gradient_boosting_model, data=trainset, k=5, accurate=True, GPU=False, seed=42, use_woodelfhd=False
     )
 
     pdp_iv_woodelfhd, _, _ = woodelf_pdp_joint(

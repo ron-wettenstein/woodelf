@@ -1,6 +1,6 @@
 import math
 import time
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -40,13 +40,15 @@ def build_equally_distanced_points_df(data: pd.DataFrame, k: int, percentiles: T
         sample_points_data[f].sort()
     return pd.DataFrame(sample_points_data)[data.columns]
 
-def build_points_for_full_pdp(data: pd.DataFrame, model, as_df: bool=True):
+def build_points_for_full_pdp(data: pd.DataFrame, model, as_df: bool = True, model_was_loaded: bool = False):
     """
     Provide the points that will create a full PDP - a graph the will provide the PDV for every x value.
     Does this by collecting all the threshold values from the model. See Sect. of the paper.
     """
-    # load the model
-    model_objs = load_decision_tree_ensemble_model(model, list(data.columns))
+    if model_was_loaded:
+        model_objs = model
+    else:
+        model_objs = load_decision_tree_ensemble_model(model, list(data.columns))
 
     # collect all the theshold values for each feature
     th_values = {f: [] for f in list(data.columns)}
@@ -70,11 +72,14 @@ def build_points_for_full_pdp(data: pd.DataFrame, model, as_df: bool=True):
     return pd.DataFrame(th_values)
 
 
-def build_points_for_pdp(model, data: pd.DataFrame, k: int = 100, percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False):
+def build_points_for_pdp(
+        model, data: pd.DataFrame, k: int = 100, percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False,
+        seed: int = 42, full_pdp: bool = False, model_was_loaded: bool = False
+):
     if sampled:
         points_df = build_sampled_points_df(data, k, seed)
     elif full_pdp:
-        points_df = build_points_for_full_pdp(data, model)
+        points_df = build_points_for_full_pdp(data, model, model_was_loaded=model_was_loaded)
     else:
         points_df = build_equally_distanced_points_df(data, k, percentiles)
     return points_df
@@ -201,12 +206,13 @@ class EstimatedPDPPathToMatrices(PDPPathToMatrices):
         return np.array(f_list), only_positive_literals
 
 
-class PDPIVPathToMatrices(PDPPathToMatricesAbs): # doesn't inherit PathToMatricesAbstractCls as its API is different
+class PDPIVPathToMatrices(PDPPathToMatricesAbs):
 
     def get_needed_b_vectors(self, background_patterns: np.array, D: int):
         x_up_to_2_zero_bits = background_patterns[np.bitwise_count(background_patterns) >= D - 2]
 
-        x_up_to_1_zero_bit = x_up_to_2_zero_bits[np.bitwise_count(x_up_to_2_zero_bits) >= D - 1]
+        x_bitwise_count = np.bitwise_count(x_up_to_2_zero_bits)
+        x_up_to_1_zero_bit = x_up_to_2_zero_bits[x_bitwise_count >= D - 1]
 
         int_type = get_int_dtype_from_depth(D)
         full = int_type(2 ** D - 1)
@@ -221,29 +227,34 @@ class PDPIVPathToMatrices(PDPPathToMatricesAbs): # doesn't inherit PathToMatrice
         b_v_1 = f_1_zero_bit[j_idx]
         b_v_2 = f_1_zero_bit[i_idx]
 
-        x_exactly_2_zero_bit = x_up_to_2_zero_bits[np.bitwise_count(x_up_to_2_zero_bits) == D - 2]
 
-        # bits_matrix row 0 is bit D-1, row D-1 is bit 0
-        bitpos_i = D - 1 - i_idx
-        bitpos_j = D - 1 - j_idx
+        x_exactly_2_zero_bit = x_up_to_2_zero_bits[x_bitwise_count == D - 2]
+        if len(x_exactly_2_zero_bit) == 0:
+            b_v_3 = np.zeros(len(i_idx), dtype=float)
+            return only_positive_literals, b_v_1, b_v_2, b_v_3
 
-        full = (1 << D) - 1
-        wanted_patterns = full ^ ((1 << bitpos_i) | (1 << bitpos_j))
+        z = full ^ x_exactly_2_zero_bit   # exactly two 1 bits, at the zero positions of x2
 
-        bg_unique, bg_counts = np.unique(x_exactly_2_zero_bit, return_counts=True)
-        bg_feq = bg_counts / len(background_patterns)
-        pos = np.searchsorted(bg_unique, wanted_patterns)
-        safe_pos = np.clip(pos, 0, len(bg_unique) - 1)
+        # lower 1 bit
+        low = z & -z
+        # upper 1 bit
+        high = z ^ low
 
-        if len(bg_unique) == 0:
-            b_v_3 = np.zeros(len(wanted_patterns), dtype=float)
-        else:
-            b_v_3 = np.where(
-                (pos < len(bg_unique)) & (bg_unique[safe_pos] == wanted_patterns),
-                bg_feq[safe_pos],
-                0
-            )
+        # actual bit positions: 0 = LSB, ..., D-1 = MSB
+        p_low = np.bitwise_count(low - 1)
+        p_high = np.bitwise_count(high - 1)
 
+        # convert actual bit positions to bits_matrix row indices
+        r1 = D - 1 - p_high
+        r2 = D - 1 - p_low
+
+        # ensure r1 < r2
+        i = np.minimum(r1, r2)
+        j = np.maximum(r1, r2)
+
+        pair_index = i * (2 * D - i - 1) // 2 + (j - i - 1)
+
+        b_v_3 = np.bincount(pair_index, minlength=len(i_idx)) / len(background_patterns)
         return only_positive_literals, b_v_1, b_v_2, b_v_3
 
 
@@ -387,20 +398,21 @@ def woodelf_fast_pdp_iv(
 
 def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, centered: bool = True, accurate: bool = True,
                 percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False,
-                use_woodelfhd: bool = False):
+                use_woodelfhd: Optional[bool] = None):
     """
     Compute all the PDVs needed in order to plot the PDP values of all the features. Use WOODELF!
     when accurate is False estimate the PDP using the Path-Dependent approach
     """
-    # Defaults should be:
-    # When accurate=False always have use_woodelfhd=False
-    # When accurate=False: if D <= 6 have use_woodelfhd=False else have use_woodelfhd=True
-    points_df = build_points_for_pdp(model, data, k, percentiles, sampled, seed, full_pdp)
+    model_obj = load_decision_tree_ensemble_model(model, list(data.columns))
+    if use_woodelfhd is None:
+        use_woodelfhd = (model_obj.max_depth <= 6) and accurate
+
+    points_df = build_points_for_pdp(model_obj, data, k, percentiles, sampled, seed, full_pdp, model_was_loaded=True)
     return woodelf_fast_pdp(
-        model, points_df, data, GPU, model_was_loaded=False, centered=centered, accurate=accurate, use_woodelfhd=use_woodelfhd
+        model_obj, points_df, data, GPU, model_was_loaded=True, centered=centered, accurate=accurate, use_woodelfhd=use_woodelfhd
     ), points_df
 
-def woodelf_pdp_joint(model, data: pd.DataFrame, k: int = 100, accurate: bool = True, GPU: bool = False, use_woodelfhd: bool = False,
+def woodelf_pdp_joint(model, data: pd.DataFrame, k: int = 100, accurate: bool = True, GPU: bool = False, use_woodelfhd: Optional[bool] = None,
                       percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False, verbose: bool = True):
     """
     Compute all the PDVs needed in order to plot the PDP values of all the features. Use WOODELF!
@@ -414,14 +426,17 @@ def woodelf_pdp_joint(model, data: pd.DataFrame, k: int = 100, accurate: bool = 
     if verbose:
         print(f"Building the points took: {time.time() - start_time} sec. The size of the created df {len(points_df)}")
 
+    model_obj = load_decision_tree_ensemble_model(model, list(data.columns))
+    if use_woodelfhd is None:
+        use_woodelfhd = (model_obj.max_depth <= 10)
+
     if not use_woodelfhd and accurate:
-        model_obj = load_decision_tree_ensemble_model(model, list(data.columns))
         pdivs = woodelf_fast_pdp_iv(model_obj, consumer_data=points_df, background_data=data, GPU=GPU)
     else:
         metric = PDIVOrder1Or2()
         pdivs = woodelf_for_high_depth(
-            model, consumer_data=points_df, background_data=data if accurate else None,
-            metric=metric, GPU=GPU, model_was_loaded=False
+            model_obj, consumer_data=points_df, background_data=data if accurate else None,
+            metric=metric, GPU=GPU, model_was_loaded=True
         )
     avg_prediction = float(model.predict(data).mean())
     base_pdv = np.array([avg_prediction] * len(points_df))
