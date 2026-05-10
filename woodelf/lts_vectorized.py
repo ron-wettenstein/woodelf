@@ -39,12 +39,8 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
 
         self.f_ws = None
         if is_shapley:
-            if self.is_interaction_values:
-                max_range = max_depth
-            else:
-                max_range = max_depth + 1
             # None f_ws for depth 0, in the rest use shapley_values_f_w(depth)
-            self.f_ws = [None] + [shapley_values_f_w(depth) for depth in range(1, max_range)]
+            self.f_ws = [None] + [shapley_values_f_w(depth) for depth in range(1, max_depth + 1)]
 
         self.computation_time = 0
 
@@ -52,7 +48,7 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
         start_time = time.time()
         if self.is_shapley:
             # assume features in path are unique
-            f_w = self.f_ws[len(covers)-1] if self.is_interaction_values else self.f_ws[len(covers)]
+            f_w = self.f_ws[len(covers)][:-1] if self.is_interaction_values else self.f_ws[len(covers)]
             if self.is_interaction_values:
                 assert w_neighbor is None
                 s_matrix = improved_linear_tree_shap_iv(covers, consumer_patterns, f_w, w)
