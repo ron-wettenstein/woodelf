@@ -398,10 +398,29 @@ def woodelf_fast_pdp_iv(
 
 def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, centered: bool = True, accurate: bool = True,
                 percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False,
-                use_woodelfhd: Optional[bool] = None):
+                use_woodelfhd: Optional[bool] = None) -> Tuple[Dict[str, np.array], pd.DataFrame]:
     """
-    Compute all the PDVs needed in order to plot the PDP values of all the features. Use WOODELF!
-    when accurate is False estimate the PDP using the Path-Dependent approach
+    Compute all the PDVs needed in order to plot the PDP values of all features.
+
+    Uses WOODELF for exact PDP computation. When ``accurate=False``, the PDP is
+    approximated using the Path-Dependent approach.
+
+    :params model: A fitted decision-tree ensemble (XGBoost, LightGBM, RandomForest, ...).
+    :params data: Background dataset used for the PDP computation. Feature names are taken from ``data.columns``.
+    :params k: Number of grid values used for each feature PDP. Similar to scikit-learn's ``grid_resolution``. If is ignored when full_pdp=True.
+    :params GPU: If True, use GPU acceleration.
+    :params centered: If True, center each PDP curve around the average prediction on the provided data.
+    :params accurate: If True, compute exact PDPs. If False, estimate the PDPs using the Path-Dependent approximation.
+    :params percentiles: Lower and upper percentiles used to define the feature value grid. Must be values in the range [0, 1].
+    :params sampled: If True, instead of feature value grid, sample the values to plot in the graph from the provided data.
+    :params seed: Random seed used when ``sampled=True``.
+    :params full_pdp: If True, compute the full PDP. This plot displays average prediction for any possible feature value. To achieve this behavior,
+    e used the features' threshold values .
+    :params use_woodelfhd: Whether to use the WoodelfHD implementation. If None, the implementation is selected automatically.
+
+    :returns: The function return 2 elements:
+    1. A dictionary that map each feature to its partial dependence values. The values are saved in the NumPy array.
+    2. A DataFrame with the PDP x values - the feature values we measured the average model prediction in.
     """
     model_obj = load_decision_tree_ensemble_model(model, list(data.columns))
     if use_woodelfhd is None:
@@ -412,10 +431,18 @@ def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, cent
         model_obj, points_df, data, GPU, model_was_loaded=True, centered=centered, accurate=accurate, use_woodelfhd=use_woodelfhd
     ), points_df
 
-def woodelf_pdp_joint(model, data: pd.DataFrame, k: int = 100, accurate: bool = True, GPU: bool = False, use_woodelfhd: Optional[bool] = None,
-                      percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False, verbose: bool = True):
+def woodelf_pdp_joint(
+        model, data: pd.DataFrame, k: int = 100, accurate: bool = True, GPU: bool = False, use_woodelfhd: Optional[bool] = None,
+        percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False, verbose: bool = True
+) -> Tuple[Dict[Tuple[str, str], np.array], Dict[Tuple[str, str], np.array], Dict[Tuple[str, str], np.array]]:
     """
     Compute all the PDVs needed in order to plot the PDP values of all the features. Use WOODELF!
+    See the docs of woodelf_pdp for parameters explanation.
+
+    :returns: The function return 3 elements:
+    1. A dictionary that map each feature pair to their joint partial dependence values. The values are saved in the NumPy array.
+    2. A dictionary that map each feature pair to the values of the first feature in the pair we measured the average model prediction in.
+    3. A dictionary that map each feature pair to the values of the second feature in the pair we measured the average model prediction in.
     """
     start_time = time.time()
     original_points_df = build_points_for_pdp(model, data, k, percentiles, sampled, seed, full_pdp)
