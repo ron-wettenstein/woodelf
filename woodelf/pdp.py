@@ -345,21 +345,18 @@ def fast_pdp_for_a_single_tree(
 
 def woodelf_fast_pdp(
         model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
-        GPU: bool = False, model_was_loaded: bool = False, centered: bool = True, accurate: bool = True, use_woodelfhd: bool = False
+        GPU: bool = False, model_was_loaded: bool = False, centered: bool = True, accurate: bool = True, 
+        use_woodelfhd: bool = False, avg_prediction: float=None
 ):
-    avg_prediction = 0
     if not model_was_loaded:
-        avg_prediction = float(model.predict(background_data).mean())
         model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     else:
-        model_obj = model
-        if not centered:
-            raise NotImplemented("Don't support centered=False on a loaded model")
+        model_obj = model    
 
     if use_woodelfhd:
         pdvs = woodelf_for_high_depth(
             model, consumer_data=consumer_data, background_data=background_data if accurate else None,
-            metric=CPDVMetric(), GPU=GPU, use_neighbor_leaf_trick=True, global_importance=False
+            metric=CPDVMetric(), GPU=GPU, use_neighbor_leaf_trick=True, global_importance=False, model_was_loaded=model_was_loaded
         )
     else:
         if accurate:
@@ -373,6 +370,12 @@ def woodelf_fast_pdp(
 
     if centered:
         return pdvs
+
+    if not model_was_loaded and background_data is not None and avg_prediction is None:
+        avg_prediction = float(model.predict(background_data).mean())
+    assert avg_prediction is not None, "avg_prediction must be provided when model_was_loaded is True or when background_data is None"
+    
+    avg_prediction = 0 if avg_prediction is None else avg_prediction
 
     for f in pdvs:
         pdvs[f] += avg_prediction
@@ -423,12 +426,16 @@ def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, cent
     2. A DataFrame with the PDP x values - the feature values we measured the average model prediction in.
     """
     model_obj = load_decision_tree_ensemble_model(model, list(data.columns))
+    avg_prediction = None
+    if not centered and data is not None:
+        avg_prediction = float(model.predict(data).mean())
     if use_woodelfhd is None:
         use_woodelfhd = (model_obj.max_depth <= 6) and accurate
 
     points_df = build_points_for_pdp(model_obj, data, k, percentiles, sampled, seed, full_pdp, model_was_loaded=True)
     return woodelf_fast_pdp(
-        model_obj, points_df, data, GPU, model_was_loaded=True, centered=centered, accurate=accurate, use_woodelfhd=use_woodelfhd
+        model_obj, points_df, data, GPU, model_was_loaded=True, centered=centered, accurate=accurate, 
+        use_woodelfhd=use_woodelfhd, avg_prediction=avg_prediction
     ), points_df
 
 def woodelf_pdp_joint(
