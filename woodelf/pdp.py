@@ -5,6 +5,7 @@ from typing import Tuple, List, Dict, Optional
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import scipy
 
 from woodelf.lts_vectorized import get_covers_vector
 from woodelf.parse_models import load_decision_tree_ensemble_model
@@ -33,7 +34,8 @@ def build_equally_distanced_points_df(data: pd.DataFrame, k: int, percentiles: T
     """
     sample_points_data = {}
     for f in data.columns:
-        low, high = np.percentile(data[f].dropna(), [percentiles[0] * 100, percentiles[1]*100])
+        # np.percentile(data[f].dropna(), [percentiles[0] * 100, percentiles[1] * 100])
+        low, high = scipy.stats.mstats.mquantiles(data[f].dropna(), prob=percentiles, axis=0)
         # get k equally spaced points between them
         points = np.linspace(low, high, k)
         sample_points_data[f] = list(points)
