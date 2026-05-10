@@ -222,7 +222,7 @@ class WoodelfPartialDependenceDisplay:
                 accurate=accurate,
             )
             one_way_grid = {
-                f: grid_df[f].values
+                f: np.trim_zeros(grid_df[f].values, trim="b")
                 for f in all_feature_names
                 if f in grid_df.columns
             }

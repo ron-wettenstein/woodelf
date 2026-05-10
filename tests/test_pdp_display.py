@@ -2,11 +2,11 @@
 Tests for WoodelfPartialDependenceDisplay.
 
 Covers:
-- _build_2way_grid: single standalone unit test
+- _build_2way_grid: standalone unit test
 - from_estimator: Bunch structure, method→accurate/centered mapping (mocked)
-- TestIntegration: end-to-end on a real sklearn model — grid and values compared
+- Integration: end-to-end on a real sklearn model — grid and values compared
   directly against sklearn's PartialDependenceDisplay.from_estimator for both
-  1-way (brute and recursion) and 2-way PDPs; full_pdp smoke test.
+  1-way (brute and recursion) and 2-way PDPs; full_pdp smoke test; rendering.
 """
 
 import matplotlib
@@ -28,10 +28,15 @@ from woodelf.pdp_display import WoodelfPartialDependenceDisplay
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers
+# Shared helpers and constants
 # ---------------------------------------------------------------------------
 
 DUMMY_X = pd.DataFrame({"f1": [1.0, 2.0, 3.0], "f2": [4.0, 5.0, 6.0]})
+
+GRID_K = 5
+JOINT_PAIRS = [("a", "b"), ("a", "c"), ("b", "c")]
+GRID_TOLERANCE = 1e-5
+VALUE_TOLERANCE = 1e-5
 
 
 def _mock_pdp_return():
@@ -42,9 +47,34 @@ def _mock_pdp_return():
     )
 
 
+@pytest.fixture
+def mock_pdp():
+    with patch("woodelf.pdp_display.woodelf_pdp") as m:
+        m.return_value = _mock_pdp_return()
+        yield m
+
+
+@pytest.fixture(scope="module")
+def small_model_and_data():
+    """
+    Tiny HistGradientBoostingRegressor on 3 synthetic features.
+    Module-scoped so training runs once for all integration tests.
+    3 features → 3 joint pairs, k=5 → 75 grid points total: fast.
+    """
+    rng = np.random.RandomState(42)
+    X = pd.DataFrame({
+        "a": rng.randn(300),
+        "b": rng.randn(300),
+        "c": rng.randn(300),
+    })
+    y = X["a"] * 2 + X["b"] ** 2
+    model = HistGradientBoostingRegressor(max_iter=30, max_depth=4, random_state=42)
+    model.fit(X, y)
+    return model, X
+
 
 # ---------------------------------------------------------------------------
-# _build_2way_grid — single standalone test
+# _build_2way_grid
 # ---------------------------------------------------------------------------
 
 def test_build_2way_grid():
@@ -71,258 +101,197 @@ def test_build_2way_grid():
 
 
 # ---------------------------------------------------------------------------
-# from_estimator — 1-way PDP structure (mocked)
+# from_estimator — structure and method mapping (mocked)
 # ---------------------------------------------------------------------------
 
-class TestFromEstimatorOneway:
-    @pytest.fixture(autouse=True)
-    def mock_pdp(self):
-        with patch("woodelf.pdp_display.woodelf_pdp") as m:
-            m.return_value = _mock_pdp_return()
-            self._mock = m
-            yield m
+@pytest.mark.usefixtures("mock_pdp")
+def test_pdvs_contains_all_features():
+    display = WoodelfPartialDependenceDisplay.from_estimator(
+        MagicMock(), DUMMY_X, compute_pdp=True,
+    )
+    assert set(display._pdvs.keys()) == {"f1", "f2"}
 
-    def test_pdvs_contains_all_features(self):
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            MagicMock(), DUMMY_X, compute_pdp=True,
-        )
-        assert set(display._pdvs.keys()) == {"f1", "f2"}
 
-    def test_joint_pdvs_empty_when_not_requested(self):
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            MagicMock(), DUMMY_X, compute_pdp=True, compute_joint_pdp=False,
-        )
-        assert display._joint_pdvs == {}
+@pytest.mark.usefixtures("mock_pdp")
+def test_joint_pdvs_empty_when_not_requested():
+    display = WoodelfPartialDependenceDisplay.from_estimator(
+        MagicMock(), DUMMY_X, compute_pdp=True, compute_joint_pdp=False,
+    )
+    assert display._joint_pdvs == {}
 
-    def test_bunch_average_shape_1way(self):
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            MagicMock(), DUMMY_X, compute_pdp=True,
-        )
-        b = display._pdvs["f1"]
-        assert b.average.ndim == 2
-        assert b.average.shape[0] == 1
-        assert len(b.grid_values) == 1
 
-    def test_bunch_average_dtype_float64(self):
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            MagicMock(), DUMMY_X, compute_pdp=True,
-        )
-        assert display._pdvs["f1"].average.dtype == np.float64
+@pytest.mark.usefixtures("mock_pdp")
+def test_bunch_average_shape_1way():
+    display = WoodelfPartialDependenceDisplay.from_estimator(
+        MagicMock(), DUMMY_X, compute_pdp=True,
+    )
+    b = display._pdvs["f1"]
+    assert b.average.ndim == 2
+    assert b.average.shape[0] == 1
+    assert len(b.grid_values) == 1
 
-    def test_recursion_method_passes_accurate_false_centered_true(self):
-        WoodelfPartialDependenceDisplay.from_estimator(
-            MagicMock(), DUMMY_X, compute_pdp=True, method="recursion",
-        )
-        _, kw = self._mock.call_args
-        assert kw["accurate"] is False
-        assert kw["centered"] is True
 
-    def test_brute_method_passes_accurate_true_centered_false(self):
-        WoodelfPartialDependenceDisplay.from_estimator(
-            MagicMock(), DUMMY_X, compute_pdp=True, method="brute",
-        )
-        _, kw = self._mock.call_args
-        assert kw["accurate"] is True
-        assert kw["centered"] is False
+@pytest.mark.usefixtures("mock_pdp")
+def test_bunch_average_dtype_float64():
+    display = WoodelfPartialDependenceDisplay.from_estimator(
+        MagicMock(), DUMMY_X, compute_pdp=True,
+    )
+    assert display._pdvs["f1"].average.dtype == np.float64
 
-    def test_auto_method_passes_accurate_true(self):
-        WoodelfPartialDependenceDisplay.from_estimator(
-            MagicMock(), DUMMY_X, compute_pdp=True, method="auto",
-        )
-        _, kw = self._mock.call_args
-        assert kw["accurate"] is True
 
-    def test_deciles_keyed_by_int_index(self):
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            MagicMock(), DUMMY_X, compute_pdp=True,
-        )
-        assert 0 in display._deciles and 1 in display._deciles
-        assert len(display._deciles[0]) == 10
+def test_method_mapping(mock_pdp):
+    """recursion → accurate=False, centered=True; brute/auto → accurate=True."""
+    WoodelfPartialDependenceDisplay.from_estimator(
+        MagicMock(), DUMMY_X, compute_pdp=True, method="recursion",
+    )
+    _, kw = mock_pdp.call_args
+    assert kw["accurate"] is False and kw["centered"] is True
 
-    def test_name_to_idx_correct(self):
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            MagicMock(), DUMMY_X, compute_pdp=True,
-        )
-        assert display._name_to_idx == {"f1": 0, "f2": 1}
+    WoodelfPartialDependenceDisplay.from_estimator(
+        MagicMock(), DUMMY_X, compute_pdp=True, method="brute",
+    )
+    _, kw = mock_pdp.call_args
+    assert kw["accurate"] is True and kw["centered"] is False
+
+    WoodelfPartialDependenceDisplay.from_estimator(
+        MagicMock(), DUMMY_X, compute_pdp=True, method="auto",
+    )
+    _, kw = mock_pdp.call_args
+    assert kw["accurate"] is True
+
+
+@pytest.mark.usefixtures("mock_pdp")
+def test_deciles_keyed_by_int_index():
+    display = WoodelfPartialDependenceDisplay.from_estimator(
+        MagicMock(), DUMMY_X, compute_pdp=True,
+    )
+    assert 0 in display._deciles and 1 in display._deciles
+    assert len(display._deciles[0]) == 10
+
+
+@pytest.mark.usefixtures("mock_pdp")
+def test_name_to_idx_correct():
+    display = WoodelfPartialDependenceDisplay.from_estimator(
+        MagicMock(), DUMMY_X, compute_pdp=True,
+    )
+    assert display._name_to_idx == {"f1": 0, "f2": 1}
 
 
 # ---------------------------------------------------------------------------
 # Integration tests — real model, compared against sklearn's display
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
-def small_model_and_data():
+def test_1way_brute_grid_and_values_match_sklearn(small_model_and_data):
+    model, X = small_model_and_data
+    w = WoodelfPartialDependenceDisplay.from_estimator(
+        model, X, compute_pdp=True, method="brute", grid_resolution=GRID_K,
+    )
+    sk = PartialDependenceDisplay.from_estimator(
+        model, X, features=list(X.columns), kind="average",
+        method="brute", grid_resolution=GRID_K,
+    )
+    for i, feat in enumerate(X.columns):
+        w_grid = w._pdvs[feat].grid_values[0]
+        np.testing.assert_allclose(
+            w_grid, sk.pd_results[i].grid_values[0],
+            atol=GRID_TOLERANCE, err_msg=f"brute grid mismatch for {feat!r}",
+        )
+        sk_vals = partial_dependence(
+            model, X, features=[feat], method="brute", kind="average",
+            custom_values={feat: w_grid},
+        )
+        np.testing.assert_allclose(
+            w._pdvs[feat].average[0], sk_vals["average"][0],
+            atol=VALUE_TOLERANCE, err_msg=f"brute value mismatch for {feat!r}",
+        )
+
+
+def test_1way_recursion_grid_and_values_match_sklearn(small_model_and_data):
+    model, X = small_model_and_data
+    w = WoodelfPartialDependenceDisplay.from_estimator(
+        model, X, compute_pdp=True, method="recursion", grid_resolution=GRID_K,
+    )
+    sk = PartialDependenceDisplay.from_estimator(
+        model, X, features=list(X.columns), kind="average",
+        method="recursion", grid_resolution=GRID_K,
+    )
+    for i, feat in enumerate(X.columns):
+        w_grid = w._pdvs[feat].grid_values[0]
+        np.testing.assert_allclose(
+            w_grid, sk.pd_results[i].grid_values[0],
+            atol=GRID_TOLERANCE, err_msg=f"recursion grid mismatch for {feat!r}",
+        )
+        sk_vals = partial_dependence(
+            model, X, features=[feat], method="recursion", kind="average",
+            custom_values={feat: w_grid},
+        )
+        np.testing.assert_allclose(
+            w._pdvs[feat].average[0], sk_vals["average"][0],
+            atol=VALUE_TOLERANCE, err_msg=f"recursion value mismatch for {feat!r}",
+        )
+
+
+def test_joint_pdp_grid_and_values_match_sklearn(small_model_and_data):
+    model, X = small_model_and_data
+    w = WoodelfPartialDependenceDisplay.from_estimator(
+        model, X, compute_pdp=False, compute_joint_pdp=True,
+        grid_resolution=GRID_K,
+    )
+    sk = PartialDependenceDisplay.from_estimator(
+        model, X, features=JOINT_PAIRS, kind="average",
+        method="brute", grid_resolution=GRID_K,
+    )
+    for i, (f1, f2) in enumerate(JOINT_PAIRS):
+        w_b = w._joint_pdvs[(f1, f2)]
+        sk_b = sk.pd_results[i]
+        np.testing.assert_allclose(
+            w_b.grid_values[0], sk_b.grid_values[0],
+            atol=GRID_TOLERANCE, err_msg=f"f1 grid mismatch for ({f1},{f2})",
+        )
+        np.testing.assert_allclose(
+            w_b.grid_values[1], sk_b.grid_values[1],
+            atol=GRID_TOLERANCE, err_msg=f"f2 grid mismatch for ({f1},{f2})",
+        )
+        sk_vals = partial_dependence(
+            model, X, features=[f1, f2], method="brute", kind="average",
+            custom_values={f1: w_b.grid_values[0], f2: w_b.grid_values[1]},
+        )
+        np.testing.assert_allclose(
+            w_b.average[0], sk_vals["average"][0],
+            atol=VALUE_TOLERANCE, err_msg=f"value mismatch for ({f1},{f2})",
+        )
+
+
+def test_full_pdp_no_crash_and_variable_grid(small_model_and_data):
     """
-    Tiny HistGradientBoostingRegressor on 3 synthetic features.
-    Module-scoped so training runs once for all integration tests.
-    3 features → 3 joint pairs, k=5 → 75 grid points total: fast.
+    full_pdp=True assigns each feature its own grid from tree threshold values.
+    Features that appear in fewer splits get fewer unique thresholds → smaller grid.
     """
-    rng = np.random.RandomState(42)
-    X = pd.DataFrame({
-        "a": rng.randn(300),
-        "b": rng.randn(300),
-        "c": rng.randn(300),
-    })
-    y = X["a"] * 2 + X["b"] ** 2
-    model = HistGradientBoostingRegressor(max_iter=30, max_depth=4, random_state=42)
-    model.fit(X, y)
-    return model, X
+    model, X = small_model_and_data
+    display = WoodelfPartialDependenceDisplay.from_estimator(
+        model, X, compute_pdp=True, grid_resolution=GRID_K, full_pdp=True,
+    )
+    grid_lengths = {f: len(display._pdvs[f].grid_values[0]) for f in X.columns}
+    assert len(set(grid_lengths.values())) > 1, (
+        f"full_pdp should produce different grid sizes per feature; got {grid_lengths}"
+    )
 
 
-GRID_K = 5
-JOINT_PAIRS = [("a", "b"), ("a", "c"), ("b", "c")]
-TOLERANCE = 1e-4
+def test_renders(small_model_and_data):
+    """plot(), plot_pdp(), plot_joint_pdp() must not raise for any combination."""
+    model, X = small_model_and_data
+    w1 = WoodelfPartialDependenceDisplay.from_estimator(
+        model, X, compute_pdp=True, method="brute", grid_resolution=GRID_K,
+    )
+    w1.plot()
+    plt.close("all")
+    w1.plot_pdp(["a", "b"])
+    plt.close("all")
 
-
-class TestIntegration:
-    """
-    All tests run both WoodelfPartialDependenceDisplay.from_estimator and
-    sklearn's PartialDependenceDisplay.from_estimator with the same parameters.
-
-    Grid comparison: both use percentile-based grids; we assert they are close
-    (atol=GRID_TOLERANCE) since minor implementation differences cause small
-    discrepancies between WOODELF's and sklearn's percentile computation.
-
-    Value comparison: to compare at identical x-axis points, sklearn's
-    partial_dependence is evaluated at WOODELF's exact grid (custom_values),
-    then asserted equal within VALUE_TOLERANCE.
-
-    1-way: both method='brute' and method='recursion'.
-    2-way: method='brute' for all 3 feature pairs.
-    full_pdp: smoke test — no crash, grid sizes must differ across features
-              (each feature has a different count of tree threshold values).
-    Rendering: plot(), plot_pdp(), plot_joint_pdp() must not raise.
-    """
-
-    GRID_TOLERANCE = 1e-5   # percentile grids are conceptually equal, small impl delta
-    VALUE_TOLERANCE = 1e-5  # PDP values at the same grid points must be tight
-
-    def test_1way_brute_grid_and_values_match_sklearn(self, small_model_and_data):
-        model, X = small_model_and_data
-        w = WoodelfPartialDependenceDisplay.from_estimator(
-            model, X, compute_pdp=True, method="brute", grid_resolution=GRID_K,
-        )
-        sk = PartialDependenceDisplay.from_estimator(
-            model, X, features=list(X.columns), kind="average",
-            method="brute", grid_resolution=GRID_K,
-        )
-        for i, feat in enumerate(X.columns):
-            w_grid = w._pdvs[feat].grid_values[0]
-            np.testing.assert_allclose(
-                w_grid, sk.pd_results[i].grid_values[0],
-                atol=self.GRID_TOLERANCE, err_msg=f"brute grid mismatch for {feat!r}",
-            )
-            sk_vals = partial_dependence(
-                model, X, features=[feat], method="brute", kind="average",
-                custom_values={feat: w_grid},
-            )
-            np.testing.assert_allclose(
-                w._pdvs[feat].average[0], sk_vals["average"][0],
-                atol=self.VALUE_TOLERANCE, err_msg=f"brute value mismatch for {feat!r}",
-            )
-
-    def test_1way_recursion_grid_and_values_match_sklearn(self, small_model_and_data):
-        model, X = small_model_and_data
-        w = WoodelfPartialDependenceDisplay.from_estimator(
-            model, X, compute_pdp=True, method="recursion", grid_resolution=GRID_K,
-        )
-        sk = PartialDependenceDisplay.from_estimator(
-            model, X, features=list(X.columns), kind="average",
-            method="recursion", grid_resolution=GRID_K,
-        )
-        for i, feat in enumerate(X.columns):
-            w_grid = w._pdvs[feat].grid_values[0]
-            np.testing.assert_allclose(
-                w_grid, sk.pd_results[i].grid_values[0],
-                atol=self.GRID_TOLERANCE, err_msg=f"recursion grid mismatch for {feat!r}",
-            )
-            sk_vals = partial_dependence(
-                model, X, features=[feat], method="recursion", kind="average",
-                custom_values={feat: w_grid},
-            )
-            np.testing.assert_allclose(
-                w._pdvs[feat].average[0], sk_vals["average"][0],
-                atol=self.VALUE_TOLERANCE, err_msg=f"recursion value mismatch for {feat!r}",
-            )
-
-    def test_joint_pdp_grid_and_values_match_sklearn(self, small_model_and_data):
-        model, X = small_model_and_data
-        w = WoodelfPartialDependenceDisplay.from_estimator(
-            model, X, compute_pdp=False, compute_joint_pdp=True,
-            grid_resolution=GRID_K,
-        )
-        sk = PartialDependenceDisplay.from_estimator(
-            model, X, features=JOINT_PAIRS, kind="average",
-            method="brute", grid_resolution=GRID_K,
-        )
-        for i, (f1, f2) in enumerate(JOINT_PAIRS):
-            w_b = w._joint_pdvs[(f1, f2)]
-            sk_b = sk.pd_results[i]
-            np.testing.assert_allclose(
-                w_b.grid_values[0], sk_b.grid_values[0],
-                atol=self.GRID_TOLERANCE, err_msg=f"f1 grid mismatch for ({f1},{f2})",
-            )
-            np.testing.assert_allclose(
-                w_b.grid_values[1], sk_b.grid_values[1],
-                atol=self.GRID_TOLERANCE, err_msg=f"f2 grid mismatch for ({f1},{f2})",
-            )
-            sk_vals = partial_dependence(
-                model, X, features=[f1, f2], method="brute", kind="average",
-                custom_values={f1: w_b.grid_values[0], f2: w_b.grid_values[1]},
-            )
-            np.testing.assert_allclose(
-                w_b.average[0], sk_vals["average"][0],
-                atol=self.VALUE_TOLERANCE, err_msg=f"value mismatch for ({f1},{f2})",
-            )
-
-    def test_full_pdp_no_crash_and_variable_grid(self, small_model_and_data):
-        """
-        full_pdp=True assigns each feature its own grid from tree threshold values
-        rather than a shared percentile grid of size grid_resolution. Verified by
-        checking that every feature's grid exceeds GRID_K (the fallback size).
-        Whether sizes differ per feature depends on the model's learned structure.
-        """
-        model, X = small_model_and_data
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            model, X, compute_pdp=True, grid_resolution=GRID_K, full_pdp=True,
-        )
-        for feat in X.columns:
-            n = len(display._pdvs[feat].grid_values[0])
-            assert n > GRID_K, (
-                f"full_pdp grid for {feat!r} has {n} points; expected > {GRID_K} "
-                f"since full_pdp uses per-feature threshold values, not grid_resolution"
-            )
-
-    def test_plot_renders_1way(self, small_model_and_data):
-        model, X = small_model_and_data
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            model, X, compute_pdp=True, method="brute", grid_resolution=GRID_K,
-        )
-        display.plot()
-        plt.close("all")
-
-    def test_plot_pdp_subset_renders(self, small_model_and_data):
-        model, X = small_model_and_data
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            model, X, compute_pdp=True, method="brute", grid_resolution=GRID_K,
-        )
-        display.plot_pdp(["a", "b"])
-        plt.close("all")
-
-    def test_plot_renders_joint(self, small_model_and_data):
-        model, X = small_model_and_data
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            model, X, compute_pdp=False, compute_joint_pdp=True,
-            grid_resolution=GRID_K,
-        )
-        display.plot()
-        plt.close("all")
-
-    def test_plot_joint_pdp_subset_renders(self, small_model_and_data):
-        model, X = small_model_and_data
-        display = WoodelfPartialDependenceDisplay.from_estimator(
-            model, X, compute_pdp=False, compute_joint_pdp=True,
-            grid_resolution=GRID_K,
-        )
-        display.plot_joint_pdp([("a", "b")])
-        plt.close("all")
+    w2 = WoodelfPartialDependenceDisplay.from_estimator(
+        model, X, compute_pdp=False, compute_joint_pdp=True, grid_resolution=GRID_K,
+    )
+    w2.plot()
+    plt.close("all")
+    w2.plot_joint_pdp([("a", "b")])
+    plt.close("all")

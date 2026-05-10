@@ -68,7 +68,7 @@ def build_points_for_full_pdp(data: pd.DataFrame, model, as_df: bool = True, mod
     # zfill
     max_th_length = max([len(thersholds) for thersholds in th_values.values()])
     for f in th_values:
-        th_values[f].extend([0] * (max_th_length - len(th_values[f])) )
+        th_values[f].extend([0] * (max_th_length - len(th_values[f])))
 
     # from the built thershold build the points Data Frame
     return pd.DataFrame(th_values)
