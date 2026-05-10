@@ -253,7 +253,7 @@ class WoodelfPartialDependenceDisplay:
         #          where average[0][i, j] = PDP at (f1_arr[i], f2_arr[j])
 
         sk_deciles = {
-            name_to_idx[f]: np.percentile(X[f].dropna().values, np.arange(10, 101, 10))
+            name_to_idx[f]: np.percentile(X[f].dropna().values, np.arange(10, 100, 10))
             for f in all_feature_names
         }
 

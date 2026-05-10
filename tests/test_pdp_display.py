@@ -166,7 +166,7 @@ def test_deciles_keyed_by_int_index():
         MagicMock(), DUMMY_X, compute_pdp=True,
     )
     assert 0 in display._deciles and 1 in display._deciles
-    assert len(display._deciles[0]) == 10
+    assert len(display._deciles[0]) == 9
 
 
 @pytest.mark.usefixtures("mock_pdp")
