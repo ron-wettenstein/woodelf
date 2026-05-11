@@ -277,31 +277,16 @@ class WoodelfPartialDependenceDisplay:
             for i in range(len(all_feature_names))
             for j in range(i + 1, len(all_feature_names))
         ] if compute_joint_pdp else []
+
         joint_pdvs: Dict[Tuple[str, str], object] = {}
         _D = math.ceil(math.log2(len(all_feature_names)))
         for f1, f2 in pairs:
             idx1, idx2 = name_to_idx[f1], name_to_idx[f2]
-            f1_pts = two_way_f1_pts[(f1, f2)]
-            f2_pts = two_way_f2_pts[(f1, f2)]
-            # The joint PDP is always evaluated on a k×k grid; recover k from the
-            # flat array size rather than using np.unique (which under-counts when
-            # sampled=True produces duplicate grid values).
-            k_joint = int(round(math.sqrt(len(two_way_pdvs[(f1, f2)]))))
-            _h = first_different_bit(idx1, idx2, _D)
-            _bit_f1 = list(bits(idx1, _D))[_h]
-            if _bit_f1 == 0:  # f1 fast (tiled), f2 slow (repeated)
-                x_grid = f1_pts[:k_joint]       # first full cycle  → f1 axis
-                y_grid = f2_pts[::k_joint]      # every k-th value  → f2 axis
-            else:             # f1 slow (repeated), f2 fast (tiled)
-                x_grid = f1_pts[::k_joint]      # every k-th value  → f1 axis
-                y_grid = f2_pts[:k_joint]       # first full cycle  → f2 axis
-            z_grid = cls._build_2way_grid(
-                two_way_pdvs[(f1, f2)], idx1, idx2,
-                k_joint, k_joint, len(all_feature_names),
-            )
-            joint_pdvs[(f1, f2)] = Bunch(
-                average=z_grid[np.newaxis, :, :].astype(np.float64),
-                grid_values=[x_grid, y_grid],
+            joint_pdvs[(f1, f2)] = cls._build_joint_bunch(
+                two_way_pdvs[(f1, f2)],
+                two_way_f1_pts[(f1, f2)],
+                two_way_f2_pts[(f1, f2)],
+                idx1, idx2, _D, full_pdp,
             )
 
         return cls(
@@ -420,31 +405,58 @@ class WoodelfPartialDependenceDisplay:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_2way_grid(
-        raw_vals: np.ndarray,
-        i1: int,
-        i2: int,
-        k_f1: int,
-        k_f2: int,
-        n_features: int,
-    ) -> np.ndarray:
-        """
-        Reshape the flat k_f1*k_f2 PDP values into a (k_f1, k_f2) grid.
+    def _axes_from_pts(f1_pts, f2_pts, k, bit_f1):
+        """Return (x_axis, y_axis) 1-D arrays from the flat joint-grid point arrays."""
+        if bit_f1 == 0:  # f1 tiled (fast), f2 repeated (slow)
+            return f1_pts[:k], f2_pts[::k]
+        return f1_pts[::k], f2_pts[:k]
 
-        WOODELF's joint PDP lays out values in C-order: the feature whose h-th
-        bit (h = first_different_bit(i1, i2, D)) is 0 is the fast/tile axis
-        (columns), and the one whose h-th bit is 1 is the slow/repeat axis
-        (rows).
+    @staticmethod
+    def _z_grid_sliced(raw, k_outer, k_f1, k_f2, bit_f1):
+        """Reshape flat PDP array to (k_f1, k_f2), slicing from a (k_outer, k_outer) layout."""
+        if bit_f1 == 0:  # C-order: (rows=f2, cols=f1)
+            return raw.reshape(k_outer, k_outer)[:k_f2, :k_f1].T.astype(np.float32)
+        return raw.reshape(k_outer, k_outer)[:k_f1, :k_f2].astype(np.float32)
+
+    @staticmethod
+    def _build_joint_bunch(raw, f1_pts, f2_pts, idx1, idx2, D, full_pdp):
+        """Build a sklearn Bunch for one (f1, f2) joint PDP pair.
+
+        Parameters
+        ----------
+        raw : ndarray, shape (k²,)
+            Flat joint PDP values from woodelf_pdp_joint.
+        f1_pts, f2_pts : ndarray, shape (k²,)
+            Joint-grid coordinates for each feature.
+        idx1, idx2 : int
+            Column indices of f1 and f2 in the dataset.
+        D : int
+            ceil(log2(n_features)) — bit-depth used by WOODELF's grid layout.
+        full_pdp : bool
+            If True, strip trailing zero-padding from each axis.
 
         Returns
         -------
-        ndarray of shape (k_f1, k_f2), float32
-            ``result[i, j]`` = PDP at (f1_unique[i], f2_unique[j]).
+        sklearn Bunch with average of shape (1, k_f1, k_f2) and grid_values [x, y].
         """
-        D = math.ceil(math.log2(n_features))
-        h = first_different_bit(i1, i2, D)
-        bit_f1 = list(bits(i1, D))[h]
-        if bit_f1 == 0:  # f1 fast (tiled/col), f2 slow (repeated/row) → raw shape (k_f2, k_f1)
-            return raw_vals.reshape(k_f2, k_f1).T.astype(np.float32)
-        else:            # f1 slow (repeated/row), f2 fast (tiled/col) → raw shape (k_f1, k_f2)
-            return raw_vals.reshape(k_f1, k_f2).astype(np.float32)
+        from sklearn.utils import Bunch
+        # sqrt(len) recovers k without np.unique, which under-counts when sampled=True
+        # produces duplicate values.
+        k_joint = int(round(math.sqrt(len(raw))))
+        bit_f1 = list(bits(idx1, D))[first_different_bit(idx1, idx2, D)]
+        x_grid, y_grid = WoodelfPartialDependenceDisplay._axes_from_pts(
+            f1_pts, f2_pts, k_joint, bit_f1
+        )
+        if full_pdp:
+            # build_points_for_full_pdp zero-pads shorter features; strip trailing zeros.
+            k_f1 = len(np.trim_zeros(x_grid, 'b'))
+            k_f2 = len(np.trim_zeros(y_grid, 'b'))
+            x_grid, y_grid = x_grid[:k_f1], y_grid[:k_f2]
+        else:
+            k_f1 = k_f2 = k_joint
+        return Bunch(
+            average=WoodelfPartialDependenceDisplay._z_grid_sliced(
+                raw, k_joint, k_f1, k_f2, bit_f1
+            )[np.newaxis, :, :].astype(np.float64),
+            grid_values=[x_grid, y_grid],
+        )

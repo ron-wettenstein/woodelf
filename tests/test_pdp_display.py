@@ -2,7 +2,6 @@
 Tests for WoodelfPartialDependenceDisplay.
 
 Covers:
-- _build_2way_grid: standalone unit test
 - from_estimator: Bunch structure, method→accurate/centered mapping (mocked)
 - Integration: end-to-end on a real sklearn model — grid and values compared
   directly against sklearn's PartialDependenceDisplay.from_estimator for both
@@ -71,33 +70,6 @@ def small_model_and_data():
     model = HistGradientBoostingRegressor(max_iter=30, max_depth=4, random_state=42)
     model.fit(X, y)
     return model, X
-
-
-# ---------------------------------------------------------------------------
-# _build_2way_grid
-# ---------------------------------------------------------------------------
-
-def test_build_2way_grid():
-    """
-    Covers f1-fast axis (i1 < i2), f1-slow axis (i1 > i2), shape, values, dtype.
-    raw layout for f1-fast: (k_f2, k_f1) C-order → result = reshape.T
-    raw layout for f1-slow: (k_f1, k_f2) C-order → result = reshape directly
-    """
-    build = WoodelfPartialDependenceDisplay._build_2way_grid
-    k_f1, k_f2 = 3, 4
-    raw = np.arange(k_f1 * k_f2, dtype=np.float64)
-
-    # f1 fast axis: i1=0 < i2=1, n_features=2 → bit_f1=0
-    result = build(raw, i1=0, i2=1, k_f1=k_f1, k_f2=k_f2, n_features=2)
-    assert result.shape == (k_f1, k_f2)
-    assert result.dtype == np.float32
-    np.testing.assert_array_equal(result, raw.reshape(k_f2, k_f1).T.astype(np.float32))
-
-    # f1 slow axis: i1=2 > i2=0, n_features=4 → bit_f1=1
-    result2 = build(raw, i1=2, i2=0, k_f1=k_f1, k_f2=k_f2, n_features=4)
-    assert result2.shape == (k_f1, k_f2)
-    assert result2.dtype == np.float32
-    np.testing.assert_array_equal(result2, raw.reshape(k_f1, k_f2).astype(np.float32))
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +247,50 @@ def test_full_pdp_no_crash_and_variable_grid(small_model_and_data):
     assert len(set(grid_lengths.values())) > 1, (
         f"full_pdp should produce different grid sizes per feature; got {grid_lengths}"
     )
+
+
+def test_build_joint_bunch_sampled_duplicates():
+    """
+    k_joint = sqrt(len(raw)), not len(np.unique(axis_pts)).
+    With duplicate sampled values np.unique would under-count, causing a reshape
+    crash.  _build_joint_bunch must produce average.shape == (1, k, k).
+    """
+    k = 10
+    # 2-feature layout: D=1, idx1=0 (bit=0, fast/tiled), idx2=1 (bit=1, slow/repeated)
+    # f1 has only 4 unique values but k=10 → duplicates guaranteed
+    f1_one_cycle = np.sort(np.resize(np.array([0.1, 0.4, 0.7, 1.0]), k))
+    f1_pts = np.tile(f1_one_cycle, k)
+    f2_pts = np.repeat(np.linspace(0.0, 1.0, k), k)
+    raw = np.arange(k * k, dtype=np.float32)
+
+    bunch = WoodelfPartialDependenceDisplay._build_joint_bunch(
+        raw, f1_pts, f2_pts, idx1=0, idx2=1, D=1, full_pdp=False
+    )
+    assert bunch.average.shape == (1, k, k)
+    assert len(bunch.grid_values[0]) == k
+    assert len(bunch.grid_values[1]) == k
+
+
+def test_build_joint_bunch_full_pdp_strips_zero_padding():
+    """
+    full_pdp=True: build_points_for_full_pdp zero-pads shorter features to
+    max_threshold_count.  _build_joint_bunch must strip trailing zeros so
+    grid_values contain only real threshold values and average.shape matches.
+    """
+    k_outer = 5
+    # f1: 3 real thresholds + 2 zero-padding; f2: 5 real thresholds (no padding)
+    f1_one_cycle = np.array([1.0, 2.0, 3.0, 0.0, 0.0])
+    f2_vals = np.array([0.5, 1.5, 2.5, 3.5, 4.5])
+    f1_pts = np.tile(f1_one_cycle, k_outer)    # f1 fast (tiled)
+    f2_pts = np.repeat(f2_vals, k_outer)        # f2 slow (repeated)
+    raw = np.arange(k_outer * k_outer, dtype=np.float32)
+
+    bunch = WoodelfPartialDependenceDisplay._build_joint_bunch(
+        raw, f1_pts, f2_pts, idx1=0, idx2=1, D=1, full_pdp=True
+    )
+    np.testing.assert_array_equal(bunch.grid_values[0], [1.0, 2.0, 3.0])
+    np.testing.assert_array_equal(bunch.grid_values[1], f2_vals)
+    assert bunch.average.shape == (1, 3, 5)
 
 
 def test_renders(small_model_and_data):
