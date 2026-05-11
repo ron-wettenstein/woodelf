@@ -278,17 +278,30 @@ class WoodelfPartialDependenceDisplay:
             for j in range(i + 1, len(all_feature_names))
         ] if compute_joint_pdp else []
         joint_pdvs: Dict[Tuple[str, str], object] = {}
+        _D = math.ceil(math.log2(len(all_feature_names)))
         for f1, f2 in pairs:
             idx1, idx2 = name_to_idx[f1], name_to_idx[f2]
-            x_unique = np.unique(two_way_f1_pts[(f1, f2)])
-            y_unique = np.unique(two_way_f2_pts[(f1, f2)])
+            f1_pts = two_way_f1_pts[(f1, f2)]
+            f2_pts = two_way_f2_pts[(f1, f2)]
+            # The joint PDP is always evaluated on a k×k grid; recover k from the
+            # flat array size rather than using np.unique (which under-counts when
+            # sampled=True produces duplicate grid values).
+            k_joint = int(round(math.sqrt(len(two_way_pdvs[(f1, f2)]))))
+            _h = first_different_bit(idx1, idx2, _D)
+            _bit_f1 = list(bits(idx1, _D))[_h]
+            if _bit_f1 == 0:  # f1 fast (tiled), f2 slow (repeated)
+                x_grid = f1_pts[:k_joint]       # first full cycle  → f1 axis
+                y_grid = f2_pts[::k_joint]      # every k-th value  → f2 axis
+            else:             # f1 slow (repeated), f2 fast (tiled)
+                x_grid = f1_pts[::k_joint]      # every k-th value  → f1 axis
+                y_grid = f2_pts[:k_joint]       # first full cycle  → f2 axis
             z_grid = cls._build_2way_grid(
                 two_way_pdvs[(f1, f2)], idx1, idx2,
-                len(x_unique), len(y_unique), len(all_feature_names),
+                k_joint, k_joint, len(all_feature_names),
             )
             joint_pdvs[(f1, f2)] = Bunch(
                 average=z_grid[np.newaxis, :, :].astype(np.float64),
-                grid_values=[x_unique, y_unique],
+                grid_values=[x_grid, y_grid],
             )
 
         return cls(
