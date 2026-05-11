@@ -474,7 +474,7 @@ def woodelf_pdp_joint(
             model_obj, consumer_data=points_df, background_data=data if accurate else None,
             metric=metric, GPU=GPU, model_was_loaded=True
         )
-    avg_prediction = float(model.predict(data).mean())
+    avg_prediction = float(model.predict(data).mean()) if accurate else 0
     base_pdv = np.array([avg_prediction] * len(points_df))
     zero_array = np.array([0] * len(points_df))
     pdvs = {}
