@@ -264,7 +264,7 @@ def test_build_joint_bunch_sampled_duplicates():
     raw = np.arange(k * k, dtype=np.float32)
 
     bunch = WoodelfPartialDependenceDisplay._build_joint_bunch(
-        raw, f1_pts, f2_pts, idx1=0, idx2=1, D=1, full_pdp=False
+        raw, f1_pts, f2_pts, full_pdp=False
     )
     assert bunch.average.shape == (1, k, k)
     assert len(bunch.grid_values[0]) == k
@@ -286,7 +286,7 @@ def test_build_joint_bunch_full_pdp_strips_zero_padding():
     raw = np.arange(k_outer * k_outer, dtype=np.float32)
 
     bunch = WoodelfPartialDependenceDisplay._build_joint_bunch(
-        raw, f1_pts, f2_pts, idx1=0, idx2=1, D=1, full_pdp=True
+        raw, f1_pts, f2_pts, full_pdp=True
     )
     np.testing.assert_array_equal(bunch.grid_values[0], [1.0, 2.0, 3.0])
     np.testing.assert_array_equal(bunch.grid_values[1], f2_vals)

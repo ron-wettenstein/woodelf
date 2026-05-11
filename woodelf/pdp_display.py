@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from woodelf.pdp import woodelf_pdp, woodelf_pdp_joint, bits, first_different_bit
+from woodelf.pdp import woodelf_pdp, woodelf_pdp_joint
 
 
 class WoodelfPartialDependenceDisplay:
@@ -279,14 +279,12 @@ class WoodelfPartialDependenceDisplay:
         ] if compute_joint_pdp else []
 
         joint_pdvs: Dict[Tuple[str, str], object] = {}
-        _D = math.ceil(math.log2(len(all_feature_names)))
         for f1, f2 in pairs:
-            idx1, idx2 = name_to_idx[f1], name_to_idx[f2]
             joint_pdvs[(f1, f2)] = cls._build_joint_bunch(
                 two_way_pdvs[(f1, f2)],
                 two_way_f1_pts[(f1, f2)],
                 two_way_f2_pts[(f1, f2)],
-                idx1, idx2, _D, full_pdp,
+                full_pdp,
             )
 
         return cls(
@@ -405,21 +403,7 @@ class WoodelfPartialDependenceDisplay:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _axes_from_pts(f1_pts, f2_pts, k, bit_f1):
-        """Return (x_axis, y_axis) 1-D arrays from the flat joint-grid point arrays."""
-        if bit_f1 == 0:  # f1 tiled (fast), f2 repeated (slow)
-            return f1_pts[:k], f2_pts[::k]
-        return f1_pts[::k], f2_pts[:k]
-
-    @staticmethod
-    def _z_grid_sliced(raw, k_outer, k_f1, k_f2, bit_f1):
-        """Reshape flat PDP array to (k_f1, k_f2), slicing from a (k_outer, k_outer) layout."""
-        if bit_f1 == 0:  # C-order: (rows=f2, cols=f1)
-            return raw.reshape(k_outer, k_outer)[:k_f2, :k_f1].T.astype(np.float32)
-        return raw.reshape(k_outer, k_outer)[:k_f1, :k_f2].astype(np.float32)
-
-    @staticmethod
-    def _build_joint_bunch(raw, f1_pts, f2_pts, idx1, idx2, D, full_pdp):
+    def _build_joint_bunch(raw, f1_pts, f2_pts, full_pdp):
         """Build a sklearn Bunch for one (f1, f2) joint PDP pair.
 
         Parameters
@@ -428,10 +412,6 @@ class WoodelfPartialDependenceDisplay:
             Flat joint PDP values from woodelf_pdp_joint.
         f1_pts, f2_pts : ndarray, shape (k²,)
             Joint-grid coordinates for each feature.
-        idx1, idx2 : int
-            Column indices of f1 and f2 in the dataset.
-        D : int
-            ceil(log2(n_features)) — bit-depth used by WOODELF's grid layout.
         full_pdp : bool
             If True, strip trailing zero-padding from each axis.
 
@@ -440,23 +420,13 @@ class WoodelfPartialDependenceDisplay:
         sklearn Bunch with average of shape (1, k_f1, k_f2) and grid_values [x, y].
         """
         from sklearn.utils import Bunch
-        # sqrt(len) recovers k without np.unique, which under-counts when sampled=True
-        # produces duplicate values.
-        k_joint = int(round(math.sqrt(len(raw))))
-        bit_f1 = list(bits(idx1, D))[first_different_bit(idx1, idx2, D)]
-        x_grid, y_grid = WoodelfPartialDependenceDisplay._axes_from_pts(
-            f1_pts, f2_pts, k_joint, bit_f1
-        )
-        if full_pdp:
-            # build_points_for_full_pdp zero-pads shorter features; strip trailing zeros.
-            k_f1 = len(np.trim_zeros(x_grid, 'b'))
-            k_f2 = len(np.trim_zeros(y_grid, 'b'))
-            x_grid, y_grid = x_grid[:k_f1], y_grid[:k_f2]
-        else:
-            k_f1 = k_f2 = k_joint
+        k = int(round(math.sqrt(len(raw))))
+        # build_points_for_full_pdp zero-pads shorter features; strip trailing zeros when needed.
+        x_grid = np.trim_zeros(f1_pts[:k], 'b') if full_pdp else f1_pts[:k]
+        y_grid = np.trim_zeros(f2_pts[::k], 'b') if full_pdp else f2_pts[::k]
         return Bunch(
-            average=WoodelfPartialDependenceDisplay._z_grid_sliced(
-                raw, k_joint, k_f1, k_f2, bit_f1
-            )[np.newaxis, :, :].astype(np.float64),
+            # reshape flat k² → (k,k) C-order (rows=f2, cols=f1); slice strips zero-padding;
+            # .T swaps to (k_f1, k_f2); [None] adds the output dimension sklearn expects.
+            average=raw.reshape(k, k)[:len(y_grid), :len(x_grid)].T[None].astype(np.float64),
             grid_values=[x_grid, y_grid],
         )
