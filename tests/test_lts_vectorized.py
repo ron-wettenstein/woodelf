@@ -4,6 +4,7 @@ import shap
 
 from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, assert_shap_package_is_same_as_woodelf
 from woodelf.cube_metric import ShapleyValues, BanzhafValues
+from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.lts_vectorized import vectorized_linear_tree_shap, LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, \
     LinearTreeShapPathToMatricesImproved, LinearTreeShapV6PathToMatrices
 from woodelf.simple_woodelf import calculate_path_dependent_metric
@@ -58,6 +59,20 @@ def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_
             model, testset, is_shapley=True, GPU=False, use_neighbor_leaf_trick=True
         )
         assert_shap_package_is_same_as_woodelf(linear_tree_shap_values_neighbor_leaf_trick, shap_package_values, testset, TOLERANCE)
+
+
+def test_single_leaf_tree(testset):
+
+    leaf = DecisionTreeNode(feature_name=None, value=5, right=None, left=None, index=0, cover=1)
+    leaf.depth = 1
+    leaf.parent = None
+    single_leaf_tree = DecisionTreesEnsemble(trees=[leaf])
+
+    values = vectorized_linear_tree_shap(
+        single_leaf_tree, testset, model_was_loaded=True
+    )
+    for feature in values:
+        assert np.sum(np.abs(values[feature])) == 0
 
 
 @pytest.mark.parametrize("p2m_class", [LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, LinearTreeShapPathToMatricesImproved, LinearTreeShapV6PathToMatrices])

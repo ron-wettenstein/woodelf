@@ -1,4 +1,6 @@
 from math import factorial
+from typing import Set, Dict, Any, Tuple
+from itertools import combinations
 
 
 def nCk(n, k):
@@ -16,7 +18,7 @@ class CubeMetric(object):
     INTERACTION_VALUES_ORDER_MATTERS = False
     INTERACTION_VALUES_RETURN_ALL_SUBSET_PERMUTATIONS = False
 
-    def calc_metric(self, s_plus, s_minus):
+    def calc_metric(self, s_plus, s_minus) -> Dict[Any, float]:
         raise NotImplemented()
 
 class ShapleyValues(CubeMetric):
@@ -167,3 +169,47 @@ class BanzhafInteractionValues(CubeMetric):
                         if must_be_missing_feature < other_feature:
                             banzhaf_values[(must_be_missing_feature, other_feature)] = -contribution
         return banzhaf_values
+
+
+############################################################################################################################################################
+#
+#   PDPs matrices
+#
+############################################################################################################################################################
+
+
+class CPDVMetric(CubeMetric):
+    def calc_metric(self, s_plus: Set, s_minus: Set) -> Dict[str, float]:
+        if len(s_plus & s_minus) > 0:
+            return {}
+        pdp_values = {}
+        if len(s_plus) == 1:
+            for f in s_plus:
+                pdp_values[f] = 1
+        if len(s_plus) == 0:
+            for f in s_minus:
+                pdp_values[f] = -1
+        return pdp_values
+
+
+def all_subsets_of_size_0_1_2(s):
+    subsets = [set()]
+    for k in [1,2]:
+        for subset in combinations(s, k):
+            subsets.append(set(subset))
+    return subsets
+
+class PDIVOrder1Or2(CubeMetric):
+    INTERACTION_VALUE = True
+
+    def calc_metric(self, s_plus: Set, s_minus: Set) -> Dict[Tuple, float]:
+        if len(s_plus & s_minus) > 0:
+            return {}
+
+        pdivs = {}
+        for sm in all_subsets_of_size_0_1_2(s_minus):
+            s = tuple(s_plus | sm)
+            if len(s) in [1,2]:
+                pdivs[s] = (-1) ** (len(sm))
+        return pdivs
+
