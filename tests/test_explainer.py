@@ -124,9 +124,8 @@ def test_explainer_cache(trainset, testset, xgb_model):
     # When there is no cache one can modify the background data on the explainer, run shap and it will use
     # the new background data (this is for testing, please never actually do it in an important code)
     woodelf_explainer = WoodelfExplainer(
-        xgb_model, trainset.head(5), feature_perturbation='interventional', cache_option="no"
+        xgb_model, trainset.head(5), feature_perturbation='interventional', use_cache=False
     )
-    assert not woodelf_explainer.use_cache()
     woodelf_head_5_df_2 = woodelf_explainer.shap_values(
         testset.head(5), as_df=True, exclude_zero_contribution_features=False
     )
@@ -141,9 +140,8 @@ def test_explainer_cache(trainset, testset, xgb_model):
     # When the cache is enabled setting the background data will have no effect as the object
     # already extracted the needed information from the background data and does not need to reuse it
     woodelf_explainer = WoodelfExplainer(
-        xgb_model, trainset.head(5), feature_perturbation='interventional', cache_option="yes"
+        xgb_model, trainset.head(5), feature_perturbation='interventional', use_cache=True
     )
-    assert woodelf_explainer.use_cache()
     woodelf_head_5_df_3 = woodelf_explainer.shap_values(
         testset.head(5), as_df=True, exclude_zero_contribution_features=False
     )
