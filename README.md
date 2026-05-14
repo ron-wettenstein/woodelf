@@ -142,7 +142,7 @@ On a 400,000-row dataset:
 **High-level API:** `WoodelfPartialDependenceDisplay` is a drop-in replacement for sklearn's
 `PartialDependenceDisplay`. The computation and plotting are
 separated: `from_estimator` computes all PDP values upfront (for all features and/or all feature
-pairs), and the plot methods let you render any subset of them on demand.
+pairs), and the `plot_pdp` and `plot_joint_pdp` methods let you render any subset of them on demand.
 
 ```python
 import matplotlib.pyplot as plt
