@@ -115,7 +115,7 @@ class WoodelfPartialDependenceDisplay:
         feature_names=None,
         grid_resolution: int = 100,
         percentiles=(0.05, 0.95),
-        method: str = "auto",
+        method: str = "brute",
         verbose: int = 0,
         subsample: int = 1000,
         random_state=None,
@@ -160,10 +160,9 @@ class WoodelfPartialDependenceDisplay:
             Number of equally spaced grid points per feature.
         percentiles : tuple of float, default (0.05, 0.95)
             Percentile bounds for the grid range.
-        method : {'auto', 'recursion', 'brute'}
+        method : {'recursion', 'brute'}
             ``'recursion'`` → ``accurate=False`` (path-dependent, faster).
             ``'brute'``     → ``accurate=True``  (interventional, exact).
-            ``'auto'``      → WOODELF's own heuristic.
         verbose : int, default 0
             Verbosity passed to WOODELF's joint PDP computation.
         subsample, random_state :
@@ -184,7 +183,7 @@ class WoodelfPartialDependenceDisplay:
         """
         from sklearn.utils import Bunch
 
-        accurate = method != "recursion"  # True for 'brute' and 'auto'; False for 'recursion'
+        accurate = method != "recursion"  # True for 'brute'; False for 'recursion'
 
         # ---- Normalise X to DataFrame ----------------------------------------
         if not isinstance(X, pd.DataFrame):

@@ -14,7 +14,6 @@ from woodelf.path_to_matrices import PathToMatricesAbstractCls
 
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]
-AVAILABLE_CACHE_OPTIONS = ["auto", "yes", "no"]
 
 MAX_SUGGESTED_CACHE_SIZE = 250 * 2 ^ 20 # Use cache if it is predicted to take less than 250MB
 
@@ -23,13 +22,13 @@ class WoodelfExplainer:
             self, model, data: pd.DataFrame = None,
             model_output : str="raw", feature_perturbation: str="auto",
             # Additional options exists only in Woodelf:
-            cache_option: str = "auto", GPU: bool = False
+            use_cache: bool = False, GPU: bool = False
     ):
         self.raw_model = model
-        self.cache_option = cache_option
+        self.use_cache = use_cache and data is not None
         self.background_data = data
 
-        self.verify_init_input(model_output, feature_perturbation, cache_option)
+        self.verify_init_input(model_output, feature_perturbation)
         self.model_output = model_output
         self.feature_perturbation = feature_perturbation
         self.is_path_dependent = (self.feature_perturbation == "tree_path_dependent") or (
@@ -45,34 +44,16 @@ class WoodelfExplainer:
             else:
                 self.model: DecisionTreesEnsemble = load_decision_tree_ensemble_model(model, list(data.columns))
             self.model_was_loaded = True
-            self.cache = [{} for i in range(len(self.model.trees))] if self.use_cache() else None
+            self.cache = [{} for i in range(len(self.model.trees))] if self.use_cache else None
             self.cache_filled = False
         else:
             self.model_was_loaded = False
 
     @classmethod
-    def verify_init_input(cls, model_output: str, feature_perturbation: str, cache: str):
+    def verify_init_input(cls, model_output: str, feature_perturbation: str, ):
         assert model_output in AVAILABLE_MODEL_OUTPUTS, f"Available model_outputs are {AVAILABLE_MODEL_OUTPUTS}. Given '{model_output}'"
         assert feature_perturbation in AVAILABLE_FEATURE_PERTURBATION, f"Available feature_perturbations are {AVAILABLE_FEATURE_PERTURBATION}. Given '{feature_perturbation}'"
-        assert cache in AVAILABLE_CACHE_OPTIONS, f"Available cache options are {AVAILABLE_CACHE_OPTIONS}. Given '{cache}'"
-
         assert model_output == "raw", f"Currently supports only model_output='raw'. Given {model_output}"
-
-    def use_cache(self):
-        if self.background_data is None:
-            return False
-        if self.cache_option == "auto":
-            # Use cache if it is predicted to take less than 250MB
-            return self.predict_cache_size() <= MAX_SUGGESTED_CACHE_SIZE
-        return self.cache_option == "yes"
-
-    def predict_cache_size(self):
-        total_cache_size = 0
-        for tree in self.model.trees:
-            for leaf, features_in_path in tree.get_all_leaves_with_paths():
-                D = len(set(features_in_path))
-                total_cache_size += 2 ** D * 4
-        return total_cache_size
 
     def shap_values(
             self, X, tree_limit: int = None,
@@ -152,7 +133,7 @@ class WoodelfExplainer:
         if not self.model_was_loaded:
             self.model = load_decision_tree_ensemble_model(self.raw_model, list(consumer_data.columns))
             self.model_was_loaded = True
-            self.cache = [{} for i in range(len(self.model.trees))] if self.use_cache() else None
+            self.cache = [{} for i in range(len(self.model.trees))] if self.use_cache else None
             self.cache_filled = False
 
         model = self.model if tree_limit is None else DecisionTreesEnsemble(self.model.trees[:tree_limit])

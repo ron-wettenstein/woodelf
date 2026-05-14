@@ -114,17 +114,11 @@ background_iv_df = explainer.shap_interaction_values(X_test, as_df=True, exclude
 
 #### Built-in Cache
 
-By default, caching is enabled for sufficiently small decision-tree ensembles (e.g., models with low tree depth).
-
-The cache stores the preprocessed background data, eliminating the need to recompute it across repeated uses of the same explainer instance.
-
-You can control this behavior manually:
-- Enable caching with `cache_option='yes'`
-- Disable caching with `cache_option='no'`
+The cache stores the preprocessed background data, eliminating the need to recompute it across repeated uses of the same explainer instance. By default, caching is disabled.
 
 **Note:** Caching may be memory-intensive for deep trees (e.g., `max_depth ≥ 8`).
 ```python
-explainer = WoodelfExplainer(xgb_model, X_train, cache_option='yes')
+explainer = WoodelfExplainer(xgb_model, X_train, use_cache=True)
 shap_sample_1 = explainer.shap_values(X_test.sample(100))
 # No need to preprocess the background data from here on, the cache will be used instead.
 shap_sample_2 = explainer.shap_values(X_test.sample(100)) 
@@ -132,6 +126,44 @@ shap_sample_3 = explainer.shap_values(X_test.sample(100))
 ...
 ```
 
+## Partial Dependence Plots (PDP)
+
+WOODELF computes Partial Dependence Plots orders of magnitude faster than sklearn.
+On a 400,000-row dataset:
+
+| Task                         | sklearn    | WOODELF    |
+|------------------------------|------------|------------|
+| PDP 5 points                 | 58 minutes | 15 seconds |
+| PDP 100 points               | 19 hours*  | 15 seconds |
+| Joint-PDP 5 points           | 35 days*   | 19 seconds |
+
+**Low-level API:** use `woodelf.pdp.woodelf_pdp` to get the PDP values and `woodelf.pdp.woodelf_pdp_joint` to get the joint PDPs values directly.
+
+**High-level API:** `WoodelfPartialDependenceDisplay` is a drop-in replacement for sklearn's
+`PartialDependenceDisplay`. The key difference in workflow is that computation and plotting are
+separated: `from_estimator` computes all PDP values upfront (for all features and/or all feature
+pairs), and the plot methods let you render any subset of them on demand.
+
+```python
+import matplotlib.pyplot as plt
+from woodelf import WoodelfPartialDependenceDisplay
+
+w_display = WoodelfPartialDependenceDisplay.from_estimator(
+    model, X_train,
+    compute_pdp=True,       # compute the PDP values for all features
+    compute_joint_pdp=False, # compute the joint PDPs values for all feature pairs
+    grid_resolution=100,    # number of grid points per feature axis
+    method="brute",         # exact computation; use "recursion" for an approximation
+    full_pdp=False,         # if True, use every tree split threshold as a grid point (and grid_resolution is ignored). These plots capture the full relation between the feature value and the average model prediciton.
+    GPU=False,              # Use GPU=True to use GPU.
+)
+
+# Plot any subset on demand
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+w_display.plot_pdp(["MedInc"], ax=axes[0])
+w_display.plot_pdp(["AveRooms"], ax=axes[1])
+...
+```
 
 
 ## Citations
