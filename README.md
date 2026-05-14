@@ -126,6 +126,19 @@ shap_sample_3 = explainer.shap_values(X_test.sample(100))
 ...
 ```
 
+## Partial Dependence Plots (PDP)
+
+Woodelf also enable efficient computation of Partial Dependence Plots. With substantial complexity improvements over sklearn.
+On 400,000 rows datasets, Woodelf is significantly faster than sklearn:
+
+| Task                         | sklearn    | WOODELF    |
+|------------------------------|------------|------------|
+| PDP 5 points                 | 58 minutes | 15 seconds |
+| PDP 100 points               | 19 hours*  | 15 seconds |
+| Joint-PDP 5 points           | 35 days*   | 19 seconds |
+
+
+
 
 
 ## Citations
