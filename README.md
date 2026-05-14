@@ -140,7 +140,7 @@ On a 400,000-row dataset:
 **Low-level API:** use `woodelf.pdp.woodelf_pdp` to get the PDP values and `woodelf.pdp.woodelf_pdp_joint` to get the joint PDPs values directly.
 
 **High-level API:** `WoodelfPartialDependenceDisplay` is a drop-in replacement for sklearn's
-`PartialDependenceDisplay`. The key difference in workflow is that computation and plotting are
+`PartialDependenceDisplay`. The computation and plotting are
 separated: `from_estimator` computes all PDP values upfront (for all features and/or all feature
 pairs), and the plot methods let you render any subset of them on demand.
 
