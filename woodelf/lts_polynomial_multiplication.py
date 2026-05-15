@@ -416,7 +416,7 @@ def improved_linear_tree_shap_iv(r: np.array, p: np.array, f_w: np.array, w: flo
         new_r = np.concatenate([r[:i], r[i+1:]])
         shap_excluding_i = improved_linear_tree_shap_magic(new_r, extracted_patterns, f_w, w)
         q_i = (np.tile(q_M[i], (q_M.shape[0] - 1, 1))).T
-        shaps_i = (shap_excluding_i * (q_i - 1)).copy()
+        shaps_i = (shap_excluding_i * (q_i - 1) * ratio / 2).copy()
         # shaps_i = (2*ibit.astype(np.int8) - 1)[:, None] * shap_excluding_i # if traverse with the path mult by 1 if not mult by -1
         # shaps_i = (shaps_i / 2) # * ratio should I?
         shaps.append(shaps_i)

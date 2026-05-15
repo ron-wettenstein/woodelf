@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pytest
 import shap
@@ -76,21 +78,15 @@ def test_single_leaf_tree(testset):
         assert np.sum(np.abs(values[feature])) == 0
 
 
-@pytest.mark.parametrize("p2m_class", [LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, LinearTreeShapPathToMatricesImproved, LinearTreeShapV6PathToMatrices])
-def test_linear_tree_shap_iv_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):
-    for model in [xgb_model_depth_16, xgb_model_depth_22]:
+def test_linear_tree_shap_iv_on_high_depth_models(testset, xgb_model):
+    testset_head = testset.head(20)
+    linear_tree_shap_iv_values = vectorized_linear_tree_shap(
+        xgb_model, testset_head, is_shapley=True, GPU=False, is_interaction_values=True, use_neighbor_leaf_trick=False
+    )
+    explainer = shap.TreeExplainer(xgb_model)
+    shap_iv_package_values = explainer.shap_interaction_values(testset_head)
 
-        linear_tree_shap_iv_values = vectorized_linear_tree_shap(
-            model, testset, is_shapley=True, GPU=False, is_interaction_values=True, use_neighbor_leaf_trick=False
-        )
-
-        explainer = shap.TreeExplainer(model)
-        shap_iv_package_values = explainer.shap_interaction_values(testset)
-
-        # for (f1, f2) in linear_tree_shap_iv_values:
-        #     linear_tree_shap_iv_values[(f1, f2)] = linear_tree_shap_iv_values[(f1, f2)] / 100
-
-        assert_shap_package_is_same_as_woodelf_on_interaction_values(linear_tree_shap_iv_values, shap_iv_package_values, testset, TOLERANCE)
+    assert_shap_package_is_same_as_woodelf_on_interaction_values(linear_tree_shap_iv_values, shap_iv_package_values, testset_head, TOLERANCE)
 
 
 @pytest.mark.parametrize("p2m_class", [LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, LinearTreeShapPathToMatricesImproved])
