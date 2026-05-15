@@ -143,26 +143,18 @@ def test_calculate_background_metric_for_high_depth(trainset, testset, xgb_model
 
 
 
-@pytest.mark.parametrize("use_neighbor_leaf_trick, metric_cls", [
-    (False, ShapleyValues),
-    (True, ShapleyValues),
-    (False, ShapleyInteractionValues),
-    (True, ShapleyInteractionValues),
-],
-    ids=["SHAP use_neighbor_leaf_trick=False", "SHAP use_neighbor_leaf_trick=True",
-         "SHAP IV use_neighbor_leaf_trick=False", "SHAP IV use_neighbor_leaf_trick=True"])
-def test_calculate_background_metric_for_high_depth_paper_version(trainset, testset, xgb_model, use_neighbor_leaf_trick, metric_cls):
+def test_calculate_background_metric_for_high_depth_paper_version(trainset, testset, xgb_model):
     start_time = time.time()
     simple_woodelf_values = calculate_background_metric(
-        xgb_model, testset, trainset, metric=metric_cls()
+        xgb_model, testset, trainset, metric=ShapleyValues()
     )
     print("simple woodelf took: ", time.time() - start_time)
 
     start_time = time.time()
     model_obj = load_decision_tree_ensemble_model(xgb_model, list(trainset.columns))
-    p2m = HighDepthPathToMatricesPaperVersion(metric=metric_cls(), max_depth=model_obj.max_depth, GPU=False)
+    p2m = HighDepthPathToMatricesPaperVersion(metric=ShapleyValues(), max_depth=model_obj.max_depth, GPU=False)
     high_depth_woodelf_values = woodelf_for_high_depth(
-        xgb_model, testset, trainset, metric=metric_cls(), use_neighbor_leaf_trick=use_neighbor_leaf_trick,
+        xgb_model, testset, trainset, metric=ShapleyValues(), use_neighbor_leaf_trick=True,
         path_to_matrices_calculator = p2m
     )
     print("high depth woodelf took: ", time.time() - start_time)

@@ -15,8 +15,6 @@ from woodelf.path_to_matrices import PathToMatricesAbstractCls
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]
 
-MAX_SUGGESTED_CACHE_SIZE = 250 * 2 ^ 20 # Use cache if it is predicted to take less than 250MB
-
 class WoodelfExplainer:
     def __init__(
             self, model, data: pd.DataFrame = None,
