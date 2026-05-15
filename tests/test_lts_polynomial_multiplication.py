@@ -218,7 +218,6 @@ def test_linear_tree_shap_magic_longer_high_depth_v6(D):
             )
 
 
-
 @pytest.mark.parametrize("D", list(range(5, 61, 5)))
 def test_linear_tree_shap_fast_banzhaf_many_depths(D):
     # The technics are the same, also - no numerical errors in Banzhaf!

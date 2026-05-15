@@ -15,8 +15,6 @@ from woodelf.path_to_matrices import PathToMatricesAbstractCls
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]
 
-MAX_SUGGESTED_CACHE_SIZE = 250 * 2 ^ 20 # Use cache if it is predicted to take less than 250MB
-
 class WoodelfExplainer:
     def __init__(
             self, model, data: pd.DataFrame = None,
@@ -147,15 +145,14 @@ class WoodelfExplainer:
                 cache_kwargs["cache_to_fill"] = self.cache
                 self.cache_filled = True # will fill the cache now
 
-        if (    # Use Vectorized LinearTreeSHAP on Path-Dependent SHAP/Banzhaf when the trees have a high depth.
-                self.background_data is None and self.cache is None and
-                (isinstance(metric, ShapleyValues) or isinstance(metric, BanzhafValues))
-                and model.max_depth > 10
+        if (    # Use Vectorized LinearTreeSHAP on Path-Dependent SHAP/Banzhaf/Shapley interaction values when the trees have a high depth.
+                self.background_data is None and self.cache is None and model.max_depth > 10 and
+                any(isinstance(metric, supported_metric) for supported_metric in [ShapleyValues, BanzhafValues, ShapleyInteractionValues])
         ):
             woodelf_values = vectorized_linear_tree_shap(
-                model, consumer_data,
-                is_shapley=isinstance(metric, ShapleyValues), is_banzhaf=isinstance(metric, BanzhafValues),
-                GPU=self.GPU, model_was_loaded=True
+                model, consumer_data, GPU=self.GPU, model_was_loaded=True,
+                is_shapley=isinstance(metric, ShapleyValues) or isinstance(metric, ShapleyInteractionValues), is_banzhaf=isinstance(metric, BanzhafValues),
+                is_interaction_values=isinstance(metric, ShapleyInteractionValues)
             )
         else:
             woodelf_values = woodelf_for_high_depth(

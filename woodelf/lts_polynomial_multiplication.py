@@ -385,6 +385,38 @@ def linear_tree_shap_magic_for_neighbors(
 #
 ############################################################################################################################################################
 
+def extract_bit(patterns: np.ndarray, i: int):
+    """
+    patterns: np.array of integers
+    i: bit index to extract (0 = LSB)
+
+    Returns: patterns with bit i removed
+    """
+    lower = patterns & ((1 << i) - 1)     # bits below i
+    upper = patterns >> (i + 1)           # bits above i
+    return lower + (upper << i)
+
+def improved_linear_tree_shap_iv(r: np.array, p: np.array, f_w: np.array, w: float):
+    q_M = bits_matrix(p, len(r)) * (1 / r.reshape(-1, 1))
+    assert len(f_w) == len(r) - 1
+    shaps = []
+    for i, ratio in enumerate(r):
+        extracted_patterns = extract_bit(p, len(r) - 1 - i)
+        new_r = np.concatenate([r[:i], r[i+1:]])
+        shap_excluding_i = improved_linear_tree_shap_magic(new_r, extracted_patterns, f_w, w)
+        q_i = (np.tile(q_M[i], (q_M.shape[0] - 1, 1))).T
+        # The interaction values (i,j) are the shapley values of j in the game excluding i, times '(q_i - 1) * ratio'
+        # The '/ 2' is to fit the shap package logic, splitting the interaction between the two features.
+        shaps_i = (shap_excluding_i * (q_i - 1) * ratio / 2).copy()
+        shaps.append(shaps_i)
+    return shaps
+
+############################################################################################################################################################
+#
+#         Division Forward - Do not use it as it slower than the "improved" approach above. Keep it here as it might be useful someday
+#
+############################################################################################################################################################
+
 
 def linear_tree_shap_division_forward(
         r: np.array, p: np.array, f_w: np.array, leaf_weight: float
