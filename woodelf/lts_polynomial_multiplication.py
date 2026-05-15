@@ -390,29 +390,18 @@ def extract_bit(patterns: np.ndarray, i: int):
     patterns: np.array of integers
     i: bit index to extract (0 = LSB)
 
-    Returns:
-        new_patterns : patterns with bit i removed
-        bit_series   : array of the extracted bits (0/1)
+    Returns: patterns with bit i removed
     """
-
-    # extract the bit
-    bit_series = (patterns >> i) & 1
-
-    # split lower and upper parts
     lower = patterns & ((1 << i) - 1)     # bits below i
     upper = patterns >> (i + 1)           # bits above i
-
-    # compress
-    new_patterns = lower + (upper << i)
-
-    return new_patterns, bit_series
+    return lower + (upper << i)
 
 def improved_linear_tree_shap_iv(r: np.array, p: np.array, f_w: np.array, w: float):
     q_M = bits_matrix(p, len(r)) * (1 / r.reshape(-1, 1))
     assert len(f_w) == len(r) - 1
     shaps = []
     for i, ratio in enumerate(r):
-        extracted_patterns, ibit = extract_bit(p, len(r) - 1 - i)
+        extracted_patterns = extract_bit(p, len(r) - 1 - i)
         new_r = np.concatenate([r[:i], r[i+1:]])
         shap_excluding_i = improved_linear_tree_shap_magic(new_r, extracted_patterns, f_w, w)
         q_i = (np.tile(q_M[i], (q_M.shape[0] - 1, 1))).T
