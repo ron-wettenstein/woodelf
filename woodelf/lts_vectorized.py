@@ -48,11 +48,15 @@ class LinearTreeShapPathToMatrices: # doesn't inherit PathToMatricesAbstractCls 
         start_time = time.time()
         if self.is_shapley:
             # assume features in path are unique
-            f_w = self.f_ws[len(covers)][:-1] if self.is_interaction_values else self.f_ws[len(covers)]
             if self.is_interaction_values:
                 assert w_neighbor is None
+                if len(covers) <= 1:
+                    self.computation_time += time.time() - start_time
+                    return []
+                f_w = self.f_ws[len(covers)-1]
                 s_matrix = improved_linear_tree_shap_iv(covers, consumer_patterns, f_w, w)
             else:
+                f_w = self.f_ws[len(covers)]
                 if w_neighbor is None:
                     # s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
                     s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
@@ -132,6 +136,8 @@ def vectorized_linear_tree_shap_for_a_single_tree(
                     values[feature] += s_matrix[:, index][inverse]
 
         else:
+            if not s_matrix:  # < 2 unique features in path, no interactions
+                continue
             features_in_path = leaf_index_to_unique_features_in_path[leaf.index]
             for i, feature1 in enumerate(features_in_path):
                 s_matrix_i = s_matrix[i].astype(np.float32)
