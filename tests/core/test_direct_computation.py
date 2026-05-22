@@ -4,14 +4,14 @@ import shap
 import xgboost as xgb
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor
 
-from woodelf.cube_metric import (
+from woodelf.core.cube_metric import (
     BanzhafValues, BanzhafInteractionValues, ShapleyInteractionValues, ShapleyValues, CubeMetric
 )
-from woodelf.direct_computation import (
+from woodelf.core.direct_computation import (
     BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation,
     ShapleyDirectComputation, DirectComputation, BackgroundModelCF, PathDependentModelCF
 )
-from woodelf.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
 
 

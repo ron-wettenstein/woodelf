@@ -4,13 +4,13 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from woodelf.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzhafValues, \
+from woodelf.core.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzhafValues, \
     BanzhafInteractionValues
-from woodelf.decision_trees_ensemble import DecisionTreesEnsemble
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.lts_vectorized import vectorized_linear_tree_shap
-from woodelf.parse_models import load_decision_tree_ensemble_model
-from woodelf.path_to_matrices import PathToMatricesAbstractCls
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors
 
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]
@@ -57,7 +57,7 @@ class WoodelfExplainer:
             self, X, tree_limit: int = None,
             # Additional options exists only in Woodelf:
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False
     ):
         return self.calc_metric(
@@ -68,7 +68,7 @@ class WoodelfExplainer:
     def shap_interaction_values(
             self, X, tree_limit: int = None, include_interaction_with_itself: bool = True,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False
     ):
         shapley_ivs = self.calc_metric(
@@ -103,7 +103,7 @@ class WoodelfExplainer:
     def banzhaf_values(
             self, X, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False
     ):
         return self.calc_metric(
@@ -114,7 +114,7 @@ class WoodelfExplainer:
     def banzhaf_interaction_values(
             self, X, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False
     ):
         return self.calc_metric(
@@ -126,7 +126,7 @@ class WoodelfExplainer:
     def calc_metric(
             self, consumer_data, metric: CubeMetric, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False):
         if not self.model_was_loaded:
             self.model = load_decision_tree_ensemble_model(self.raw_model, list(consumer_data.columns))
@@ -149,11 +149,7 @@ class WoodelfExplainer:
                 self.background_data is None and self.cache is None and model.max_depth > 10 and
                 any(isinstance(metric, supported_metric) for supported_metric in [ShapleyValues, BanzhafValues, ShapleyInteractionValues])
         ):
-            woodelf_values = vectorized_linear_tree_shap(
-                model, consumer_data, GPU=self.GPU, model_was_loaded=True,
-                is_shapley=isinstance(metric, ShapleyValues) or isinstance(metric, ShapleyInteractionValues), is_banzhaf=isinstance(metric, BanzhafValues),
-                is_interaction_values=isinstance(metric, ShapleyInteractionValues)
-            )
+            woodelf_values = vectorized_linear_tree_shap(model, consumer_data, metric, GPU=self.GPU, model_was_loaded=True)
         else:
             woodelf_values = woodelf_for_high_depth(
                 model, consumer_data, self.background_data, metric, GPU=self.GPU,

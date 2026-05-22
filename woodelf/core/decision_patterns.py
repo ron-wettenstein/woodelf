@@ -3,7 +3,7 @@ from typing import Tuple, Generator
 import numpy as np
 import pandas as pd
 
-from woodelf.decision_trees_ensemble import DecisionTreeNode
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.simple_woodelf import (
     GPU_get_int_dtype_from_depth, get_int_dtype_from_depth
 )

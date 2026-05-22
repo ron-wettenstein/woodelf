@@ -2,27 +2,28 @@ import time
 
 import pandas as pd
 import shap
-from numpy.ma.core import max_val
 from sklearn.datasets import make_classification
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, \
     ExtraTreesRegressor, ExtraTreesClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier, \
     IsolationForest
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
-from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
-from woodelf.high_depth_woodelf import (
-    compute_path_dependent_f, woodelf_for_high_depth, compute_f
-)
-from woodelf.decision_patterns import decision_patterns_generator
+from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues
+from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
+from woodelf.core.utils import get_covers_vector
+from woodelf.high_depth_woodelf import woodelf_for_high_depth
+from woodelf.core.decision_patterns import decision_patterns_generator
 import numpy as np
 import pytest
 import xgboost as xgb
 
 from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, \
     assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
-from woodelf.parse_models import load_decision_tree_ensemble_model
-from woodelf.path_to_matrices import SimplePathToMatrices, HighDepthPathToMatricesPaperVersion
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+
+from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors, compute_f_from_patterns
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric, \
     path_dependent_frequencies
 import lightgbm as lgb
@@ -59,7 +60,8 @@ def simple_path():
 
 
 def test_compute_path_dependent_f(simple_path):
-    f = compute_path_dependent_f(simple_path, unique_features_in_path=["a", "b"])
+    covers = np.array(get_covers_vector(simple_path, ["a", "b"]))
+    f = WoodelfPathToSVectors.compute_f_from_covers(covers)
     np.testing.assert_allclose(f, np.array([0.36, 0.54, 0.04, 0.06]))
 
 
@@ -78,7 +80,8 @@ def test_compute_path_dependent_f_on_a_full_model(trainset, xgb_model):
                         if n.feature_name not in unique_features_in_path:
                             unique_features_in_path.append(n.feature_name)
 
-                    pd_f = compute_path_dependent_f(path + [node], unique_features_in_path)
+                    covers = np.array(get_covers_vector(path + [node], unique_features_in_path))
+                    pd_f = WoodelfPathToSVectors.compute_f_from_covers(covers)
                     np.testing.assert_allclose(pd_f, simple_woodelf_fs[node.index])
 
 
@@ -96,8 +99,8 @@ def test_compute_f(simple_path):
     data = pd.DataFrame({"a": [7, 8, 4, 3, 0, -1], "b": [4, 2, 5, 2, 9, 1]})
     simple_path[0].depth = 3
     patterns = {l.index: p for l, p in decision_patterns_generator(simple_path[0], data)}
-    f_leaf_7 = compute_f(patterns[7], path_depth=2)
-    f_leaf_6 = compute_f(patterns[6], path_depth=2)
+    f_leaf_7 = compute_f_from_patterns(patterns[7], depth=2)
+    f_leaf_6 = compute_f_from_patterns(patterns[6], depth=2)
     np.testing.assert_allclose(f_leaf_7, np.array([2,2,1,1]) / 6)
     np.testing.assert_allclose(f_leaf_6, np.array([2,2,1,1]) / 6)
 
@@ -152,7 +155,7 @@ def test_calculate_background_metric_for_high_depth_paper_version(trainset, test
 
     start_time = time.time()
     model_obj = load_decision_tree_ensemble_model(xgb_model, list(trainset.columns))
-    p2m = HighDepthPathToMatricesPaperVersion(metric=ShapleyValues(), max_depth=model_obj.max_depth, GPU=False)
+    p2m = HighDepthWoodelfPaperVersionPathToSVectors(metric=ShapleyValues(), max_depth=model_obj.max_depth, GPU=False)
     high_depth_woodelf_values = woodelf_for_high_depth(
         xgb_model, testset, trainset, metric=ShapleyValues(), use_neighbor_leaf_trick=True,
         path_to_matrices_calculator = p2m
@@ -223,7 +226,7 @@ def test_background_shap_on_depth_16_xgboost(testset, trainset, xgb_model_depth_
 
 
 def test_only_unique_feature_paths_are_passed_to_path_to_matrices_calculator(trainset, testset, xgb_model):
-    p2v = SimplePathToMatrices(metric=ShapleyValues(), max_depth=6, GPU=False)
+    p2v = SimpleWoodelfPathToSVectors(metric=ShapleyValues(), max_depth=6, GPU=False)
     woodelf_for_high_depth(
         xgb_model, testset, background_data=None, metric=ShapleyValues(), use_neighbor_leaf_trick=True,
         path_to_matrices_calculator=p2v
@@ -231,7 +234,7 @@ def test_only_unique_feature_paths_are_passed_to_path_to_matrices_calculator(tra
 
     assert p2v.cache_miss <= 6, "As all feature paths are unique, there is up to 6 of these (the depth is 6)"
 
-    p2v_shap_iv = SimplePathToMatrices(metric=ShapleyInteractionValues(), max_depth=6, GPU=False)
+    p2v_shap_iv = SimpleWoodelfPathToSVectors(metric=ShapleyInteractionValues(), max_depth=6, GPU=False)
     woodelf_for_high_depth(
         xgb_model, testset, background_data=None, metric=ShapleyValues(), use_neighbor_leaf_trick=True,
         path_to_matrices_calculator=p2v_shap_iv

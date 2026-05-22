@@ -1,4 +1,4 @@
-from woodelf.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode
 import pandas as pd
 import numpy as np
 
