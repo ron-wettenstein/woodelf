@@ -148,7 +148,7 @@ class PDPPathToSVectors(PathToSVectors):
     """
 
     def __init__(self, max_depth: int, GPU: bool = False):
-        super().__init__(max_depth, GPU)
+        super().__init__(None, max_depth, GPU) # As we don't use it, we give metric=None
         self.computation_time = 0
         self.compute_f_time = 0
 

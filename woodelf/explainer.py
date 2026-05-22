@@ -149,11 +149,7 @@ class WoodelfExplainer:
                 self.background_data is None and self.cache is None and model.max_depth > 10 and
                 any(isinstance(metric, supported_metric) for supported_metric in [ShapleyValues, BanzhafValues, ShapleyInteractionValues])
         ):
-            woodelf_values = vectorized_linear_tree_shap(
-                model, consumer_data, GPU=self.GPU, model_was_loaded=True,
-                is_shapley=isinstance(metric, ShapleyValues) or isinstance(metric, ShapleyInteractionValues), is_banzhaf=isinstance(metric, BanzhafValues),
-                is_interaction_values=isinstance(metric, ShapleyInteractionValues)
-            )
+            woodelf_values = vectorized_linear_tree_shap(model, consumer_data, metric, GPU=self.GPU, model_was_loaded=True)
         else:
             woodelf_values = woodelf_for_high_depth(
                 model, consumer_data, self.background_data, metric, GPU=self.GPU,

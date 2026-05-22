@@ -20,7 +20,8 @@ class PathToSVectors:
     Subclasses implement get_background_s_matrix and/or get_path_dependent_s_matrix.
     Both methods return Dict[feature_key -> np.array[N_consumers]].
     """
-    def __init__(self, max_depth: int, GPU: bool = False):
+    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
+        self.metric = metric
         self.max_depth = max_depth
         self.GPU = GPU
 
@@ -46,9 +47,6 @@ class WoodelfPathToSVectors(PathToSVectors):
     Subclasses implement _get_s_vectors_given_f.
     Provides static helpers for f computation and the neighbor-leaf trick.
     """
-    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
-        super().__init__(max_depth, GPU)
-        self.metric = metric
 
     @staticmethod
     def compute_f_from_patterns(patterns, depth: int, GPU: bool = False) -> np.ndarray:

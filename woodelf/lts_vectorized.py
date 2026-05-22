@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from woodelf.core.cube_metric import CubeMetric, ShapleyInteractionValues, ShapleyValues, BanzhafValues
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.core.lts_polynomial_multiplication import (
@@ -28,17 +29,11 @@ def banzhaf_values_f_w(depth):
 
 class LTSPathToSVectors(PathToSVectors):
 
-    def __init__(self, is_shapley: bool, is_banzhaf: bool, max_depth: int, is_interaction_values: bool=False, GPU: bool = False):
-        super().__init__(max_depth, GPU)
-        self.is_shapley = is_shapley
-        self.is_interaction_values = is_interaction_values
-        if is_shapley:
-            assert not is_banzhaf
-        if is_banzhaf:
-            assert not is_shapley
+    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
+        super().__init__(metric, max_depth, GPU)
 
         self.f_ws = None
-        if is_shapley:
+        if isinstance(metric, ShapleyInteractionValues) or isinstance(metric, ShapleyValues):
             # None f_ws for depth 0, in the rest use shapley_values_f_w(depth)
             self.f_ws = [None] + [shapley_values_f_w(depth) for depth in range(1, max_depth + 1)]
 
@@ -46,23 +41,22 @@ class LTSPathToSVectors(PathToSVectors):
 
     def _get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float, w_neighbor: Optional[float] = None):
         start_time = time.time()
-        if self.is_shapley:
-            # assume features in path are unique
-            if self.is_interaction_values:
-                assert w_neighbor is None
-                if len(covers) <= 1:
-                    self.computation_time += time.time() - start_time
-                    return []
-                f_w = self.f_ws[len(covers)-1]
-                s_matrix = improved_linear_tree_shap_iv(covers, consumer_patterns, f_w, w)
+        # assume features in path are unique
+        if isinstance(self.metric, ShapleyInteractionValues):
+            assert w_neighbor is None
+            if len(covers) <= 1:
+                self.computation_time += time.time() - start_time
+                return []
+            f_w = self.f_ws[len(covers)-1]
+            s_matrix = improved_linear_tree_shap_iv(covers, consumer_patterns, f_w, w)
+        elif isinstance(self.metric, ShapleyValues):
+            f_w = self.f_ws[len(covers)]
+            if w_neighbor is None:
+                # s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
+                s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
             else:
-                f_w = self.f_ws[len(covers)]
-                if w_neighbor is None:
-                    # s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
-                    s_matrix = improved_linear_tree_shap_magic(covers, consumer_patterns, f_w, w)
-                else:
-                    s_matrix = improved_linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
-        else:
+                s_matrix = improved_linear_tree_shap_magic_for_neighbors(covers, consumer_patterns, f_w, w, w_neighbor)
+        elif isinstance(self.metric, BanzhafValues):
             if w_neighbor is not None:
                 s_matrix_left = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
                 covers_of_right = np.array(list(covers[:-1]) + [1 - covers[-1]])
@@ -73,6 +67,8 @@ class LTSPathToSVectors(PathToSVectors):
                 s_matrix = s_matrix_left + s_matrix_right
             else:
                 s_matrix = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
+        else:
+            raise ValueError(f"Unsupported metric {self.metric.__class__}. The our LinearTreeSHAP implementation currently support only Shapley values, Banzhaf values and Shapley interaction values")
         self.computation_time += time.time() - start_time
         return s_matrix
 
@@ -90,7 +86,7 @@ class LTSPathToSVectors(PathToSVectors):
         if not features_in_path:
             return {}
         s_matrix = self._get_s_matrix(covers, consumer_patterns, w, w_neighbor)
-        if not self.is_interaction_values:
+        if not isinstance(self.metric, ShapleyInteractionValues):
             s_matrix = s_matrix.astype(np.float32)
             # TODO why np indexing on a matrix is slower than vector by vector! contribution_values = s_matrix[inverse]
             return {feature: s_matrix[:, i] for i, feature in enumerate(features_in_path)}
@@ -163,18 +159,17 @@ def vectorized_linear_tree_shap_for_a_single_tree(
 
 
 def vectorized_linear_tree_shap(
-        model, consumer_data: pd.DataFrame, is_shapley: bool = True, is_banzhaf: bool = False, GPU: bool = False, is_interaction_values: bool = False,
-        use_neighbor_leaf_trick: bool = True, p2s_class = None, model_was_loaded: bool = False
+        model, consumer_data: pd.DataFrame, metric: CubeMetric, GPU: bool = False, use_neighbor_leaf_trick: bool = True,
+        p2s_class = None, model_was_loaded: bool = False
 ):
-    assert is_shapley or is_banzhaf
-
+    assert any(isinstance(metric, cls) for cls in [ShapleyValues, ShapleyInteractionValues, BanzhafValues])
     if not model_was_loaded:
         model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
 
     if p2s_class is None:
-        p2s = LTSPathToSVectors(is_shapley, is_banzhaf=is_banzhaf, is_interaction_values=is_interaction_values, max_depth=model.max_depth, GPU=GPU)
+        p2s = LTSPathToSVectors(metric, max_depth=model.max_depth, GPU=GPU)
     else:
-        p2s = p2s_class(is_shapley, is_banzhaf=not is_shapley, max_depth=model.max_depth, GPU=GPU)
+        p2s = p2s_class(metric, max_depth=model.max_depth, GPU=GPU)
     values = {}
     for tree in tqdm(model.trees, desc="Preprocessing the trees and computing SHAP"):
         vectorized_linear_tree_shap_for_a_single_tree(
@@ -203,7 +198,7 @@ class LTSSimpleNeighborTrickPathToSVectors(LTSPathToSVectors):
 
     def _get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float, w_neighbor: Optional[float] = None):
         start_time = time.time()
-        if self.is_shapley:
+        if isinstance(self.metric, ShapleyValues):
             # assume features in path are unique
             f_w = self.f_ws[len(covers)]
             if w_neighbor is None:
@@ -264,7 +259,7 @@ class LTSV6PathToSVectors(LTSPathToSVectors):
 
     def _get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float, w_neighbor: Optional[float] = None):
         start_time = time.time()
-        if self.is_shapley:
+        if isinstance(self.metric, ShapleyValues):
             # For D<4 use 2, for D > 32 use 16 for 4<=D<=32 use 0.5*D
             n_quads = min(max(int(math.ceil(len(covers) / 2)), 2), 16)
             if w_neighbor is None:
