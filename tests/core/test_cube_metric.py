@@ -7,7 +7,7 @@ from woodelf.core.direct_computation import (
     BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation,
     ShapleyDirectComputation, DirectComputation, WDNF, Cube
 )
-from core.wdnfs import ALL_WDNFs
+from tests.core.wdnfs import ALL_WDNFs
 
 TOLERANCE = 1e-7
 
