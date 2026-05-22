@@ -5,7 +5,8 @@ from tqdm import tqdm
 from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.path_to_matrices import WoodelfPathToSVectors, SimpleWoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
 
 import numpy as np
 import pandas as pd

@@ -8,7 +8,8 @@ from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.path_to_matrices import PathToSVectors, WoodelfPathToSVectors, HighDepthWoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors, compute_f_from_patterns
+from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
 from woodelf.lts_vectorized import get_unique_features_in_path, get_covers_vector
 from woodelf.simple_woodelf import get_cupy_data, fill_mirror_pairs
 
@@ -52,15 +53,15 @@ def woodelf_for_high_depth_single_tree(
                 )
             else:
                 s_matrix = path_to_matrices_calculator.get_background_s_matrix(
-                    unique_features_in_path, background_patterns, leaf.value, w_neighbor
+                    unique_features_in_path, consumer_patterns, background_patterns, leaf.value, w_neighbor
                 )
                 if cache_to_fill is not None:
                     depth = len(unique_features_in_path)
-                    cache_to_fill[leaf.index] = WoodelfPathToSVectors.compute_f_from_patterns(background_patterns, depth, GPU)
+                    cache_to_fill[leaf.index] = compute_f_from_patterns(background_patterns, depth, GPU)
         else:
             covers = np.array(get_covers_vector(path + [leaf], unique_features_in_path))
             s_matrix = path_to_matrices_calculator.get_path_dependent_s_matrix(
-                unique_features_in_path, covers, leaf.value, w_neighbor
+                unique_features_in_path, consumer_patterns, covers, leaf.value, w_neighbor
             )
 
         for feature, s_vec in s_matrix.items():

@@ -14,7 +14,7 @@ from woodelf.core.lts_polynomial_multiplication import (
     improved_linear_tree_shap_magic, improved_linear_tree_shap_magic_for_neighbors,
     linear_tree_shap_magic_for_banzhaf, linear_tree_shap_division_forward, linear_tree_shap_magic, improved_linear_tree_shap_iv, linear_tree_shap_v6, linear_tree_shap_v6_for_neighbors
 )
-from woodelf.core.path_to_matrices import PathToSVectors
+from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 
 
@@ -243,8 +243,8 @@ class LTSImprovedPathToSVectors(LTSSimpleNeighborTrickPathToSVectors):
 
 class LTSV6PathToSVectors(LTSPathToSVectors):
 
-    def __init__(self, is_shapley: bool, is_banzhaf: bool, max_depth: int, GPU: bool = False):
-        super().__init__(is_shapley, is_banzhaf, max_depth, GPU)
+    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
+        super().__init__(metric, max_depth, GPU)
         self.quad_nodes, self.quad_weights = self.compute_quads()
 
     def compute_quads(self):

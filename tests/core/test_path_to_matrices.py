@@ -1,7 +1,9 @@
 import numpy as np
 
 from woodelf.core.cube_metric import ShapleyValues
-from woodelf.core.path_to_matrices import SimpleWoodelfPathToSVectors, HighDepthWoodelfPathToSVectors, HighDepthWoodelfPaperVersionPathToSVectors
+from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors
 
 TOLERANCE = 0.00001
 

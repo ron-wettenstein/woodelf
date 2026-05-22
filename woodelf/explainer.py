@@ -10,7 +10,7 @@ from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.lts_vectorized import vectorized_linear_tree_shap
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.path_to_matrices import WoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors
 
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]

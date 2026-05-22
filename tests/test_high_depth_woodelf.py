@@ -9,6 +9,8 @@ from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegr
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues
+from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.core.decision_patterns import decision_patterns_generator
@@ -19,7 +21,8 @@ import xgboost as xgb
 from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, \
     assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.path_to_matrices import SimpleWoodelfPathToSVectors, HighDepthWoodelfPaperVersionPathToSVectors, WoodelfPathToSVectors
+
+from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors, compute_f_from_patterns
 from woodelf.lts_vectorized import get_covers_vector
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric, \
     path_dependent_frequencies
@@ -96,8 +99,8 @@ def test_compute_f(simple_path):
     data = pd.DataFrame({"a": [7, 8, 4, 3, 0, -1], "b": [4, 2, 5, 2, 9, 1]})
     simple_path[0].depth = 3
     patterns = {l.index: p for l, p in decision_patterns_generator(simple_path[0], data)}
-    f_leaf_7 = WoodelfPathToSVectors.compute_f_from_patterns(patterns[7], depth=2)
-    f_leaf_6 = WoodelfPathToSVectors.compute_f_from_patterns(patterns[6], depth=2)
+    f_leaf_7 = compute_f_from_patterns(patterns[7], depth=2)
+    f_leaf_6 = compute_f_from_patterns(patterns[6], depth=2)
     np.testing.assert_allclose(f_leaf_7, np.array([2,2,1,1]) / 6)
     np.testing.assert_allclose(f_leaf_6, np.array([2,2,1,1]) / 6)
 

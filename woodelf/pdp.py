@@ -13,7 +13,7 @@ from woodelf.simple_woodelf import get_int_dtype_from_depth
 from woodelf.core.cube_metric import PDIVOrder1Or2, CPDVMetric
 from woodelf.core.decision_patterns import decision_patterns_generator
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
-from woodelf.core.path_to_matrices import PathToSVectors
+from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 
 
