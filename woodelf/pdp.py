@@ -13,6 +13,7 @@ from woodelf.simple_woodelf import get_int_dtype_from_depth
 from woodelf.core.cube_metric import PDIVOrder1Or2, CPDVMetric
 from woodelf.core.decision_patterns import decision_patterns_generator
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
+from woodelf.core.path_to_matrices import PathToSVectors
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 
 
@@ -138,81 +139,109 @@ def bits_matrix(x: np.ndarray, k: int) -> np.ndarray:
     return ((x[None, :] >> shifts) & 1).astype(np.uint8)
 
 
-class PDPPathToMatricesAbs:
+class PDPPathToSVectors(PathToSVectors):
+    """
+    PDP path-to-s-vectors calculator.
+    get_background_s_matrix  — exact PDP using background data patterns.
+    get_path_dependent_s_matrix — estimated PDP using tree cover ratios
+                                  (was EstimatedPDPPathToMatrices).
+    """
 
     def __init__(self, max_depth: int, GPU: bool = False):
-        self.max_depth = max_depth
-        self.GPU = GPU
+        super().__init__(max_depth, GPU)
         self.computation_time = 0
         self.compute_f_time = 0
 
-    def get_s_matrix(self, consumer_patterns: np.array, background_patterns: np.array, w: float, D: int):
-        raise NotImplemented()
+    # ------------------------------------------------------------------ #
+    # Internal f builders                                                  #
+    # ------------------------------------------------------------------ #
 
-    def present_statistics(self):
-        print(f"{self.__class__.__name__} took {round(self.computation_time, 2)}, computing f took {round(self.compute_f_time, 2)}")
-
-class PDPPathToMatrices(PDPPathToMatricesAbs): # doesn't inherit PathToMatricesAbstractCls as its API is different
-
-    def build_f_vector_and_only_positive_literals_values(self, background_patterns: np.array, D: int):
+    def _build_f_from_patterns(self, background_patterns: np.ndarray, D: int):
+        """Exact: compute f and only_positive_literals from integer background patterns."""
         x = background_patterns[np.bitwise_count(background_patterns) >= D - 1]
-
         int_type = get_int_dtype_from_depth(D)
         full = int_type(2 ** D - 1)
         orig_x_len = len(x)
         x = x[x != full]
-        only_positive_literals =  (orig_x_len - len(x)) / len(background_patterns)
+        only_positive_literals = (orig_x_len - len(x)) / len(background_patterns)
+        zero_bit_location = np.bitwise_count(x + 1) - 1  # which is equivalent to: D - 1 - np.log2(full ^ x).astype(np.uint16)
 
-        zero_bit_location = np.bitwise_count(x + 1) - 1 # which is equivalent to: D - 1 - np.log2(full ^ x).astype(np.uint16)
         f = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
         return f, only_positive_literals
 
-        # Clearer but less optimized code:
-        # int_type = get_int_dtype_from_depth(D)
+        # Clearer but less optimized equivalent:
         # full = int_type(2 ** D - 1)
-        # only_positive_literals =  np.sum(background_patterns == full) / len(background_patterns)
-        #
+        # only_positive_literals = np.sum(background_patterns == full) / len(background_patterns)
         # x = background_patterns[D - np.bitwise_count(background_patterns) == 1]
-        # zero_bit_location = np.bitwise_count(x + 1) - 1 # which is equivalent to: D - 1 - np.log2(full ^ x).astype(np.uint16)
+        # zero_bit_location = np.bitwise_count(x + 1) - 1
         # f = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
-        #
         # return f, only_positive_literals
 
-
-    def get_s_matrix(self, consumer_patterns: np.array, background_patterns: np.array, w: float, D: int):
-        start_time = time.time()
-        bm_consumer = bits_matrix(consumer_patterns, D).T
-        f_start_time = time.time()
-        f, only_positive_literals = self.build_f_vector_and_only_positive_literals_values(background_patterns, D)
-        self.compute_f_time += time.time() - f_start_time
-        s_matrix = bm_consumer * f
-        if only_positive_literals != 0:
-            s_matrix[bm_consumer == 0] = -1 * only_positive_literals
-        s_matrix = w * s_matrix
-        self.computation_time += time.time() - start_time
-        return s_matrix
-
-class EstimatedPDPPathToMatrices(PDPPathToMatrices):
-
-    def build_f_vector_and_only_positive_literals_values(self, background_patterns: np.array, D: int):
-        # background_patterns are actually cover values now...
-        covers = background_patterns
-        only_positive_literals = np.prod(covers)
-
+    def _build_f_from_covers(self, covers: np.ndarray, D: int):
+        """Estimated: compute f and only_positive_literals from tree cover ratios."""
+        only_positive_literals = float(np.prod(covers))
         f_list = []
         for i in range(D):
             current_covers = covers.copy()
             current_covers[i] = 1 - covers[i]
             f_list.append(np.prod(current_covers))
-
         return np.array(f_list), only_positive_literals
 
+    def _compute_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        f: np.ndarray, only_positive_literals: float, w: float
+    ) -> Dict:
+        D = len(features_in_path)
+        bm_consumer = bits_matrix(consumer_patterns, D).T
+        s_matrix = bm_consumer * f
+        if only_positive_literals != 0:
+            s_matrix[bm_consumer == 0] = -1 * only_positive_literals
+        s_matrix = w * s_matrix
+        return {feature: s_matrix[:, i].astype(np.float32) for i, feature in enumerate(features_in_path)}
 
-class PDPIVPathToMatrices(PDPPathToMatricesAbs):
+    def get_background_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        background_patterns: np.ndarray, w: float, w_neighbor: Optional[float] = None
+    ) -> Dict:
+        if not features_in_path:
+            return {}
+        start_time = time.time()
+        D = len(features_in_path)
+        f_start = time.time()
+        f, only_positive_literals = self._build_f_from_patterns(background_patterns, D)
+        self.compute_f_time += time.time() - f_start
+        result = self._compute_s_matrix(features_in_path, consumer_patterns, f, only_positive_literals, w)
+        self.computation_time += time.time() - start_time
+        return result
 
-    def get_needed_b_vectors(self, background_patterns: np.array, D: int):
+    def get_path_dependent_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        covers: np.ndarray, w: float, w_neighbor: Optional[float] = None
+    ) -> Dict:
+        if not features_in_path:
+            return {}
+        start_time = time.time()
+        D = len(features_in_path)
+        f_start = time.time()
+        f, only_positive_literals = self._build_f_from_covers(covers, D)
+        self.compute_f_time += time.time() - f_start
+        result = self._compute_s_matrix(features_in_path, consumer_patterns, f, only_positive_literals, w)
+        self.computation_time += time.time() - start_time
+        return result
+
+    def present_statistics(self):
+        print(f"{self.__class__.__name__} took {round(self.computation_time, 2)}, computing f took {round(self.compute_f_time, 2)}")
+
+
+class PDPIVPathToSVectors(PDPPathToSVectors):
+    """
+    PDP Interaction Values path-to-s-vectors calculator.
+    get_background_s_matrix  — exact PDP-IV using background data patterns.
+    get_path_dependent_s_matrix — not yet implemented (raises NotImplementedError).
+    """
+
+    def get_needed_b_vectors(self, background_patterns: np.ndarray, D: int):
         x_up_to_2_zero_bits = background_patterns[np.bitwise_count(background_patterns) >= D - 2]
-
         x_bitwise_count = np.bitwise_count(x_up_to_2_zero_bits)
         x_up_to_1_zero_bit = x_up_to_2_zero_bits[x_bitwise_count >= D - 1]
 
@@ -220,22 +249,20 @@ class PDPIVPathToMatrices(PDPPathToMatricesAbs):
         full = int_type(2 ** D - 1)
         orig_x_len = len(x_up_to_1_zero_bit)
         x_exactly_1_zero_bit = x_up_to_1_zero_bit[x_up_to_1_zero_bit != full]
-        only_positive_literals =  (orig_x_len - len(x_exactly_1_zero_bit)) / len(background_patterns)
+        only_positive_literals = (orig_x_len - len(x_exactly_1_zero_bit)) / len(background_patterns)
 
-        zero_bit_location = np.bitwise_count(x_exactly_1_zero_bit + 1) - 1 # which is equivalent to: D - 1 - np.log2(full ^ x).astype(np.uint16)
+        zero_bit_location = np.bitwise_count(x_exactly_1_zero_bit + 1) - 1
         f_1_zero_bit = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
 
         i_idx, j_idx = np.triu_indices(D, k=1)
         b_v_1 = f_1_zero_bit[j_idx]
         b_v_2 = f_1_zero_bit[i_idx]
 
-
         x_exactly_2_zero_bit = x_up_to_2_zero_bits[x_bitwise_count == D - 2]
         if len(x_exactly_2_zero_bit) == 0:
-            b_v_3 = np.zeros(len(i_idx), dtype=float)
-            return only_positive_literals, b_v_1, b_v_2, b_v_3
+            return only_positive_literals, b_v_1, b_v_2, np.zeros(len(i_idx), dtype=float)
 
-        z = full ^ x_exactly_2_zero_bit   # exactly two 1 bits, at the zero positions of x2
+        z = full ^ x_exactly_2_zero_bit # exactly two 1 bits, at the zero positions of x2
 
         # lower 1 bit
         low = z & -z
@@ -259,19 +286,46 @@ class PDPIVPathToMatrices(PDPPathToMatricesAbs):
         b_v_3 = np.bincount(pair_index, minlength=len(i_idx)) / len(background_patterns)
         return only_positive_literals, b_v_1, b_v_2, b_v_3
 
-
-    def get_s_matrix(self, consumer_patterns: np.array, background_patterns: np.array, w: float, D: int):
+    def get_background_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        background_patterns: np.ndarray, w: float, w_neighbor: Optional[float] = None
+    ) -> Dict:
+        if not features_in_path or len(features_in_path) < 2:
+            return {}
         start_time = time.time()
+        D = len(features_in_path)
         bm_consumer = bits_matrix(consumer_patterns, D).T
         i_idx, j_idx = np.triu_indices(D, k=1)
-        c_v = 2 * bm_consumer[:,i_idx] + bm_consumer[:,j_idx]
-        f_start_time = time.time()
+        c_v = 2 * bm_consumer[:, i_idx] + bm_consumer[:, j_idx]
+        f_start = time.time()
         only_positive_literals, b_v_1, b_v_2, b_v_3 = self.get_needed_b_vectors(background_patterns, D)
-        self.compute_f_time += time.time() - f_start_time
-        s_matrix = only_positive_literals * (c_v == 0) - b_v_1 * (c_v == 1) - b_v_2 * (c_v == 2) + b_v_3 * (c_v == 3)
-        s_matrix = w * s_matrix
+        self.compute_f_time += time.time() - f_start
+        s_matrix = (
+            only_positive_literals * (c_v == 0)
+            - b_v_1 * (c_v == 1)
+            - b_v_2 * (c_v == 2)
+            + b_v_3 * (c_v == 3)
+        )
+        s_matrix = (w * s_matrix).astype(np.float32)
         self.computation_time += time.time() - start_time
-        return s_matrix
+
+        results = {}
+        for index1, feature1 in enumerate(features_in_path):
+            for index2, feature2 in enumerate(features_in_path):
+                if index1 == index2:
+                    continue
+                idx = triu_pair_to_index(index1, index2, D)
+                if (feature1, feature2) not in results:
+                    results[(feature1, feature2)] = s_matrix[:, idx]
+                else:
+                    results[(feature1, feature2)] += s_matrix[:, idx]
+        return results
+
+    def get_path_dependent_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        covers: np.ndarray, w: float, w_neighbor: Optional[float] = None
+    ) -> Dict:
+        raise NotImplementedError("Estimated PDP-IV is not yet implemented")
 
 def get_unique_features_in_path(path: List[DecisionTreeNode]):
     unique_features_in_path = []
@@ -289,8 +343,8 @@ def triu_pair_to_index(i: int, j: int, D: int) -> int:
     return i * (2 * D - i - 1) // 2 + (j - i - 1)
 
 def fast_pdp_for_a_single_tree(
-    tree: DecisionTreeNode, consumer_data: pd.DataFrame, background_data: pd.DataFrame, values: Dict, p2m: PDPPathToMatricesAbs, GPU: bool,
-    accurate: bool = True, interaction_values: bool = False
+    tree: DecisionTreeNode, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
+    values: Dict, p2s: PDPPathToSVectors, GPU: bool, accurate: bool = True
 ):
     leaf_index_to_unique_features_in_path = {}
     leaf_index_to_weight = {}
@@ -306,43 +360,20 @@ def fast_pdp_for_a_single_tree(
     if accurate:
         background_patterns_generator = decision_patterns_generator(tree, background_data, GPU, ignore_neighbor_leaf=False)
     for leaf, consumer_patterns in decision_patterns_generator(tree, consumer_data, GPU, ignore_neighbor_leaf=False):
+        features_in_path = leaf_index_to_unique_features_in_path[leaf.index]
+        w = leaf_index_to_weight[leaf.index]
         if accurate:
             leaf_b, background_patterns = next(background_patterns_generator)
             assert leaf_b.index == leaf.index
-
-            s_matrix = p2m.get_s_matrix(
-                consumer_patterns=consumer_patterns,
-                background_patterns=background_patterns,
-                w=leaf_index_to_weight[leaf.index],
-                D=len(leaf_index_to_unique_features_in_path[leaf.index])
-            )
+            s_matrix = p2s.get_background_s_matrix(features_in_path, consumer_patterns, background_patterns, w)
         else:
-            s_matrix = p2m.get_s_matrix(
-                consumer_patterns=consumer_patterns,
-                background_patterns=leaf_index_to_covers[leaf.index],
-                w=leaf_index_to_weight[leaf.index],
-                D=len(leaf_index_to_unique_features_in_path[leaf.index])
-            )
-        s_matrix = s_matrix.astype(np.float32)
+            s_matrix = p2s.get_path_dependent_s_matrix(features_in_path, consumer_patterns, leaf_index_to_covers[leaf.index], w)
 
-
-        if not interaction_values:
-            for index, feature in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
-                if feature not in values:
-                    values[feature] = s_matrix[:, index]
-                else:
-                    values[feature] += s_matrix[:, index]
-        else:
-            d = len(leaf_index_to_unique_features_in_path[leaf.index])
-            for index1, feature1 in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
-                for index2, feature2 in enumerate(leaf_index_to_unique_features_in_path[leaf.index]):
-                    if index1 == index2:
-                        continue
-                    idx = triu_pair_to_index(index1, index2, d)
-                    if (feature1, feature2) not in values:
-                        values[(feature1, feature2)] = s_matrix[:, idx]
-                    else:
-                        values[(feature1, feature2)] += s_matrix[:, idx]
+        for feature, feature_values in s_matrix.items():
+            if feature not in values:
+                values[feature] = feature_values
+            else:
+                values[feature] += feature_values
 
 
 def woodelf_fast_pdp(
@@ -361,14 +392,11 @@ def woodelf_fast_pdp(
             metric=CPDVMetric(), GPU=GPU, use_neighbor_leaf_trick=True, global_importance=False, model_was_loaded=model_was_loaded
         )
     else:
-        if accurate:
-            p2m = PDPPathToMatrices(model_obj.max_depth, GPU)
-        else:
-            p2m = EstimatedPDPPathToMatrices(model_obj.max_depth, GPU)
+        p2s = PDPPathToSVectors(model_obj.max_depth, GPU)
         pdvs = {}
         for tree in tqdm(model_obj.trees, desc="Preprocessing the trees and computing PDP"):
-            fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2m, GPU, accurate=accurate)
-        p2m.present_statistics()
+            fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2s, GPU, accurate=accurate)
+        p2s.present_statistics()
 
     if centered:
         return pdvs
@@ -387,15 +415,15 @@ def woodelf_fast_pdp_iv(
         model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
         GPU: bool = False,
 ):
-    p2m = PDPPathToMatrices(model.max_depth, GPU)
-    p2m_iv = PDPIVPathToMatrices(model.max_depth, GPU)
+    p2s = PDPPathToSVectors(model.max_depth, GPU)
+    p2s_iv = PDPIVPathToSVectors(model.max_depth, GPU)
     pdvs = {}
     pdivs = {}
     for tree in tqdm(model.trees, desc="Preprocessing the trees and computing PDP"):
-        fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2m, GPU, accurate=True)
-        fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdivs, p2m_iv, GPU, accurate=True, interaction_values=True)
-    p2m.present_statistics()
-    p2m_iv.present_statistics()
+        fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2s, GPU, accurate=True)
+        fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdivs, p2s_iv, GPU, accurate=True)
+    p2s.present_statistics()
+    p2s_iv.present_statistics()
 
     for feature in pdvs:
         pdivs[(feature,)] = pdvs[feature]

@@ -5,7 +5,7 @@ from tqdm import tqdm
 from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.path_to_matrices import PathToMatricesAbstractCls, SimplePathToMatrices
+from woodelf.core.path_to_matrices import WoodelfPathToSVectors, SimpleWoodelfPathToSVectors
 
 import numpy as np
 import pandas as pd
@@ -82,7 +82,7 @@ def calc_decision_patterns(tree, data, depth, GPU=False):
 
 
 def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataFrame, depth: int,
-                               path_to_matrixes_calculator: PathToMatricesAbstractCls, GPU: bool = False,
+                               path_to_matrixes_calculator: WoodelfPathToSVectors, GPU: bool = False,
                                unique_features_decision_pattern: bool = False):
     """
     Run all the preprocessing needed given a tree and a background_data.
@@ -134,7 +134,7 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
             fl = fl[:2 ** len(features_in_path)]
 
         # Build M, implements lines 7-16 of the pseudo-code and Build s, implements lines 17-21 of the pseudo-code
-        features_to_values = path_to_matrixes_calculator.get_s_matrices(
+        features_to_values = path_to_matrixes_calculator._get_s_vectors_given_f(
             features_in_path, fl, leaf.value
         )
         leaf.feature_contribution_replacement_values = features_to_values
@@ -255,7 +255,7 @@ def fill_mirror_pairs(values):
 def calculate_background_metric(model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
                                 metric: CubeMetric,
                                 global_importance: bool = False, GPU=False,
-                                path_to_matrixes_calculator: PathToMatricesAbstractCls = None):
+                                path_to_matrixes_calculator: WoodelfPathToSVectors = None):
     """
     The WOODELF algorithm!!!
 
@@ -265,7 +265,7 @@ def calculate_background_metric(model, consumer_data: pd.DataFrame, background_d
     """
     model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrixes_calculator is None:
-        path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=model_obj.max_depth, GPU=GPU)
+        path_to_matrixes_calculator = SimpleWoodelfPathToSVectors(metric=metric, max_depth=model_obj.max_depth, GPU=GPU)
     if GPU:
         consumer_data = get_cupy_data(model_obj, consumer_data)
         background_data = get_cupy_data(model_obj, background_data)
@@ -315,20 +315,20 @@ def path_dependent_frequencies(tree: DecisionTreeNode):
     return leaves_freq_dict
 
 
-def fast_preprocess_path_dependent(tree: DecisionTreeNode, path_to_matrixes_calculator: PathToMatricesAbstractCls):
+def fast_preprocess_path_dependent(tree: DecisionTreeNode, path_to_matrixes_calculator: WoodelfPathToSVectors):
     """
     Implement the preprocssing needed for Path-Dependent WOODELF
     """
     freq = path_dependent_frequencies(tree)
     for leaf, features_in_path in tree.get_all_leaves_with_paths():
-        leaf.feature_contribution_replacement_values = path_to_matrixes_calculator.get_s_matrices(
+        leaf.feature_contribution_replacement_values = path_to_matrixes_calculator._get_s_vectors_given_f(
             features_in_path, freq[leaf.index], leaf.value
         )
     return tree
 
 
 def calculate_path_dependent_metric(model, consumer_data, metric: CubeMetric, global_importance: bool = False,
-                                    GPU=False, path_to_matrixes_calculator: PathToMatricesAbstractCls = None):
+                                    GPU=False, path_to_matrixes_calculator: WoodelfPathToSVectors = None):
     """
     Path-Dependent WOODELF algorithm!!
 
@@ -336,7 +336,7 @@ def calculate_path_dependent_metric(model, consumer_data, metric: CubeMetric, gl
     """
     model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
     if path_to_matrixes_calculator is None:
-        path_to_matrixes_calculator = SimplePathToMatrices(metric=metric, max_depth=model_obj.max_depth, GPU=GPU)
+        path_to_matrixes_calculator = SimpleWoodelfPathToSVectors(metric=metric, max_depth=model_obj.max_depth, GPU=GPU)
     if GPU:
         consumer_data = get_cupy_data(model_obj, consumer_data)
 

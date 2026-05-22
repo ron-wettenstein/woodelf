@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List
+from typing import List, Dict, Any
 import numpy as np
 import scipy
 import time
@@ -14,32 +14,153 @@ except ModuleNotFoundError as e:
     IMPORTED_CP = False
 
 
-class PathToMatricesAbstractCls:
+class PathToSVectors:
     """
-    An abstract class for creating M matrix from the features along a root-to-leaf-path.
-    Also manage the matrix-vector multiplication of the s vector
+    Abstract base class for all path-to-s-vectors calculators.
+    Subclasses implement get_background_s_matrix and/or get_path_dependent_s_matrix.
+    Both methods return Dict[feature_key -> np.array[N_consumers]].
     """
-    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
-        self.metric = metric
+    def __init__(self, max_depth: int, GPU: bool = False):
         self.max_depth = max_depth
         self.GPU = GPU
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
-        raise NotImplemented
+    def get_background_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        background_patterns: np.ndarray, w: float, w_neighbor: float = None
+    ) -> Dict:
+        raise NotImplementedError
 
-    def dump(self, file_path: str):
-        raise NotImplemented
+    def get_path_dependent_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        covers: np.ndarray, w: float, w_neighbor: float = None
+    ) -> Dict:
+        raise NotImplementedError
 
-    @classmethod
-    def load(cls, file_path: str):
-        raise NotImplemented
+    def present_statistics(self):
+        pass
+
+
+class WoodelfPathToSVectors(PathToSVectors):
+    """
+    Base class for WOODELF-style path-to-s-vectors calculators (dense f vector approach).
+    Subclasses implement _get_s_vectors_given_f.
+    Provides static helpers for f computation and the neighbor-leaf trick.
+    """
+    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
+        super().__init__(max_depth, GPU)
+        self.metric = metric
+
+    @staticmethod
+    def compute_f_from_patterns(patterns, depth: int, GPU: bool = False) -> np.ndarray:
+        """Compute the dense f vector (normalised histogram) from integer decision patterns."""
+        if GPU:
+            return cp.bincount(patterns, minlength=2 ** depth) / len(patterns)
+        return np.bincount(patterns, minlength=2 ** depth) / len(patterns)
+
+    @staticmethod
+    def compute_f_from_covers(covers: np.ndarray) -> np.ndarray:
+        """
+        Build the 2^D f vector from cover ratios (Formula 9 of the article).
+        covers[i] is the proceed-cover ratio for the i-th unique feature in the path.
+        """
+        D = len(covers)
+        if D == 0:
+            return np.ones(1, dtype=np.float32)
+        f_size = 2 ** D
+        f = np.ones(f_size)
+        for i in range(D):
+            proceed_cover = covers[i]
+            f = f * np.tile(
+                np.array(
+                    [1 - proceed_cover] * (f_size // 2 ** (1 + i)) +
+                    [proceed_cover]     * (f_size // 2 ** (1 + i))
+                ),
+                2 ** i
+            )
+        return f.astype(np.float32)
+
+    @staticmethod
+    def neighbor_vector(f, GPU) -> np.ndarray:
+        """
+        Compute the f (or s-vector) of the neighbor leaf given f of the current leaf.
+        Implements improvement 3 of Sec. 9.1: for a pair of sibling leaves, the neighbor's
+        frequency array is a specific interleaved swap of the current leaf's array.
+        """
+        if GPU:
+            idx = cp.arange(len(f))
+            neighbor_f = cp.zeros_like(f)
+        else:
+            idx = np.arange(len(f))
+            neighbor_f = np.zeros_like(f)
+
+        neighbor_f_shift_left = neighbor_f.copy()
+        neighbor_f_shift_left[1:] = f[:-1]
+        neighbor_f_shift_left[(idx & 1) == 0] = 0
+
+        neighbor_f_shift_right = neighbor_f.copy()
+        neighbor_f_shift_right[:-1] = f[1:]
+        neighbor_f_shift_right[(idx & 1) == 1] = 0
+        return neighbor_f_shift_left + neighbor_f_shift_right
+
+    def compose_with_neighbor_trick(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        f: np.ndarray, w: float, w_neighbor: float = None
+    ) -> Dict:
+        """
+        Given a pre-computed f vector, apply _get_s_vectors_given_f with the optional
+        neighbor-leaf trick, then index the result by consumer_patterns.
+        Returns Dict[feature_key -> np.array[N_consumers]].
+        """
+        if w_neighbor is None:
+            s_vecs = self._get_s_vectors_given_f(features_in_path, f, w)
+        else:
+            s_left  = self._get_s_vectors_given_f(features_in_path, f, w)
+            s_right = self._get_s_vectors_given_f(
+                features_in_path, self.neighbor_vector(f, self.GPU), w_neighbor
+            )
+            s_vecs = {k: s_left[k] + self.neighbor_vector(s_right[k], self.GPU) for k in s_left}
+
+        if self.GPU:
+            return {k: cp.asarray(v)[consumer_patterns] for k, v in s_vecs.items()}
+        return {k: np.ascontiguousarray(v)[consumer_patterns] for k, v in s_vecs.items()}
+
+    def get_background_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        background_patterns: np.ndarray, w: float, w_neighbor: float = None
+    ) -> Dict:
+        if not features_in_path:
+            return {}
+        depth = len(features_in_path)
+        f = self.compute_f_from_patterns(background_patterns, depth, self.GPU)
+        return self.compose_with_neighbor_trick(features_in_path, consumer_patterns, f, w, w_neighbor)
+
+    def get_path_dependent_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        covers: np.ndarray, w: float, w_neighbor: float = None
+    ) -> Dict:
+        if not features_in_path:
+            return {}
+        f = self.compute_f_from_covers(covers)
+        if self.GPU:
+            f = cp.asarray(f)
+        return self.compose_with_neighbor_trick(features_in_path, consumer_patterns, f, w, w_neighbor)
+
+    def _get_s_vectors_given_f(self, features_in_path: List, f: np.ndarray, w: float) -> Dict:
+        """
+        Core WOODELF computation: given a dense f vector and leaf weight w, return
+        Dict[feature_key -> s_vector] where each s_vector has size 2^D.
+        """
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------ #
+    # Shared classmethods for building M matrices                          #
+    # ------------------------------------------------------------------ #
 
     @classmethod
     def map_patterns_to_cube(cls, features_in_path: List):
         """
-        The function MapPatternsToCube from Sect. 5 of the article.
-        :params tree: The decision tree
-        :params current_wdnf_table: The format is: wdnf_table[consumer_decision_pattern][background_decision_pattern] = (cube_positive_literals, cube_negative_literals)
+        MapPatternsToCube from Sect. 5 of the article.
+        Returns wdnf_table[consumer_pattern][background_pattern] = (positive_literals, negative_literals).
         """
         updated_wdnf_table = {0: {0: (set(), set())}}
         current_wdnf_table = None
@@ -50,24 +171,16 @@ class PathToMatricesAbstractCls:
                 updated_wdnf_table[consumer_pattern * 2 + 0] = {}
                 updated_wdnf_table[consumer_pattern * 2 + 1] = {}
                 for background_pattern in current_wdnf_table[consumer_pattern]:
-                    # Get the current cube (the positive and negated literals) of the consumer and background patterns
                     s_plus, s_minus = current_wdnf_table[consumer_pattern][background_pattern]
-                    # Implement the 4 rules
-                    updated_wdnf_table[consumer_pattern * 2 + 1][background_pattern * 2 + 0] = (
-                    s_plus | {feature}, s_minus)  # Rule 1
-                    updated_wdnf_table[consumer_pattern * 2 + 0][background_pattern * 2 + 1] = (
-                    s_plus, s_minus | {feature})  # Rule 2
-                    updated_wdnf_table[consumer_pattern * 2 + 1][background_pattern * 2 + 1] = (
-                    s_plus, s_minus)  # Rule 3
-
+                    updated_wdnf_table[consumer_pattern * 2 + 1][background_pattern * 2 + 0] = (s_plus | {feature}, s_minus)   # Rule 1
+                    updated_wdnf_table[consumer_pattern * 2 + 0][background_pattern * 2 + 1] = (s_plus, s_minus | {feature})   # Rule 2
+                    updated_wdnf_table[consumer_pattern * 2 + 1][background_pattern * 2 + 1] = (s_plus, s_minus)               # Rule 3
         return updated_wdnf_table
 
     @classmethod
     def build_patterns_to_values_sparse_matrix(cls, dl, metric: CubeMetric, path_length):
         """
-        Apply the CubeMetric object (the v function), to create the matrices M.
-        include lines 12-16 in WOODELF pseudocode.
-        dl is the returned mapping from the map_patterns_to_cube function
+        Apply the CubeMetric to create sparse M matrices (lines 12-16 of WOODELF pseudocode).
         """
         matrix_details = {}
         for pc in dl:
@@ -75,7 +188,6 @@ class PathToMatricesAbstractCls:
                 s_plus, s_minus = dl[pc][pb]
                 values = metric.calc_metric(s_plus, s_minus)
                 for feature in values:
-                    # Implement the line "M[l][feature][p_c][p_b] = value" in an efficient way that utilize the sparsity of M.
                     if feature not in matrix_details:
                         matrix_details[feature] = {"pcs": [], "pbs": [], "values": []}
                     matrix_details[feature]["pcs"].append(pc)
@@ -84,27 +196,20 @@ class PathToMatricesAbstractCls:
 
         matrixs = {}
         for feature in matrix_details:
-            # Save M as a sparse matrix (Improvement 1 in Sec. 9.1)
             matrix_values = (
-            matrix_details[feature]["values"], (matrix_details[feature]["pcs"], matrix_details[feature]["pbs"]))
-            matrixs[feature] = scipy.sparse.coo_matrix(matrix_values, shape=(2 ** path_length, 2 ** path_length),
-                                                       dtype=np.float32).tocsc()
+                matrix_details[feature]["values"],
+                (matrix_details[feature]["pcs"], matrix_details[feature]["pbs"])
+            )
+            matrixs[feature] = scipy.sparse.coo_matrix(
+                matrix_values, shape=(2 ** path_length, 2 ** path_length), dtype=np.float32
+            ).tocsc()
         return matrixs
-
-
-    def present_statistics(self):
-        pass
 
 
 def get_feature_repetition_sequence(features_in_path: List[str]):
     """
-    Generate the feature repetition sequence.
-    The math is simple, the feature at index i is replaced by i
-    unless it appeared before in the sequance, in that case it will be represented by the index it already received.
-
-    Examples:
-    ["sex", "pluse", "age", "weight", "heart_rate", "sugar_in_blood"] => [1, 2, 3, 4, 5, 6]
-    ["weight", "pluse", "age", "sex", "pluse", "sex"] => [1, 2, 3, 4, 2, 4]
+    Replace each feature with its first-occurrence index in the path.
+    E.g. ["weight","pulse","age","pulse"] -> [0, 1, 2, 1]
     """
     feature_to_index = {}
     frs = []
@@ -114,10 +219,10 @@ def get_feature_repetition_sequence(features_in_path: List[str]):
         else:
             feature_to_index[feature] = i
             frs.append(i)
-
     return frs
 
-class SimplePathToMatrices(PathToMatricesAbstractCls):
+
+class SimpleWoodelfPathToSVectors(WoodelfPathToSVectors):
     """
     An object that in charge of creating the M matrix for every leaf and feature.
     It takes the features along the root-to-leaf path and build the matrix (lines 7-16 in WOODELF pseudo code)
@@ -126,22 +231,17 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
     All feature lists with this feature repetition sequence have the same set of matrixes.
 
     This cache mechanism is improvement 2 in Sec. 9.1
+    Suitable for shallow trees.
     """
-
     def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
         super().__init__(metric, max_depth, GPU)
-
         self.cached_used = 0
         self.cache_miss = 0
         self.cache = {}
         self.s_computation_time = 0
         self.m_computation_time = 0
 
-    def get_values_matrices(self, features_in_path: List[str|int]):
-        """
-        Apply the CubeMetric object (the v function), to create the matrixes M.
-        Use the cache when possible, and update the cache with the created matrixes
-        """
+    def get_values_matrices(self, features_in_path: List):
         start_time = time.time()
         frs = get_feature_repetition_sequence(features_in_path)
         frs_tuple = tuple(frs)
@@ -156,21 +256,20 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
             self.cache[frs_tuple] = matrixes
 
         if not self.metric.INTERACTION_VALUE:
-            matrixes_for_the_given_features = {features_in_path[index]: matrixes[index] for index in matrixes}
+            matrixes_for_features = {features_in_path[index]: matrixes[index] for index in matrixes}
         else:
-            matrixes_for_the_given_features = {}
+            matrixes_for_features = {}
             for feature_indexes, current_matrices in matrixes.items():
                 if not self.metric.INTERACTION_VALUES_ORDER_MATTERS:
-                    feature_tuple = tuple(
-                        sorted([features_in_path[feature_index] for feature_index in feature_indexes]))
+                    feature_tuple = tuple(sorted([features_in_path[i] for i in feature_indexes]))
                 else:
-                    feature_tuple = tuple([features_in_path[feature_index] for feature_index in feature_indexes])
-                matrixes_for_the_given_features[feature_tuple] = current_matrices
+                    feature_tuple = tuple([features_in_path[i] for i in feature_indexes])
+                matrixes_for_features[feature_tuple] = current_matrices
 
         self.m_computation_time += time.time() - start_time
-        return matrixes_for_the_given_features
+        return matrixes_for_features
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
+    def _get_s_vectors_given_f(self, features_in_path: List, f: np.ndarray, w: float) -> Dict:
         matrices = self.get_values_matrices(features_in_path)
         start_time = time.time()
         s_vectors = {}
@@ -186,12 +285,18 @@ class SimplePathToMatrices(PathToMatricesAbstractCls):
 
     def present_statistics(self):
         print(
-            f"cache misses: {self.cache_miss}, cache used: {self.cached_used}, " +
-            f"M computation time: {round(self.m_computation_time,2)} sec, " +
+            f"cache misses: {self.cache_miss}, cache used: {self.cached_used}, "
+            f"M computation time: {round(self.m_computation_time, 2)} sec, "
             f"s computation time: {round(self.s_computation_time, 2)} sec"
         )
 
-class HighDepthPathToMatrices(PathToMatricesAbstractCls):
+
+class HighDepthWoodelfPathToSVectors(WoodelfPathToSVectors):
+    """
+    Pre-builds all M-matrix diagonals up to max_depth at construction time.
+    Uses the Strassen-like anti-diagonal multiplication.
+    Suitable for deep trees with depths up to 18/21 (while SimpleWoodelfPathToSVectors fails on depths bigger than 12).
+    """
     def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False, use_neighbor_leaf_trick: bool = True):
         super().__init__(metric, max_depth, GPU)
         self.s_computation_time = 0
@@ -210,10 +315,7 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
     @classmethod
     def map_patterns_to_cube(cls, features_in_path: List):
         """
-        The high depth version of MapPatternsToCube.
-        Keep only rule 1 and rule 2 ro compute the diagonal.
-        :params tree: The decision tree
-        :params current_wdnf_table: The format is: wdnf_table[consumer_decision_pattern][background_decision_pattern] = (cube_positive_literals, cube_negative_literals)
+        High-depth version: keeps only rules 1 and 2 to compute only the diagonal.
         """
         updated_wdnf_table = {0: {0: (set(), set())}}
         current_wdnf_table = None
@@ -226,13 +328,9 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
                 for background_pattern in current_wdnf_table[consumer_pattern]:
                     # Get the current cube (the positive and negated literals) of the consumer and background patterns
                     s_plus, s_minus = current_wdnf_table[consumer_pattern][background_pattern]
-                    # Implement the 4 rules
-                    updated_wdnf_table[consumer_pattern * 2 + 1][background_pattern * 2 + 0] = (
-                    s_plus | {feature}, s_minus)  # Rule 1
-                    updated_wdnf_table[consumer_pattern * 2 + 0][background_pattern * 2 + 1] = (
-                    s_plus, s_minus | {feature})  # Rule 2
-                    # Drop also Rule 3 as we only want to compute the diagonal
-
+                    updated_wdnf_table[consumer_pattern * 2 + 1][background_pattern * 2 + 0] = (s_plus | {feature}, s_minus)  # Rule 1
+                    updated_wdnf_table[consumer_pattern * 2 + 0][background_pattern * 2 + 1] = (s_plus, s_minus | {feature})  # Rule 2
+                    # Rule 3 dropped: only the diagonal is needed
         return updated_wdnf_table
 
     @classmethod
@@ -245,38 +343,41 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         values_list = []
         all_feature_subsets = set()
         for consumer_pattern in sorted(dl.keys()):
-            # As dl include only the diagonal, each consumer_pattern have only one matching background pattern with a cube.
             background_pattern, cube = dl[consumer_pattern].popitem()
             s_plus, s_minus = cube
             values = metric.calc_metric(s_plus, s_minus)
             values_list.append(values)
             all_feature_subsets.update(set(values.keys()))
 
-        matrix_details = {feature_subset: [] for feature_subset in all_feature_subsets}
+        matrix_details = {fs: [] for fs in all_feature_subsets}
         for values in values_list:
-            for feature_subset in all_feature_subsets:
-                matrix_details[feature_subset].append(values.get(feature_subset, 0))
+            for fs in all_feature_subsets:
+                matrix_details[fs].append(values.get(fs, 0))
 
-        matrices = {feature_subset: values for feature_subset, values in matrix_details.items()}
-        return matrices
+        return {fs: vals for fs, vals in matrix_details.items()}
 
     def _build_matrices(self):
-        for depth in range(0, self.max_depth+1):
+        for depth in range(0, self.max_depth + 1):
             dl = self.map_patterns_to_cube(list(range(depth)))
             matrices = self.build_patterns_to_values_sparse_matrix(dl, self.metric, path_length=depth)
             self.matrices_frs_subsets[depth] = list(matrices.keys())
             if self.GPU:
                 if not IMPORTED_CP:
                     raise ImportError("Couldn't import CuPy. To use GPU, please install Cu{y via 'pip install cupy'")
-                self.matrices[depth] = cp.array([matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=cp.float32).T
+                self.matrices[depth] = cp.array(
+                    [matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=cp.float32
+                ).T
             else:
-                self.matrices[depth] = np.array([matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=np.float32).T
+                self.matrices[depth] = np.array(
+                    [matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=np.float32
+                ).T
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
+    def _get_s_vectors_given_f(self, features_in_path: List, f: np.ndarray, w: float) -> Dict:
         depth = len(features_in_path)
         self.s_computation_calls += 1
         self.total_f_sizes += np.sum(f != 0)
         start_time = time.time()
+
         if self.GPU:
             idx = cp.arange(len(f))
         else:
@@ -291,8 +392,8 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         s_matrix = matrix_diagonals * f[::-1].reshape(-1, 1) # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
         for d in range(0, depth, 1):
             s_matrix_copy = s_matrix.copy()
-            s_matrix_copy[2 ** d:, :] = s_matrix[:-2 ** d, :]  # shift the array to the left 2**d bits
-            s_matrix_copy[(idx & (1 << d)) == 0] = 0  # Zero all elements that are in an even place in the current division
+            s_matrix_copy[2 ** d:, :] = s_matrix[:-2 ** d, :] # shift the array to the left 2**d bits
+            s_matrix_copy[(idx & (1 << d)) == 0] = 0 # Zero all elements that are in an even place in the current division
             s_matrix = s_matrix + s_matrix_copy
 
         s_matrix = s_matrix * w
@@ -300,23 +401,21 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
         s_vectors = {}
         for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
             feature_subset = frs2feature_name[frs_subset]
-            s_vectors[feature_subset] = s_matrix[:,index]
+            s_vectors[feature_subset] = s_matrix[:, index]
 
         self.s_computation_time += time.time() - start_time
         return s_vectors
 
     def frs_subsets_to_feature_subsets(self, features_in_path: List, depth: int):
         if not self.metric.INTERACTION_VALUE:
-            frs2feature_name = {index: features_in_path[index] for index in self.matrices_frs_subsets[depth]}
-        else:
-            frs2feature_name = {}
-            for frs_subsets in self.matrices_frs_subsets[depth]:
-                if not self.metric.INTERACTION_VALUES_ORDER_MATTERS:
-                    feature_tuple = tuple(
-                        sorted([features_in_path[feature_index] for feature_index in frs_subsets]))
-                else:
-                    feature_tuple = tuple([features_in_path[feature_index] for feature_index in frs_subsets])
-                frs2feature_name[frs_subsets] = feature_tuple
+            return {index: features_in_path[index] for index in self.matrices_frs_subsets[depth]}
+        frs2feature_name = {}
+        for frs_subsets in self.matrices_frs_subsets[depth]:
+            if not self.metric.INTERACTION_VALUES_ORDER_MATTERS:
+                feature_tuple = tuple(sorted([features_in_path[i] for i in frs_subsets]))
+            else:
+                feature_tuple = tuple([features_in_path[i] for i in frs_subsets])
+            frs2feature_name[frs_subsets] = feature_tuple
         return frs2feature_name
 
     @staticmethod
@@ -325,28 +424,26 @@ class HighDepthPathToMatrices(PathToMatricesAbstractCls):
             idx = cp.arange(len(f))
         else:
             idx = np.arange(len(f))
-
         for d in range(depth - 1, -1, -1):
             f_copy = f.copy()
-            f_copy[:-2 ** d] = f[2 ** d:]  # shift the array to the left 2**d bits
-            f_copy[(idx & (1 << d)) != 0] = 0  # Zero all elements that are in an even place in the current division
+            f_copy[:-2 ** d] = f[2 ** d:] # shift the array to the left 2**d bits
+            f_copy[(idx & (1 << d)) != 0] = 0 # Zero all elements that are in an even place in the current division
             f = f + f_copy
         return f
 
     def present_statistics(self):
         mean_f_size = self.total_f_sizes / self.s_computation_calls if self.s_computation_calls > 0 else 0
         print(
-            f"M time: {round(self.matrices_init_time, 2)} sec, " +
-            f"s time: {round(self.s_computation_time, 2)} sec ({self.s_computation_calls} get_s_matrices calls, " +
+            f"M time: {round(self.matrices_init_time, 2)} sec, "
+            f"s time: {round(self.s_computation_time, 2)} sec ({self.s_computation_calls} _get_s_vectors_given_f calls, "
             f"f prepare time: {self.f_prepare_time}, f mean non zero size: {mean_f_size})"
         )
 
 
-class HighDepthPathToMatricesPaperVersion(HighDepthPathToMatrices):
+class HighDepthWoodelfPaperVersionPathToSVectors(HighDepthWoodelfPathToSVectors):
     """
-    Include the code that will be provided in a paper that will be published soon :)
-    Do not use this in practise as this is slightly slower than the default method.
-    We do test that iti is equivalent to it in our Pytests.
+    Paper-version of HighDepthWoodelfPathToSVectors using explicit StrassenLikeMult.
+    Slightly slower in practice; used to verify the optimised version in tests.
     """
 
     @staticmethod
@@ -368,13 +465,13 @@ class HighDepthPathToMatricesPaperVersion(HighDepthPathToMatrices):
         return s
 
     def _build_matrices(self):
-        for depth in range(0, self.max_depth+1):
+        for depth in range(0, self.max_depth + 1):
             dl = self.map_patterns_to_cube(list(range(depth)))
             matrices = self.build_patterns_to_values_sparse_matrix(dl, self.metric, path_length=depth)
             self.matrices_frs_subsets[depth] = list(matrices.keys())
             self.matrices[depth] = [np.array(matrices[k]) for k in self.matrices_frs_subsets[depth]]
 
-    def get_s_matrices(self, features_in_path: List, f: np.array, w: float):
+    def _get_s_vectors_given_f(self, features_in_path: List, f: np.ndarray, w: float) -> Dict:
         depth = len(features_in_path)
         self.s_computation_calls += 1
         self.total_f_sizes += np.sum(f != 0)
@@ -384,8 +481,8 @@ class HighDepthPathToMatricesPaperVersion(HighDepthPathToMatrices):
         s_vectors = {}
         for index, frs_subset in enumerate(self.matrices_frs_subsets[depth]):
             feature_subset = frs2feature_name[frs_subset]
-            m_daig = self.matrices[depth][index]
-            s_vectors[feature_subset] = self.StrassenLikeMult(m_daig, f, depth) * w
+            m_diag = self.matrices[depth][index]
+            s_vectors[feature_subset] = self.StrassenLikeMult(m_diag, f, depth) * w
 
         self.s_computation_time += time.time() - start_time
         return s_vectors

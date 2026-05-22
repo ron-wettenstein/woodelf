@@ -6,7 +6,7 @@ import pytest
 from woodelf.core.lts_polynomial_multiplication import compute_P, bits_matrix, continue_P_compute, improved_linear_tree_shap_magic, linear_tree_shap_magic_blocked, \
     linear_tree_shap_magic, linear_tree_shap_magic_for_banzhaf, linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward_for_neighbors, \
     improved_linear_tree_shap_magic_for_neighbors, linear_tree_shap_v6
-from woodelf.lts_vectorized import shapley_values_f_w, banzhaf_values_f_w, LinearTreeShapV6PathToMatrices
+from woodelf.lts_vectorized import shapley_values_f_w, banzhaf_values_f_w, LTSV6PathToSVectors
 
 
 def test_continue_P_compute():
@@ -191,7 +191,7 @@ def test_linear_tree_shap_magic_longer_high_depth_v6(D):
     leaf_weight = 5
     consumer_size = 6 # Test many consumers while this is still fast
 
-    p2m = LinearTreeShapV6PathToMatrices(is_shapley=True, is_banzhaf=False, max_depth=D)
+    p2m = LTSV6PathToSVectors(is_shapley=True, is_banzhaf=False, max_depth=D)
     required_n_quads = min(max(int(math.ceil(D / 2)), 2), 16)
     # This tends to be numerically unstable when there are many close to 1 ratios
     for low, high in [(1, 10000), (5000, 10000), (9000, 10000), (9990, 10000), (1, 5000), (1, 10)]:

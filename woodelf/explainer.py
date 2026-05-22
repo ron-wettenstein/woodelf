@@ -10,7 +10,7 @@ from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.lts_vectorized import vectorized_linear_tree_shap
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.path_to_matrices import PathToMatricesAbstractCls
+from woodelf.core.path_to_matrices import WoodelfPathToSVectors
 
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]
@@ -57,7 +57,7 @@ class WoodelfExplainer:
             self, X, tree_limit: int = None,
             # Additional options exists only in Woodelf:
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False
     ):
         return self.calc_metric(
@@ -68,7 +68,7 @@ class WoodelfExplainer:
     def shap_interaction_values(
             self, X, tree_limit: int = None, include_interaction_with_itself: bool = True,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False
     ):
         shapley_ivs = self.calc_metric(
@@ -103,7 +103,7 @@ class WoodelfExplainer:
     def banzhaf_values(
             self, X, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False
     ):
         return self.calc_metric(
@@ -114,7 +114,7 @@ class WoodelfExplainer:
     def banzhaf_interaction_values(
             self, X, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False
     ):
         return self.calc_metric(
@@ -126,7 +126,7 @@ class WoodelfExplainer:
     def calc_metric(
             self, consumer_data, metric: CubeMetric, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
-            path_to_matrices_calculator: PathToMatricesAbstractCls = None,
+            path_to_matrices_calculator: WoodelfPathToSVectors = None,
             verbose: bool = False):
         if not self.model_was_loaded:
             self.model = load_decision_tree_ensemble_model(self.raw_model, list(consumer_data.columns))
