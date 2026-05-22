@@ -21,16 +21,6 @@ except ModuleNotFoundError as e:
     IMPORTED_CP = False
 
 
-def compute_values_using_s_matrix(values: Dict, s_matrix: Dict, global_importance: bool, GPU: bool):
-    for feature, feature_values in s_matrix.items():
-        if global_importance:
-            feature_values = cp.mean(feature_values) if GPU else np.mean(feature_values)
-        if feature not in values:
-            values[feature] = feature_values
-        else:
-            values[feature] += feature_values
-
-
 def woodelf_for_high_depth_single_tree(
         tree: DecisionTreeNode, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
         values: Dict[Any, float], path_to_matrices_calculator: PathToSVectors, GPU: bool = False,
@@ -56,13 +46,13 @@ def woodelf_for_high_depth_single_tree(
             leaf_b, background_patterns = next(background_patterns_generator)
             assert leaf_b.index == leaf.index
 
-            if cache_to_use is not None and leaf.index in cache_to_use:
+            if cache_to_use is not None and leaf.index in cache_to_use and isinstance(path_to_matrices_calculator, HighDepthWoodelfPathToSVectors):
                 s_matrix = path_to_matrices_calculator.compose_with_neighbor_trick(
-                    unique_features_in_path, consumer_patterns, cache_to_use[leaf.index], leaf.value, w_neighbor
+                    unique_features_in_path, cache_to_use[leaf.index], leaf.value, w_neighbor
                 )
             else:
                 s_matrix = path_to_matrices_calculator.get_background_s_matrix(
-                    unique_features_in_path, consumer_patterns, background_patterns, leaf.value, w_neighbor
+                    unique_features_in_path, background_patterns, leaf.value, w_neighbor
                 )
                 if cache_to_fill is not None:
                     depth = len(unique_features_in_path)
@@ -70,10 +60,18 @@ def woodelf_for_high_depth_single_tree(
         else:
             covers = np.array(get_covers_vector(path + [leaf], unique_features_in_path))
             s_matrix = path_to_matrices_calculator.get_path_dependent_s_matrix(
-                unique_features_in_path, consumer_patterns, covers, leaf.value, w_neighbor
+                unique_features_in_path, covers, leaf.value, w_neighbor
             )
 
-        compute_values_using_s_matrix(values, s_matrix, global_importance, GPU)
+        for feature, s_vec in s_matrix.items():
+            s_vec_casted = cp.asarray(s_vec) if GPU else np.ascontiguousarray(s_vec)
+            feature_values = s_vec_casted[consumer_patterns]
+            if global_importance:
+                feature_values = cp.mean(feature_values) if GPU else np.mean(feature_values)
+            if feature not in values:
+                values[feature] = feature_values
+            else:
+                values[feature] += feature_values
 
 
 def woodelf_for_high_depth(

@@ -103,39 +103,33 @@ class WoodelfPathToSVectors(PathToSVectors):
         return neighbor_f_shift_left + neighbor_f_shift_right
 
     def compose_with_neighbor_trick(
-        self, features_in_path: List, consumer_patterns: np.ndarray,
-        f: np.ndarray, w: float, w_neighbor: float = None
+        self, features_in_path: List, f: np.ndarray, w: float, w_neighbor: float = None
     ) -> Dict:
         """
         Given a pre-computed f vector, apply _get_s_vectors_given_f with the optional
-        neighbor-leaf trick, then index the result by consumer_patterns.
-        Returns Dict[feature_key -> np.array[N_consumers]].
+        neighbor-leaf trick. Returns Dict[feature_key -> s_vector of size 2^D].
+        Caller is responsible for indexing the result by consumer_patterns.
         """
         if w_neighbor is None:
-            s_vecs = self._get_s_vectors_given_f(features_in_path, f, w)
-        else:
-            s_left  = self._get_s_vectors_given_f(features_in_path, f, w)
-            s_right = self._get_s_vectors_given_f(
-                features_in_path, self.neighbor_vector(f, self.GPU), w_neighbor
-            )
-            s_vecs = {k: s_left[k] + self.neighbor_vector(s_right[k], self.GPU) for k in s_left}
-
-        if self.GPU:
-            return {k: cp.asarray(v)[consumer_patterns] for k, v in s_vecs.items()}
-        return {k: np.ascontiguousarray(v)[consumer_patterns] for k, v in s_vecs.items()}
+            return self._get_s_vectors_given_f(features_in_path, f, w)
+        s_left  = self._get_s_vectors_given_f(features_in_path, f, w)
+        s_right = self._get_s_vectors_given_f(
+            features_in_path, self.neighbor_vector(f, self.GPU), w_neighbor
+        )
+        return {k: s_left[k] + self.neighbor_vector(s_right[k], self.GPU) for k in s_left}
 
     def get_background_s_matrix(
-        self, features_in_path: List, consumer_patterns: np.ndarray,
+        self, features_in_path: List,
         background_patterns: np.ndarray, w: float, w_neighbor: float = None
     ) -> Dict:
         if not features_in_path:
             return {}
         depth = len(features_in_path)
         f = self.compute_f_from_patterns(background_patterns, depth, self.GPU)
-        return self.compose_with_neighbor_trick(features_in_path, consumer_patterns, f, w, w_neighbor)
+        return self.compose_with_neighbor_trick(features_in_path, f, w, w_neighbor)
 
     def get_path_dependent_s_matrix(
-        self, features_in_path: List, consumer_patterns: np.ndarray,
+        self, features_in_path: List,
         covers: np.ndarray, w: float, w_neighbor: float = None
     ) -> Dict:
         if not features_in_path:
@@ -143,7 +137,7 @@ class WoodelfPathToSVectors(PathToSVectors):
         f = self.compute_f_from_covers(covers)
         if self.GPU:
             f = cp.asarray(f)
-        return self.compose_with_neighbor_trick(features_in_path, consumer_patterns, f, w, w_neighbor)
+        return self.compose_with_neighbor_trick(features_in_path, f, w, w_neighbor)
 
     def _get_s_vectors_given_f(self, features_in_path: List, f: np.ndarray, w: float) -> Dict:
         """

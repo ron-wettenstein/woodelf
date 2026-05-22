@@ -86,14 +86,14 @@ class LTSPathToSVectors(PathToSVectors):
         self, features_in_path: List, consumer_patterns: np.ndarray,
         covers: np.ndarray, w: float, w_neighbor: Optional[float] = None
     ) -> Dict:
+        """consumer_patterns must be unique (pre-factorized by the caller)."""
         if not features_in_path:
             return {}
-        inverse, unique_patterns = pd.factorize(consumer_patterns, sort=False)
-        s_matrix = self._get_s_matrix(covers, unique_patterns, w, w_neighbor)
+        s_matrix = self._get_s_matrix(covers, consumer_patterns, w, w_neighbor)
         if not self.is_interaction_values:
             s_matrix = s_matrix.astype(np.float32)
             # TODO why np indexing on a matrix is slower than vector by vector! contribution_values = s_matrix[inverse]
-            return {feature: s_matrix[:, i][inverse] for i, feature in enumerate(features_in_path)}
+            return {feature: s_matrix[:, i] for i, feature in enumerate(features_in_path)}
         else:
             if not s_matrix:  # < 2 unique features in path, no interactions
                 return {}
@@ -103,7 +103,7 @@ class LTSPathToSVectors(PathToSVectors):
                 for j, feature2 in enumerate(features_in_path):
                     if i != j:
                         f2_index = j if j < i else j - 1
-                        result[(feature1, feature2)] = s_matrix_i[:, f2_index][inverse]
+                        result[(feature1, feature2)] = s_matrix_i[:, f2_index]
             return result
 
     def present_statistics(self):
@@ -147,18 +147,19 @@ def vectorized_linear_tree_shap_for_a_single_tree(
         leaf_index_to_path[leaf.index] = path
 
     for leaf, consumer_patterns in decision_patterns_generator(tree, consumer_data, GPU, ignore_neighbor_leaf=use_neighbor_leaf_trick):
+        inverse, unique_patterns = pd.factorize(consumer_patterns, sort=False)
         s_matrix = p2s.get_path_dependent_s_matrix(
             features_in_path=leaf_index_to_unique_features_in_path[leaf.index],
-            consumer_patterns=consumer_patterns,
+            consumer_patterns=unique_patterns,
             covers=leaf_index_to_covers[leaf.index],
             w=leaf_index_to_weight[leaf.index],
             w_neighbor=leaf.parent.right.value if ignore_right_neighbor(leaf, leaf_index_to_path[leaf.index], use_neighbor_leaf_trick) else None
         )
         for feature, feature_values in s_matrix.items():
             if feature not in values:
-                values[feature] = feature_values
+                values[feature] = feature_values[inverse]
             else:
-                values[feature] += feature_values
+                values[feature] += feature_values[inverse]
 
 
 def vectorized_linear_tree_shap(
