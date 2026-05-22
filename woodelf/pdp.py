@@ -8,11 +8,11 @@ from tqdm import tqdm
 import scipy
 
 from woodelf.lts_vectorized import get_covers_vector
-from woodelf.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.simple_woodelf import get_int_dtype_from_depth
-from woodelf.cube_metric import PDIVOrder1Or2, CPDVMetric
-from woodelf.decision_patterns import decision_patterns_generator
-from woodelf.decision_trees_ensemble import DecisionTreeNode
+from woodelf.core.cube_metric import PDIVOrder1Or2, CPDVMetric
+from woodelf.core.decision_patterns import decision_patterns_generator
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 
 

@@ -1,15 +1,13 @@
-import time
-
 import numpy as np
 import pytest
 import shap
 
 from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, assert_shap_package_is_same_as_woodelf, \
     assert_shap_package_is_same_as_woodelf_on_interaction_values
-from woodelf.cube_metric import ShapleyValues, BanzhafValues
-from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
+from woodelf.core.cube_metric import ShapleyValues, BanzhafValues
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.lts_vectorized import vectorized_linear_tree_shap, LinearTreeShapPathToMatrices, LinearTreeShapPathToMatricesSimple, \
-    LinearTreeShapPathToMatricesImproved, LinearTreeShapV6PathToMatrices
+    LinearTreeShapPathToMatricesImproved
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 
 FIXTURES = [testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]

@@ -5,10 +5,10 @@ import pandas as pd
 import shap
 import xgboost as xgb
 
-from woodelf.decision_trees_ensemble import DecisionTreesEnsemble
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.explainer import WoodelfExplainer
 from shared_fixtures_and_utils import testset, trainset, xgb_model, xgb_model_depth_16
-from woodelf.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 
 FIXTURES = [testset, trainset, xgb_model, xgb_model_depth_16]
 

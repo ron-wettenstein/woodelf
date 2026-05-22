@@ -5,8 +5,8 @@ from typing import List, Tuple, Dict, Any
 import numpy as np
 import pandas as pd
 
-from woodelf.cube_metric import CubeMetric
-from woodelf.decision_trees_ensemble import DecisionTreesEnsemble
+from woodelf.core.cube_metric import CubeMetric
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
 
 
 class PBFunction:

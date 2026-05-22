@@ -13,7 +13,7 @@ from sklearn.ensemble import (
 )
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
-from woodelf.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 
 TOLERANCE = 1e-7 # 0.00001
 

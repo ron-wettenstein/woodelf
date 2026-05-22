@@ -1,7 +1,7 @@
 import numpy as np
 
-from woodelf.cube_metric import ShapleyValues
-from woodelf.path_to_matrices import SimplePathToMatrices, HighDepthPathToMatrices, HighDepthPathToMatricesPaperVersion
+from woodelf.core.cube_metric import ShapleyValues
+from woodelf.core.path_to_matrices import SimplePathToMatrices, HighDepthPathToMatrices, HighDepthPathToMatricesPaperVersion
 
 TOLERANCE = 0.00001
 

@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from woodelf.cube_metric import CubeMetric
-from woodelf.decision_patterns import decision_patterns_generator, ignore_right_neighbor
-from woodelf.decision_trees_ensemble import DecisionTreeNode
-from woodelf.parse_models import load_decision_tree_ensemble_model
-from woodelf.path_to_matrices import PathToMatricesAbstractCls, HighDepthPathToMatrices
+from woodelf.core.cube_metric import CubeMetric
+from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.path_to_matrices import PathToMatricesAbstractCls, HighDepthPathToMatrices
 from woodelf.simple_woodelf import get_cupy_data, fill_mirror_pairs
 
 

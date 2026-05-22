@@ -4,7 +4,7 @@ import numpy as np
 import scipy
 import time
 
-from woodelf.cube_metric import CubeMetric
+from woodelf.core.cube_metric import CubeMetric
 
 try:
     import cupy as cp

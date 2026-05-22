@@ -1,7 +1,5 @@
-import os
 import time
 
-import numpy as np
 import pytest
 import shap
 import xgboost as xgb
@@ -13,7 +11,7 @@ from sklearn.ensemble import (
 )
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
+from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
 from shared_fixtures_and_utils import testset, trainset, xgb_model, assert_shap_package_is_same_as_woodelf, \
     assert_shap_package_is_same_as_woodelf_on_interaction_values

@@ -3,9 +3,9 @@ import math
 import numpy as np
 import pytest
 
-from woodelf.lts_polynomial_multiplication import compute_P, bits_matrix, continue_P_compute, improved_linear_tree_shap_magic, linear_tree_shap_magic_blocked, \
+from woodelf.core.lts_polynomial_multiplication import compute_P, bits_matrix, continue_P_compute, improved_linear_tree_shap_magic, linear_tree_shap_magic_blocked, \
     linear_tree_shap_magic, linear_tree_shap_magic_for_banzhaf, linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward_for_neighbors, \
-    improved_linear_tree_shap_magic_for_neighbors, linear_tree_shap_division_forward, linear_tree_shap_v6
+    improved_linear_tree_shap_magic_for_neighbors, linear_tree_shap_v6
 from woodelf.lts_vectorized import shapley_values_f_w, banzhaf_values_f_w, LinearTreeShapV6PathToMatrices
 
 

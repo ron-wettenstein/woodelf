@@ -2,10 +2,10 @@ from typing import List
 
 from tqdm import tqdm
 
-from woodelf.cube_metric import CubeMetric
-from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
-from woodelf.parse_models import load_decision_tree_ensemble_model
-from woodelf.path_to_matrices import PathToMatricesAbstractCls, SimplePathToMatrices
+from woodelf.core.cube_metric import CubeMetric
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.path_to_matrices import PathToMatricesAbstractCls, SimplePathToMatrices
 
 import numpy as np
 import pandas as pd

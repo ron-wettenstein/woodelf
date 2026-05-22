@@ -7,13 +7,13 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from woodelf.decision_trees_ensemble import DecisionTreeNode
-from woodelf.decision_patterns import decision_patterns_generator, ignore_right_neighbor
-from woodelf.lts_polynomial_multiplication import (
-    improved_linear_tree_shap_magic, linear_tree_shap_division_forward_for_neighbors, improved_linear_tree_shap_magic_for_neighbors,
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
+from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.core.lts_polynomial_multiplication import (
+    improved_linear_tree_shap_magic, improved_linear_tree_shap_magic_for_neighbors,
     linear_tree_shap_magic_for_banzhaf, linear_tree_shap_division_forward, linear_tree_shap_magic, improved_linear_tree_shap_iv, linear_tree_shap_v6, linear_tree_shap_v6_for_neighbors
 )
-from woodelf.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 
 
 def nCk(n, k):

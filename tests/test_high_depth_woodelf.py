@@ -2,27 +2,26 @@ import time
 
 import pandas as pd
 import shap
-from numpy.ma.core import max_val
 from sklearn.datasets import make_classification
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, \
     ExtraTreesRegressor, ExtraTreesClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier, \
     IsolationForest
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-from woodelf.cube_metric import ShapleyValues, ShapleyInteractionValues
-from woodelf.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
+from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import (
     compute_path_dependent_f, woodelf_for_high_depth, compute_f
 )
-from woodelf.decision_patterns import decision_patterns_generator
+from woodelf.core.decision_patterns import decision_patterns_generator
 import numpy as np
 import pytest
 import xgboost as xgb
 
 from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, \
     assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
-from woodelf.parse_models import load_decision_tree_ensemble_model
-from woodelf.path_to_matrices import SimplePathToMatrices, HighDepthPathToMatricesPaperVersion
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.path_to_matrices import SimplePathToMatrices, HighDepthPathToMatricesPaperVersion
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric, \
     path_dependent_frequencies
 import lightgbm as lgb

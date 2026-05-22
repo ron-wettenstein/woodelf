@@ -4,13 +4,13 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from woodelf.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzhafValues, \
+from woodelf.core.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzhafValues, \
     BanzhafInteractionValues
-from woodelf.decision_trees_ensemble import DecisionTreesEnsemble
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.lts_vectorized import vectorized_linear_tree_shap
-from woodelf.parse_models import load_decision_tree_ensemble_model
-from woodelf.path_to_matrices import PathToMatricesAbstractCls
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.path_to_matrices import PathToMatricesAbstractCls
 
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]
