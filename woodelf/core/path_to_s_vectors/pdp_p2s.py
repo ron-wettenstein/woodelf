@@ -4,17 +4,8 @@ from typing import List, Dict, Optional
 import numpy as np
 
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
+from woodelf.core.utils import bits_matrix
 from woodelf.simple_woodelf import get_int_dtype_from_depth
-
-
-def bits_matrix(x: np.ndarray, k: int) -> np.ndarray:
-    """
-    x: shape (n,), integers
-    returns: shape (k, n), rows are bits (k-1),...,1,0 (2^(k-1) down to LSB)
-    """
-    # ensure x is unsigned (np.uint) for fast bit ops
-    shifts = np.arange(k-1, -1, -1, dtype=np.uint8)[:, None]  # (5,1): 4,3,2,1,0
-    return ((x[None, :] >> shifts) & 1).astype(np.uint8)
 
 
 def triu_pair_to_index(i: int, j: int, D: int) -> int:

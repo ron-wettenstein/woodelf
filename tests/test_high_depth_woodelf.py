@@ -12,6 +12,7 @@ from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues
 from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
+from woodelf.core.utils import get_covers_vector
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.core.decision_patterns import decision_patterns_generator
 import numpy as np
@@ -23,7 +24,6 @@ from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_de
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 
 from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors, compute_f_from_patterns
-from woodelf.lts_vectorized import get_covers_vector
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric, \
     path_dependent_frequencies
 import lightgbm as lgb

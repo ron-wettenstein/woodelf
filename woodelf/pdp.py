@@ -12,6 +12,7 @@ from woodelf.core.decision_patterns import decision_patterns_generator
 from woodelf.core.path_to_s_vectors.pdp_p2s import PDPPathToSVectors, PDPIVPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.utils import get_unique_features_in_path
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.lts_vectorized import get_covers_vector
 
@@ -126,13 +127,6 @@ def clip_result(pdvs, features, k):
         h = first_different_bit(i1, i2, D)
         clipped[(f1, f2)] = pdvs[(f1, f2)][h*(k**2): (h+1)*(k**2)]
     return clipped
-
-def get_unique_features_in_path(path: List[DecisionTreeNode]):
-    unique_features_in_path = []
-    for n in path:
-        if n.feature_name not in unique_features_in_path:
-            unique_features_in_path.append(n.feature_name)
-    return unique_features_in_path
 
 
 def fast_pdp_for_a_single_tree(

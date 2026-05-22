@@ -10,7 +10,7 @@ from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors, compute_f_from_patterns
 from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
-from woodelf.lts_vectorized import get_unique_features_in_path, get_covers_vector
+from woodelf.core.utils import get_unique_features_in_path, get_covers_vector
 from woodelf.simple_woodelf import get_cupy_data, fill_mirror_pairs
 
 

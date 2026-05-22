@@ -5,9 +5,12 @@ import shap
 from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, assert_shap_package_is_same_as_woodelf, \
     assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyInteractionValues
+from woodelf.core.path_to_s_vectors.archive.lts_simple_p2s import LTSSimplePathToSVectors
+from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import QuadratureSHAPPathToSVectors
+from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
-from woodelf.lts_vectorized import vectorized_linear_tree_shap, LTSPathToSVectors, LTSSimplePathToSVectors, \
-    LTSImprovedPathToSVectors
+from woodelf.lts_vectorized import vectorized_linear_tree_shap
+
 from woodelf.simple_woodelf import calculate_path_dependent_metric
 
 FIXTURES = [testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
@@ -87,7 +90,7 @@ def test_linear_tree_shap_iv_on_high_depth_models(testset, xgb_model):
     assert_shap_package_is_same_as_woodelf_on_interaction_values(linear_tree_shap_iv_values, shap_iv_package_values, testset_head, TOLERANCE)
 
 
-@pytest.mark.parametrize("p2m_class", [LTSPathToSVectors, LTSSimplePathToSVectors, LTSImprovedPathToSVectors])
+@pytest.mark.parametrize("p2m_class", [LTSRecursivePathToSVectors, LTSSimplePathToSVectors, QuadratureSHAPPathToSVectors])
 def test_lts_on_different_ploy_mult_algos_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22, p2m_class):
     for model in [xgb_model_depth_16, xgb_model_depth_22]:
 
