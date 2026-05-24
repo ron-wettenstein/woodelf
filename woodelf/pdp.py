@@ -14,7 +14,7 @@ from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.utils import get_unique_features_in_path
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
-from woodelf.lts_vectorized import get_covers_vector
+from woodelf.core.utils import get_covers_vector
 
 
 def build_sampled_points_df(data: pd.DataFrame, k: int, seed: int = None):
