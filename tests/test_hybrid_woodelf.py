@@ -1,18 +1,14 @@
-import time
-
 import numpy as np
-import pytest
 import shap
 
-from shared_fixtures_and_utils import testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, assert_shap_package_is_same_as_woodelf, \
-    assert_shap_package_is_same_as_woodelf_on_interaction_values
+from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, \
+    assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyInteractionValues
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.hybrid_woodelf import hybrid_woodelf
+from woodelf.simple_woodelf import calculate_path_dependent_metric, calculate_background_metric
 
-from woodelf.simple_woodelf import calculate_path_dependent_metric
-
-FIXTURES = [testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
+FIXTURES = [trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
 
 TOLERANCE = 0.00001
 
@@ -64,6 +60,51 @@ def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_
         assert_shap_package_is_same_as_woodelf(linear_tree_shap_values_neighbor_leaf_trick, shap_package_values, testset, TOLERANCE)
 
 
+def test_mn_background_shap_on_a_model(trainset, testset, xgb_model):
+
+    simple_woodelf_values = calculate_background_metric(
+        xgb_model, testset, trainset, metric=ShapleyValues()
+    )
+
+    mn_values = hybrid_woodelf(
+        xgb_model, testset, trainset, ShapleyValues(), GPU=False, use_sparse_approaches=True
+    )
+
+    for feature in simple_woodelf_values:
+        np.testing.assert_allclose(
+            simple_woodelf_values[feature], mn_values[feature], atol=TOLERANCE
+        )
+
+
+def test_mn_background_banzhaf_on_a_model(trainset, testset, xgb_model):
+
+    simple_woodelf_values = calculate_background_metric(
+        xgb_model, testset, trainset, metric=BanzhafValues()
+    )
+
+    mn_values = hybrid_woodelf(
+        xgb_model, testset, trainset, BanzhafValues(), GPU=False, use_sparse_approaches=True
+    )
+
+    for feature in simple_woodelf_values:
+        np.testing.assert_allclose(
+            simple_woodelf_values[feature], mn_values[feature], atol=TOLERANCE
+        )
+
+
+def test_mn_background_shap_on_high_depth_models(trainset, testset, xgb_model_depth_16, xgb_model_depth_22):
+    background = trainset.head(10)
+    for model in [xgb_model_depth_16, xgb_model_depth_22]:
+
+        explainer = shap.TreeExplainer(model, background, feature_perturbation='interventional')
+        shap_package_values = explainer.shap_values(testset)
+
+        mn_values = hybrid_woodelf(
+            model, testset, background, ShapleyValues(), GPU=False, use_sparse_approaches=True
+        )
+        assert_shap_package_is_same_as_woodelf(mn_values, shap_package_values, testset, TOLERANCE)
+
+
 def test_single_leaf_tree(testset):
 
     leaf = DecisionTreeNode(feature_name=None, value=5, right=None, left=None, index=0, cover=1)
@@ -83,28 +124,8 @@ def test_linear_tree_shap_iv_on_high_depth_models(testset, xgb_model):
     linear_tree_shap_iv_values = hybrid_woodelf(
         xgb_model, testset_head, None, ShapleyInteractionValues(), GPU=False, use_neighbor_leaf_trick=False, use_sparse_approaches=True
     )
-    start_time = time.time()
     explainer = shap.TreeExplainer(xgb_model)
     shap_iv_package_values = explainer.shap_interaction_values(testset_head)
-    print(time.time() - start_time)
 
-    start_time = time.time()
     assert_shap_package_is_same_as_woodelf_on_interaction_values(linear_tree_shap_iv_values, shap_iv_package_values, testset_head, TOLERANCE)
-    print(time.time() - start_time)
 
-
-def test_lts_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):
-    for model in [xgb_model_depth_16, xgb_model_depth_22]:
-
-        explainer = shap.TreeExplainer(model)
-        shap_package_values = explainer.shap_values(testset)
-
-        linear_tree_shap_values = hybrid_woodelf(
-            model, testset, None, ShapleyValues(), GPU=False, use_sparse_approaches=True
-        )
-        assert_shap_package_is_same_as_woodelf(linear_tree_shap_values, shap_package_values, testset, TOLERANCE)
-
-        linear_tree_shap_values_neighbor_leaf_trick = hybrid_woodelf(
-            model, testset, None, ShapleyValues(), GPU=False, use_neighbor_leaf_trick=True, use_sparse_approaches=True
-        )
-        assert_shap_package_is_same_as_woodelf(linear_tree_shap_values_neighbor_leaf_trick, shap_package_values, testset, TOLERANCE)
