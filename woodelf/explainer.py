@@ -6,11 +6,11 @@ import pandas as pd
 
 from woodelf.core.cube_metric import ShapleyValues, CubeMetric, ShapleyInteractionValues, BanzhafValues, \
     BanzhafInteractionValues
-from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
-from woodelf.high_depth_woodelf import woodelf_for_high_depth
-from woodelf.lts_vectorized import vectorized_linear_tree_shap
-from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+from woodelf.high_depth_woodelf import woodelf_for_high_depth
+from woodelf.hybrid_woodelf import linear_tree_shap_meets_woodelf, hybrid_woodelf
 
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]
@@ -149,7 +149,7 @@ class WoodelfExplainer:
                 self.background_data is None and self.cache is None and model.max_depth > 10 and
                 any(isinstance(metric, supported_metric) for supported_metric in [ShapleyValues, BanzhafValues, ShapleyInteractionValues])
         ):
-            woodelf_values = vectorized_linear_tree_shap(model, consumer_data, metric, GPU=self.GPU, model_was_loaded=True)
+            woodelf_values = linear_tree_shap_meets_woodelf(model, consumer_data, metric, GPU=self.GPU, model_was_loaded=True)
         else:
             woodelf_values = woodelf_for_high_depth(
                 model, consumer_data, self.background_data, metric, GPU=self.GPU,
