@@ -10,7 +10,7 @@ from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
-from woodelf.hybrid_woodelf import linear_tree_shap_meets_woodelf, hybrid_woodelf
+from woodelf.hybrid_woodelf import hybrid_woodelf
 
 AVAILABLE_MODEL_OUTPUTS = ["raw", "probability", "log_loss"]
 AVAILABLE_FEATURE_PERTURBATION = ["auto", "interventional", "tree_path_dependent"]
@@ -145,7 +145,7 @@ class WoodelfExplainer:
                 cache_kwargs["cache_to_fill"] = self.cache
                 self.cache_filled = True # will fill the cache now
 
-        if self.cache is None and path_to_matrices_calculator is None:
+        if self.cache is None and path_to_matrices_calculator is None and not self.GPU:
             woodelf_values = hybrid_woodelf(model, consumer_data, self.background_data, metric, GPU=self.GPU, model_was_loaded=True)
         else:
             woodelf_values = woodelf_for_high_depth(
