@@ -145,11 +145,8 @@ class WoodelfExplainer:
                 cache_kwargs["cache_to_fill"] = self.cache
                 self.cache_filled = True # will fill the cache now
 
-        if (    # Use Vectorized LinearTreeSHAP on Path-Dependent SHAP/Banzhaf/Shapley interaction values when the trees have a high depth.
-                self.background_data is None and self.cache is None and model.max_depth > 10 and
-                any(isinstance(metric, supported_metric) for supported_metric in [ShapleyValues, BanzhafValues, ShapleyInteractionValues])
-        ):
-            woodelf_values = linear_tree_shap_meets_woodelf(model, consumer_data, metric, GPU=self.GPU, model_was_loaded=True)
+        if self.cache is None and path_to_matrices_calculator is None:
+            woodelf_values = hybrid_woodelf(model, consumer_data, self.background_data, metric, GPU=self.GPU, model_was_loaded=True)
         else:
             woodelf_values = woodelf_for_high_depth(
                 model, consumer_data, self.background_data, metric, GPU=self.GPU,

@@ -1,3 +1,4 @@
+import math
 from typing import Dict, Any, Optional
 
 import numpy as np
@@ -21,6 +22,9 @@ except ModuleNotFoundError:
     cp = None
     IMPORTED_CP = False
 
+_SHALLOW_TREE_THRESHOLD = 10
+_MAX_DEPTH_FOR_HIGH_WOODELF = 18
+_MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF = 10
 _BACKGROUND_METRICS = (ShapleyValues, BanzhafValues)
 _PATH_DEPENDENT_METRICS = (ShapleyValues, BanzhafValues, ShapleyInteractionValues)
 
@@ -68,7 +72,7 @@ def hybrid_background_single_tree(
         leaf_b, background_patterns = next(background_gen)
         assert leaf_b.index == leaf.index
 
-        depth_to_use_mn = D > 20 or (D > 10 and (2 ** D > min(10000, consumer_len) * min(10000, background_len)))
+        depth_to_use_mn = D > _MAX_DEPTH_FOR_HIGH_WOODELF or (D > 10 and (2 ** D > min(10000, consumer_len) * min(10000, background_len)))
         if mn_p2s is not None and (use_sparse_approaches or depth_to_use_mn):
             inverse, unique_c = pd.factorize(consumer_patterns, sort=False)
             s_matrix = mn_p2s.get_background_s_matrix(
@@ -103,7 +107,7 @@ def hybrid_path_dependent_single_tree(
         w_neighbor = leaf.parent.right.value if ignore_right_neighbor(leaf, path, use_neighbor_leaf_trick) else None
         covers = np.array(get_covers_vector(path + [leaf], features_in_path))
 
-        use_lts = lts_p2s is not None and (use_sparse_approaches or len(features_in_path) > 10)
+        use_lts = lts_p2s is not None and (use_sparse_approaches or len(features_in_path) > _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF)
         if use_lts:
             inverse, unique_c = pd.factorize(consumer_patterns, sort=False)
             s_matrix = lts_p2s.get_path_dependent_s_matrix(
@@ -170,8 +174,8 @@ def hybrid_woodelf(
     effective_depth = min(model.max_depth, len(consumer_data.columns))
     is_background = background_data is not None
 
-    needs_mn  = is_background and (use_sparse_approaches or (effective_depth > 10 and isinstance(metric, _BACKGROUND_METRICS)))
-    needs_lts = not is_background and (use_sparse_approaches or (effective_depth > 10 and isinstance(metric, _PATH_DEPENDENT_METRICS)))
+    needs_mn  = is_background and (use_sparse_approaches or (effective_depth > _SHALLOW_TREE_THRESHOLD and isinstance(metric, _BACKGROUND_METRICS)))
+    needs_lts = not is_background and (use_sparse_approaches or (effective_depth > _SHALLOW_TREE_THRESHOLD and isinstance(metric, _PATH_DEPENDENT_METRICS)))
 
     # On shallow trees with no sparse override the hybrid collapses to plain HighDepth — delegate directly.
     if not use_sparse_approaches and not needs_mn and not needs_lts:
@@ -180,7 +184,14 @@ def hybrid_woodelf(
             use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True,
         )
 
-    high_depth_p2s = HighDepthWoodelfPathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU) if not use_sparse_approaches else None
+    if background_data is None:
+        depth_for_woodelfhd = min(effective_depth, _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF)
+    else:
+        depth_for_woodelfhd = min([
+            effective_depth, _MAX_DEPTH_FOR_HIGH_WOODELF, math.ceil(math.log2(len(background_data) * len(consumer_data)))
+        ])
+
+    high_depth_p2s = HighDepthWoodelfPathToSVectors(metric=metric, max_depth=depth_for_woodelfhd, GPU=GPU) if not use_sparse_approaches else None
     mn_p2s  = MNBackgroundFasterPathToSVectors(metric=metric, max_depth=effective_depth) if needs_mn  else None
     lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU) if needs_lts else None
 
