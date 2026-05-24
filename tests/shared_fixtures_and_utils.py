@@ -95,18 +95,21 @@ def assert_shap_package_is_same_as_woodelf(
 def assert_shap_package_is_same_as_woodelf_on_interaction_values(
         woodelf_result, shap_package_result, testset: pd.DataFrame, tolerance: float
 ):
-    shap_package_shapley_values = pd.DataFrame(
-        {fi + "_" + fj: shap_package_result[:, i,j]
-         for i, fi in enumerate(testset.columns) for j, fj in enumerate(testset.columns) if fi != fj
-         }, index=testset.index
+    columns = list(testset.columns)
+    n_features, n_rows = len(columns), len(testset)
+
+    # Build a (rows, features, features) array from the woodelf dict, leaving the diagonal as zero.
+    woodelf_array = np.zeros((n_rows, n_features, n_features), dtype=np.float64)
+    zeros = np.zeros(n_rows)
+    for i, fi in enumerate(columns):
+        for j, fj in enumerate(columns):
+            if fi != fj:
+                woodelf_array[:, i, j] = woodelf_result.get((fi, fj), zeros)
+
+    # Compare off-diagonal entries in one vectorised call.
+    off_diag = ~np.eye(n_features, dtype=bool)
+    np.testing.assert_allclose(
+        woodelf_array[:, off_diag], shap_package_result[:, off_diag], atol=tolerance
     )
-    woodelf_shapley_values = pd.DataFrame(
-        {fi + "_" + fj: woodelf_result.get((fi, fj), np.zeros(len(testset)))
-         for fi in testset.columns for fj in testset.columns if fi != fj
-        },
-        index=testset.index
-    )
-    pd.testing.assert_frame_equal(
-        woodelf_shapley_values, shap_package_shapley_values,
-        check_dtype=False, check_names=False, check_exact=False, atol=tolerance
-    )
+
+
