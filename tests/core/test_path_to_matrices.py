@@ -83,6 +83,11 @@ def test_mn_background_matches_high_depth_woodelf():
     actual = mn_p2s.get_background_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _ALL_PATTERNS, w=3.0)
     _assert_s_dicts_close(actual, reference)
 
+    # with neighbor leaf trick
+    reference = reference_p2s.get_background_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _ALL_PATTERNS, w=2.0, w_neighbor=0.5)
+    actual = mn_p2s.get_background_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _ALL_PATTERNS, w=2.0, w_neighbor=0.5)
+    _assert_s_dicts_close(actual, reference)
+
 
 def test_mn_background_faster_matches_high_depth_woodelf():
     reference_p2s = HighDepthWoodelfPathToSVectors(metric=ShapleyValues(), max_depth=_DEPTH)
@@ -95,6 +100,11 @@ def test_mn_background_faster_matches_high_depth_woodelf():
     # non-unit weight
     reference = reference_p2s.get_background_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _ALL_PATTERNS, w=3.0)
     actual = mn_faster_p2s.get_background_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _ALL_PATTERNS, w=3.0)
+    _assert_s_dicts_close(actual, reference)
+
+    # with neighbor leaf trick
+    reference = reference_p2s.get_background_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _ALL_PATTERNS, w=2.0, w_neighbor=0.5)
+    actual = mn_faster_p2s.get_background_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _ALL_PATTERNS, w=2.0, w_neighbor=0.5)
     _assert_s_dicts_close(actual, reference)
 
 

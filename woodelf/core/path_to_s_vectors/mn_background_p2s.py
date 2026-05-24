@@ -99,6 +99,10 @@ class MNBackgroundPathToSVectors(PathToSVectors):
         _compute_s_batch. Consumer patterns are processed in chunks of BATCH_SIZE // U_b
         to stay within memory bounds.
 
+        If w_neighbor is provided, also adds the neighbor leaf's contribution: the neighbor
+        leaf has patterns where the LSB is flipped (sibling in the tree), so we recurse with
+        consumer_patterns ^ 1, background_patterns ^ 1, and w=w_neighbor.
+
         Returns Dict[feature -> np.ndarray of shape (U_c,)], one entry per feature in the path.
         """
         if not features_in_path:
@@ -121,7 +125,16 @@ class MNBackgroundPathToSVectors(PathToSVectors):
                 end = min(start + batch_size, U_c)
                 s[:, start:end] = self._compute_s_batch(consumer_patterns[start:end], unique_b, b_freqs, D, w)
 
-        return {features_in_path[i]: s[i] for i in range(D)}
+        result = {features_in_path[i]: s[i] for i in range(D)}
+
+        if w_neighbor is not None:
+            neighbor = self.get_background_s_matrix(
+                features_in_path, consumer_patterns ^ 1, background_patterns ^ 1, w_neighbor
+            )
+            for f in result:
+                result[f] = result[f] + neighbor[f]
+
+        return result
 
     def get_path_dependent_s_matrix(self, features_in_path, consumer_patterns, covers, w, w_neighbor=None):
         raise NotImplementedError("MNBackgroundPathToSVectors does not support the path-dependent case.")
