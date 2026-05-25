@@ -8,7 +8,7 @@ from tqdm import tqdm
 from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
-from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterPathToSVectors
+from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterPathToSVectors, MNBackgroundPathToSVectors
 from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
@@ -150,6 +150,7 @@ def hybrid_woodelf(
     use_neighbor_leaf_trick: bool = True,
     model_was_loaded: bool = False,
     use_sparse_approaches: bool = False,
+    use_faster_mn_p2s: bool = True
 ):
     """
     Hybrid WOODELF: selects the best computation strategy per leaf based on depth and metric.
@@ -191,9 +192,11 @@ def hybrid_woodelf(
         depth_for_woodelfhd = max(min([
             effective_depth, _MAX_DEPTH_FOR_HIGH_WOODELF, math.ceil(math.log2(len(background_data) * len(consumer_data)))
         ]), _MIN_DEPTH_FOR_MN)
-
     high_depth_p2s = HighDepthWoodelfPathToSVectors(metric=metric, max_depth=depth_for_woodelfhd, GPU=GPU) if not use_sparse_approaches else None
-    mn_p2s  = MNBackgroundFasterPathToSVectors(metric=metric, max_depth=effective_depth) if needs_mn  else None
+
+    mn_p2s_class = MNBackgroundFasterPathToSVectors if use_faster_mn_p2s else MNBackgroundPathToSVectors
+    mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth) if needs_mn else None
+
     lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU) if needs_lts else None
 
     # TODO think how this connects with lts and mn approaches
