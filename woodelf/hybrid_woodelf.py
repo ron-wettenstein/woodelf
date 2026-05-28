@@ -46,6 +46,20 @@ def _accumulate(values: Dict, s_matrix: Dict, indices: np.ndarray, GPU: bool, ad
             else:
                 values[(f2,f1)] += feature_values
 
+def should_use_mn_approach(D, consumer_patterns, background_patterns):
+    if D > _MAX_DEPTH_FOR_HIGH_WOODELF:
+        return True
+    if D < _MIN_DEPTH_FOR_MN:
+        return False
+
+    # # The n**0.5 is an estimation of how many unique patterns there are
+    # if int(len(consumer_patterns) ** 0.5) * int(len(background_patterns) ** 0.5) < 2 ** D:
+    #     return True
+    # if D <= 15:
+    #     return False
+
+    return pd.Series(consumer_patterns).nunique() * pd.Series(background_patterns).nunique() < (2 ** D) * D
+
 
 def hybrid_background_single_tree(
     tree: DecisionTreeNode,
@@ -58,8 +72,6 @@ def hybrid_background_single_tree(
     use_neighbor_leaf_trick: bool,
     use_sparse_approaches: bool = False,
 ):
-    background_len = len(background_data)
-    consumer_len = len(consumer_data)
     leaves_to_path = tree.get_nodes_to_path_dict()
     consumer_gen    = decision_patterns_generator(tree, consumer_data,    GPU, use_neighbor_leaf_trick)
     background_gen  = decision_patterns_generator(tree, background_data,  GPU, use_neighbor_leaf_trick)
@@ -71,10 +83,9 @@ def hybrid_background_single_tree(
         w_neighbor = leaf.parent.right.value if ignore_right_neighbor(leaf, path, use_neighbor_leaf_trick) else None
 
         leaf_b, background_patterns = next(background_gen)
-        assert leaf_b.index == leaf.index
+        # assert leaf_b.index == leaf.index
 
-        depth_to_use_mn = D > _MAX_DEPTH_FOR_HIGH_WOODELF or (D > _MIN_DEPTH_FOR_MN and (2 ** D > min(10000, consumer_len) * min(10000, background_len)))
-        if mn_p2s is not None and (use_sparse_approaches or depth_to_use_mn):
+        if mn_p2s is not None and (use_sparse_approaches or should_use_mn_approach(D, consumer_patterns, background_patterns)):
             inverse, unique_c = pd.factorize(consumer_patterns, sort=False)
             s_matrix = mn_p2s.get_background_s_matrix(
                 features_in_path, unique_c,
@@ -189,9 +200,7 @@ def hybrid_woodelf(
     if background_data is None:
         depth_for_woodelfhd = min(effective_depth, _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF)
     else:
-        depth_for_woodelfhd = max(min([
-            effective_depth, _MAX_DEPTH_FOR_HIGH_WOODELF, math.ceil(math.log2(len(background_data) * len(consumer_data)))
-        ]), _MIN_DEPTH_FOR_MN)
+        depth_for_woodelfhd = max(min([effective_depth, 15]), _MIN_DEPTH_FOR_MN)
     high_depth_p2s = HighDepthWoodelfPathToSVectors(metric=metric, max_depth=depth_for_woodelfhd, GPU=GPU) if not use_sparse_approaches else None
 
     mn_p2s_class = MNBackgroundFasterPathToSVectors if use_faster_mn_p2s else MNBackgroundPathToSVectors

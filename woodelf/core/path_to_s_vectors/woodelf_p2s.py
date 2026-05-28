@@ -87,7 +87,7 @@ class HighDepthWoodelfPathToSVectors(WoodelfPathToSVectors):
             self.matrices_frs_subsets[depth] = list(matrices.keys())
             if self.GPU:
                 if not IMPORTED_CP:
-                    raise ImportError("Couldn't import CuPy. To use GPU, please install Cu{y via 'pip install cupy'")
+                    raise ImportError("Couldn't import CuPy. To use GPU, please install Cupy via 'pip install cupy'")
                 self.matrices[depth] = cp.array(
                     [matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=cp.float32
                 ).T
@@ -98,6 +98,10 @@ class HighDepthWoodelfPathToSVectors(WoodelfPathToSVectors):
 
     def _get_s_vectors_given_f(self, features_in_path: List, f: np.ndarray, w: float) -> Dict:
         depth = len(features_in_path)
+        if depth > self.max_depth:
+            print("rerun self._build_matrices")
+            self.max_depth = depth
+            self._build_matrices()
         self.s_computation_calls += 1
         self.total_f_sizes += np.sum(f != 0)
         start_time = time.time()
