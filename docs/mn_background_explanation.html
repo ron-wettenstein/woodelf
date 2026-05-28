@@ -633,6 +633,9 @@
       <p>Bit $d$ of the <code>positive</code> integer is set iff the consumer follows the path at $d$ AND the background diverges:</p>
       <div class="math-block">
         $$\text{pos_bits}[d, c, b] = c_d \cdot (1 - b_d)$$
+      </div>
+      <p>Bit $d$ of the <code>negative</code> integer is set iff the consumer diverges from the path at $d$ AND the background follows:</p>
+      <div class="math-block">
         $$\text{neg_bits}[d, c, b] = (1 - c_d) \cdot b_d$$
       </div>
       <p>where $c_d$ and $b_d$ are the $d$-th bits of consumer and background patterns respectively.</p>
@@ -730,7 +733,7 @@ total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="
 
     <p>
       The two sums $\text{BPW}$ and $\text{BNW}$ are computed in one matrix multiplication each:
-      $\mathbf{b_bits} \in \mathbb{R}^{D \times U_b}$ times $\mathbf{pos_weighted}^\top \in \mathbb{R}^{U_b \times U_c}$.
+      $\mathbf{b\_bits} \in \mathbb{R}^{D \times U_b}$ times $\mathbf{pos\_weighted}^\top \in \mathbb{R}^{U_b \times U_c}$.
     </p>
   </section>
 
@@ -748,9 +751,10 @@ total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="
     <div class="card green">
       <div class="card-title">Why flipping the LSB works</div>
       <p>
-        Because the sibling edge is always the last split along the path, flipping the
-        least-significant bit of a pattern (which encodes that last split) converts any
-        pattern that lands in $\ell$ into the corresponding pattern that would have landed in $\ell'$.
+        Because neighbor leaves share all inner nodes and agree on the split traversal in all of
+        them except the very last split, flipping the least-significant bit of a pattern
+        (which encodes that last split) converts any pattern that lands in $\ell$ into the
+        corresponding pattern that would have landed in $\ell'$.
       </p>
       <p style="margin-top:0.6rem;">
         The neighbor's contribution uses weight $w' = w_{\ell'}$ and the flipped patterns:
@@ -788,16 +792,19 @@ total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="
     </div>
     <div class="complexity-row v2">
       <div class="complexity-label"><code>MNBackgroundFasterPathToSVectors</code></div>
-      <div>$O(mTL + nTLD + \mathbf{U_c \cdot U_b \cdot T \cdot L \cdot D})$ &nbsp; + BLAS constant ×10</div>
+      <div>$O(mTL + nTLD + \mathbf{U_c \cdot U_b \cdot T \cdot L \cdot D})$</div>
     </div>
 
     <div class="card highlight" style="margin-top:1.2rem;">
       <div class="card-title">Why $U_c \ll n$ and $U_b \ll m$</div>
       <p>
-        At any single leaf, only the rows that <em>land in that leaf</em> are considered.
-        The number of distinct binary patterns those rows can form is at most $\min(\text{rows in leaf},\; 2^D)$.
-        For deep trees with many rows, $2^D$ is the binding constraint ($U_c \leq 2^D$),
-        and in practice patterns concentrate around a small number of common decision paths.
+        For each leaf, <em>every</em> consumer (and background) data point is assigned a $D$-bit
+        decision pattern encoding whether it follows or diverges from the path at each of the $D$
+        nodes.
+        Because there are only $D$ bits, at most $2^D$ distinct patterns can exist, so
+        $U_c \leq \min(m,\, 2^D)$ and $U_b \leq \min(n,\, 2^D)$.
+        For deep paths $2^D$ is the binding constraint, and in practice patterns concentrate
+        around a small number of common follow/diverge combinations.
       </p>
     </div>
 
@@ -815,7 +822,7 @@ total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="
 
     <p>
       This is why <code>hybrid_woodelf</code> switches to MN for leaves with $D > 18$
-      (where $2^D$ becomes prohibitively large) or when $2^D$ exceeds the product of
+      (where $2^D$ becomes prohibitively large) or when $2^DD$ exceeds the product of
       the capped dataset sizes.
     </p>
 
