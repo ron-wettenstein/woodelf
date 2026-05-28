@@ -24,7 +24,7 @@ except ModuleNotFoundError:
 
 _SHALLOW_TREE_THRESHOLD = 10
 _MIN_DEPTH_FOR_MN = 10
-_MAX_DEPTH_FOR_HIGH_WOODELF = 18
+_MAX_DEPTH_FOR_HIGH_WOODELF = 15
 _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF = 10
 _BACKGROUND_METRICS = (ShapleyValues, BanzhafValues)
 _PATH_DEPENDENT_METRICS = (ShapleyValues, BanzhafValues, ShapleyInteractionValues)
@@ -200,7 +200,7 @@ def hybrid_woodelf(
     if background_data is None:
         depth_for_woodelfhd = min(effective_depth, _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF)
     else:
-        depth_for_woodelfhd = max(min([effective_depth, 15]), _MIN_DEPTH_FOR_MN)
+        depth_for_woodelfhd = min([effective_depth, _MAX_DEPTH_FOR_HIGH_WOODELF])
     high_depth_p2s = HighDepthWoodelfPathToSVectors(metric=metric, max_depth=depth_for_woodelfhd, GPU=GPU) if not use_sparse_approaches else None
 
     mn_p2s_class = MNBackgroundFasterPathToSVectors if use_faster_mn_p2s else MNBackgroundPathToSVectors

@@ -98,10 +98,6 @@ class HighDepthWoodelfPathToSVectors(WoodelfPathToSVectors):
 
     def _get_s_vectors_given_f(self, features_in_path: List, f: np.ndarray, w: float) -> Dict:
         depth = len(features_in_path)
-        if depth > self.max_depth:
-            print("rerun self._build_matrices")
-            self.max_depth = depth
-            self._build_matrices()
         self.s_computation_calls += 1
         self.total_f_sizes += np.sum(f != 0)
         start_time = time.time()
