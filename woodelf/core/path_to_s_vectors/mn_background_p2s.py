@@ -254,7 +254,7 @@ class MNBackgroundFasterPathToSVectors(MNBackgroundPathToSVectors):
         return result
 
 
-class MNBackgroundShapleyDirectPathToSVectors(MNBackgroundPathToSVectors):
+class MNBackgroundShapleyDirectPathToSVectors(MNBackgroundFasterPathToSVectors):
     """
     Variant of MNBackgroundPathToSVectors for ShapleyValues that computes pos_weighted and
     neg_weighted directly via the closed-form Shapley formula, avoiding the precomputed
@@ -302,14 +302,15 @@ class MNBackgroundShapleyDirectPathToSVectors(MNBackgroundPathToSVectors):
         self.t_weighted += time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        batch_size = len(consumer_batch)
-        U_b = len(unique_b)
-        pos_bits = bits_matrix(positive.ravel(), D).reshape(D, batch_size, U_b)   # (D, batch, U_b)
-        neg_bits = bits_matrix(negative.ravel(), D).reshape(D, batch_size, U_b)   # (D, batch, U_b)
+        c_bits = bits_matrix(consumer_batch, D).astype(np.float64)    # (D, batch)
+        b_bits = bits_matrix(unique_b, D).astype(np.float64)          # (D, U_b)
         self.t_bit_matrix += time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        result = (pos_bits * pos_weighted + neg_bits * neg_weighted).sum(axis=2) * w  # (D, batch)
+        BPW = b_bits @ pos_weighted.T                                  # (D, batch)
+        BNW = b_bits @ neg_weighted.T                                  # (D, batch)
+        total_pos = pos_weighted.sum(axis=1)                           # (batch,)
+        result = (BNW + c_bits * (total_pos - BPW - BNW)) * w         # (D, batch)
         self.t_multiply += time.perf_counter() - t0
 
         return result
