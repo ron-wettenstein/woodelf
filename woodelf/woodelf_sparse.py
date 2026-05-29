@@ -190,10 +190,6 @@ def hybrid_woodelf(
             use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True, mn_p2s_class=mn_p2s_class
         )
     else:
-        data_len = len(consumer_data) + (0 if not is_background else len(background_data))
-        if model.max_depth > 12 or data_len < 10 * (2 ** model.max_depth):
-            use_neighbor_leaf_trick = False
-
         return woodelf_for_high_depth(
             model, consumer_data, background_data, metric, GPU=GPU,
             use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True,
