@@ -1,4 +1,3 @@
-import time
 from typing import List, Dict, Tuple
 
 import numpy as np
@@ -24,12 +23,7 @@ class MNBackgroundPathToSVectors(PathToSVectors):
 
     def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
         super().__init__(metric, max_depth, GPU)
-        t0 = time.perf_counter()
         self.pos_contributions, self.neg_contributions = MNBackgroundPathToSVectors._build_contribution_matrices(metric, max_depth)
-        self.t_preprocess = time.perf_counter() - t0
-        self.t_s_matrix = 0.0
-        self.t_unique = self.t_pos_neg = self.t_bitcount = 0.0
-        self.t_np_indexing = self.t_weighted = self.t_bit_matrix = self.t_multiply = 0.0
 
     @staticmethod
     def _build_contribution_matrices(metric: CubeMetric, D: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -73,7 +67,6 @@ class MNBackgroundPathToSVectors(PathToSVectors):
 
         Returns shape (D, batch_size), one s-vector row per feature in the path.
         """
-        t0 = time.perf_counter()
         diff     = consumer_batch[:, None] ^ unique_b[None, :]       # (batch, U_b)
         positive = consumer_batch[:, None] & diff                     # s_plus bits per pair
         negative = unique_b[None, :]       & diff                     # s_minus bits per pair
@@ -81,40 +74,23 @@ class MNBackgroundPathToSVectors(PathToSVectors):
         # Only pairs where every bit is covered by at least one side going right.
         # Pairs with a "both-diverge" bit (pc_k=0, pb_k=0) have no WDNF rule and contribute 0.
         valid = (consumer_batch[:, None] | unique_b[None, :]) == ((1 << D) - 1)  # (batch, U_b)
-        self.t_pos_neg += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
         p = np.bitwise_count(positive)                                # (batch, U_b)
         n = np.bitwise_count(negative)                                # (batch, U_b)
-        self.t_bitcount += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
-        pos_contribs = self.pos_contributions[p, n]                     # (batch, U_b)
-        neg_contribs = self.neg_contributions[p, n]                     # (batch, U_b)
-        self.t_np_indexing += time.perf_counter() - t0
+        pos_weighted = self.pos_contributions[p, n] * b_freqs * valid   # (batch, U_b)
+        neg_weighted = self.neg_contributions[p, n] * b_freqs * valid   # (batch, U_b)
 
-        t0 = time.perf_counter()
-        pos_weighted = pos_contribs * b_freqs * valid                   # (batch, U_b)
-        neg_weighted = neg_contribs * b_freqs * valid                   # (batch, U_b)
-        self.t_weighted += time.perf_counter() - t0
-
-        t0 = time.perf_counter()
         batch_size = len(consumer_batch)
         U_b = len(unique_b)
         pos_bits = bits_matrix(positive.ravel(), D).reshape(D, batch_size, U_b)   # (D, batch, U_b)
         neg_bits = bits_matrix(negative.ravel(), D).reshape(D, batch_size, U_b)   # (D, batch, U_b)
-        self.t_bit_matrix += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
-        result = (pos_bits * pos_weighted + neg_bits * neg_weighted).sum(axis=2) * w  # (D, batch)
-        self.t_multiply += time.perf_counter() - t0
-
-        return result
+        return (pos_bits * pos_weighted + neg_bits * neg_weighted).sum(axis=2) * w  # (D, batch)
 
     def get_background_s_matrix(
         self, features_in_path: List, consumer_patterns: np.ndarray,
         background_patterns: np.ndarray, w: float, w_neighbor: float = None,
-        _is_recursive: bool = False,
     ) -> Dict:
         """
         Compute the background s-matrix for a single leaf.
@@ -129,16 +105,12 @@ class MNBackgroundPathToSVectors(PathToSVectors):
 
         Returns Dict[feature -> np.ndarray of shape (U_c,)], one entry per feature in the path.
         """
-        t_start = time.perf_counter()
-
         if not features_in_path:
             return {}
         D = len(features_in_path)
 
-        t0 = time.perf_counter()
         unique_b, b_counts = np.unique(background_patterns, return_counts=True)
         b_freqs = b_counts / b_counts.sum()
-        self.t_unique += time.perf_counter() - t0
 
         U_c = len(consumer_patterns)
         U_b = len(unique_b)
@@ -157,28 +129,14 @@ class MNBackgroundPathToSVectors(PathToSVectors):
         if w_neighbor is not None:
             neighbor = self.get_background_s_matrix(
                 features_in_path, consumer_patterns ^ 1, background_patterns ^ 1, w_neighbor,
-                _is_recursive=True,
             )
             for f in result:
                 result[f] = result[f] + neighbor[f]
-
-        if not _is_recursive:
-            self.t_s_matrix += time.perf_counter() - t_start
 
         return result
 
     def get_path_dependent_s_matrix(self, features_in_path, consumer_patterns, covers, w, w_neighbor=None):
         raise NotImplementedError("MNBackgroundPathToSVectors does not support the path-dependent case.")
-
-    def present_statistics(self):
-        t_total = self.t_preprocess + self.t_s_matrix
-        print(
-            f"[{self.__class__.__name__}] "
-            f"total={t_total:.3f}s | preprocess={self.t_preprocess:.3f}s | s_matrix={self.t_s_matrix:.3f}s | "
-            f"unique={self.t_unique:.3f}s | pos_neg={self.t_pos_neg:.3f}s | "
-            f"bitcount={self.t_bitcount:.3f}s | np_indexing={self.t_np_indexing:.3f}s | "
-            f"weighted={self.t_weighted:.3f}s | bit_matrix={self.t_bit_matrix:.3f}s | multiply={self.t_multiply:.3f}s"
-        )
 
 
 class MNBackgroundFasterPathToSVectors(MNBackgroundPathToSVectors):
@@ -217,48 +175,31 @@ class MNBackgroundFasterPathToSVectors(MNBackgroundPathToSVectors):
         where total_pos[c] = sum_b(pos_weighted[c,b]).
         The (batch, U_b) intermediates from the base class remain, but the (D, batch, U_b) tensor is never allocated.
         """
-        t0 = time.perf_counter()
         diff     = consumer_batch[:, None] ^ unique_b[None, :]       # (batch, U_b)
         positive = consumer_batch[:, None] & diff                     # s_plus bits per pair
         negative = unique_b[None, :]       & diff                     # s_minus bits per pair
         valid = (consumer_batch[:, None] | unique_b[None, :]) == ((1 << D) - 1)  # (batch, U_b)
-        self.t_pos_neg += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
         p = np.bitwise_count(positive)                                # (batch, U_b)
         n = np.bitwise_count(negative)                                # (batch, U_b)
-        self.t_bitcount += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
-        pos_contribs = self.pos_contributions[p, n]                    # (batch, U_b)
-        neg_contribs = self.neg_contributions[p, n]                    # (batch, U_b)
-        self.t_np_indexing += time.perf_counter() - t0
+        pos_weighted = self.pos_contributions[p, n] * b_freqs * valid  # (batch, U_b)
+        neg_weighted = self.neg_contributions[p, n] * b_freqs * valid  # (batch, U_b)
 
-        t0 = time.perf_counter()
-        pos_weighted = pos_contribs * b_freqs * valid                  # (batch, U_b)
-        neg_weighted = neg_contribs * b_freqs * valid                  # (batch, U_b)
-        self.t_weighted += time.perf_counter() - t0
-
-        t0 = time.perf_counter()
         c_bits = bits_matrix(consumer_batch, D).astype(np.float64)    # (D, batch)
         b_bits = bits_matrix(unique_b, D).astype(np.float64)          # (D, U_b)
-        self.t_bit_matrix += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
         BPW = b_bits @ pos_weighted.T                                  # (D, batch)
         BNW = b_bits @ neg_weighted.T                                  # (D, batch)
         total_pos = pos_weighted.sum(axis=1)                           # (batch,)
-        result = (BNW + c_bits * (total_pos - BPW - BNW)) * w         # (D, batch)
-        self.t_multiply += time.perf_counter() - t0
-
-        return result
+        return (BNW + c_bits * (total_pos - BPW - BNW)) * w           # (D, batch)
 
 
 class MNBackgroundShapleyDirectPathToSVectors(MNBackgroundFasterPathToSVectors):
     """
     Variant of MNBackgroundPathToSVectors for ShapleyValues that computes pos_weighted and
     neg_weighted directly via the closed-form Shapley formula, avoiding the precomputed
-    (D+1)×(D+1) contribution tables entirely.
+    (D+1)x(D+1) contribution tables entirely.
 
     For a cube with p positive and n negative literals:
         pos_weighted[c,b] = 1 / (p · C(p+n, p))
@@ -277,40 +218,23 @@ class MNBackgroundShapleyDirectPathToSVectors(MNBackgroundFasterPathToSVectors):
         self, consumer_batch: np.ndarray, unique_b: np.ndarray,
         b_freqs: np.ndarray, D: int, w: float
     ) -> np.ndarray:
-        t0 = time.perf_counter()
         diff     = consumer_batch[:, None] ^ unique_b[None, :]       # (batch, U_b)
         positive = consumer_batch[:, None] & diff                     # s_plus bits per pair
         negative = unique_b[None, :]       & diff                     # s_minus bits per pair
         valid = (consumer_batch[:, None] | unique_b[None, :]) == ((1 << D) - 1)  # (batch, U_b)
-        self.t_pos_neg += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
         p = np.bitwise_count(positive)                                # (batch, U_b)
         n = np.bitwise_count(negative)                                # (batch, U_b)
-        self.t_bitcount += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
         binom_pn_p = scipy.special.comb(p + n, p, exact=False)                   # C(p+n,p) == C(p+n,n)
         # When p=0 pos_bits=0, so pos_contribs is multiplied away; clamp to avoid div-by-zero.
-        pos_contribs = 1.0 / (np.maximum(p, 1) * binom_pn_p)
-        neg_contribs = -1.0 / (np.maximum(n, 1) * binom_pn_p)
-        self.t_np_indexing += time.perf_counter() - t0
+        pos_weighted = (1.0 / (np.maximum(p, 1) * binom_pn_p)) * b_freqs * valid  # (batch, U_b)
+        neg_weighted = (-1.0 / (np.maximum(n, 1) * binom_pn_p)) * b_freqs * valid  # (batch, U_b)
 
-        t0 = time.perf_counter()
-        pos_weighted = pos_contribs * b_freqs * valid                 # (batch, U_b)
-        neg_weighted = neg_contribs * b_freqs * valid                 # (batch, U_b)
-        self.t_weighted += time.perf_counter() - t0
-
-        t0 = time.perf_counter()
         c_bits = bits_matrix(consumer_batch, D).astype(np.float64)    # (D, batch)
         b_bits = bits_matrix(unique_b, D).astype(np.float64)          # (D, U_b)
-        self.t_bit_matrix += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
         BPW = b_bits @ pos_weighted.T                                  # (D, batch)
         BNW = b_bits @ neg_weighted.T                                  # (D, batch)
         total_pos = pos_weighted.sum(axis=1)                           # (batch,)
-        result = (BNW + c_bits * (total_pos - BPW - BNW)) * w         # (D, batch)
-        self.t_multiply += time.perf_counter() - t0
-
-        return result
+        return (BNW + c_bits * (total_pos - BPW - BNW)) * w           # (D, batch)
