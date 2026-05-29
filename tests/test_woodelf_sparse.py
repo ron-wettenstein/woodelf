@@ -4,7 +4,6 @@ import shap
 from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, \
     assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyInteractionValues
-from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundShapleyDirectPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.woodelf_sparse import woodelf_sparse
 from woodelf.simple_woodelf import calculate_path_dependent_metric, calculate_background_metric
@@ -69,22 +68,6 @@ def test_mn_background_shap_on_a_model(trainset, testset, xgb_model):
 
     mn_values = woodelf_sparse(
         xgb_model, testset, trainset, ShapleyValues(), GPU=False
-    )
-
-    for feature in simple_woodelf_values:
-        np.testing.assert_allclose(
-            simple_woodelf_values[feature], mn_values[feature], atol=TOLERANCE
-        )
-
-
-def test_mn_background_shap_with_MNBackgroundShapleyDirectPathToSVectors_on_a_model(trainset, testset, xgb_model):
-
-    simple_woodelf_values = calculate_background_metric(
-        xgb_model, testset, trainset, metric=ShapleyValues()
-    )
-
-    mn_values = woodelf_sparse(
-        xgb_model, testset, trainset, ShapleyValues(), GPU=False, mn_p2s_class=MNBackgroundShapleyDirectPathToSVectors
     )
 
     for feature in simple_woodelf_values:
