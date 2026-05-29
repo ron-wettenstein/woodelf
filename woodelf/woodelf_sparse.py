@@ -121,12 +121,12 @@ def woodelf_sparse(
     GPU: bool = False,
     use_neighbor_leaf_trick: bool = True,
     model_was_loaded: bool = False,
-    use_faster_mn_p2s: bool = True
+    mn_p2s_class=None,
 ):
     """
     Sparse WOODELF: uses pattern-factorized sparse algorithms for all leaves.
 
-    Background mode (background_data provided): MNBackgroundFasterPathToSVectors.
+    Background mode (background_data provided): MNBackgroundFasterPathToSVectors (default) or mn_p2s_class.
     Path-dependent mode (background_data is None): LTSRecursivePathToSVectors.
     """
     if not model_was_loaded:
@@ -135,7 +135,8 @@ def woodelf_sparse(
     effective_depth = min(model.max_depth, len(consumer_data.columns))
     is_background = background_data is not None
 
-    mn_p2s_class = MNBackgroundFasterPathToSVectors if use_faster_mn_p2s else MNBackgroundPathToSVectors
+    if mn_p2s_class is None:
+        mn_p2s_class = MNBackgroundFasterPathToSVectors
     mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth) if is_background else None
     lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU) if not is_background else None
 
@@ -172,7 +173,7 @@ def hybrid_woodelf(
         GPU: bool = False,
         use_neighbor_leaf_trick: bool = True,
         model_was_loaded: bool = False,
-        use_faster_mn_p2s: bool = True,
+        mn_p2s_class=None,
 ):
     """
     Hybrid WOODELF: selects the best computation strategy (sparse woodelf or woodelf_for_high_depths) considering the tree depth and metric.
@@ -186,7 +187,7 @@ def hybrid_woodelf(
     if use_sparse_approach(effective_depth, metric, is_background):
         return woodelf_sparse(
             model, consumer_data, background_data, metric, GPU=GPU,
-            use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True, use_faster_mn_p2s=use_faster_mn_p2s
+            use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True, mn_p2s_class=mn_p2s_class
         )
     else:
         data_len = len(consumer_data) + (0 if not is_background else len(background_data))
