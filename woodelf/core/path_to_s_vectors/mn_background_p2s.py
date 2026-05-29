@@ -2,7 +2,6 @@ import time
 from typing import List, Dict, Tuple
 
 import numpy as np
-import pandas as pd
 
 from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
@@ -131,9 +130,8 @@ class MNBackgroundPathToSVectors(PathToSVectors):
         D = len(features_in_path)
 
         t0 = time.perf_counter()
-        # unique_b, b_counts = np.unique(background_patterns, return_counts=True); b_freqs = b_counts / b_counts.sum()
-        vc = pd.Series(background_patterns).value_counts(normalize=True, sort=False)
-        unique_b, b_freqs = vc.index.to_numpy(), vc.to_numpy()       # (U_b,)
+        unique_b, b_counts = np.unique(background_patterns, return_counts=True)
+        b_freqs = b_counts / b_counts.sum()
         self.t_unique += time.perf_counter() - t0
 
         U_c = len(consumer_patterns)
