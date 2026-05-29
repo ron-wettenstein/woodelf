@@ -802,7 +802,7 @@ total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="
         decision pattern encoding whether it follows or diverges from the path at each of the $D$
         nodes.
         Because there are only $D$ bits, at most $2^D$ distinct patterns can exist, so
-        $U_c \leq \min(m,\, 2^D)$ and $U_b \leq \min(n,\, 2^D)$.
+        $U_c \leq \min(n,\, 2^D)$ and $U_b \leq \min(m,\, 2^D)$.
         For deep paths $2^D$ is the binding constraint, and in practice patterns concentrate
         around a small number of common follow/diverge combinations.
       </p>
@@ -821,9 +821,8 @@ total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="
     </div>
 
     <p>
-      This is why <code>hybrid_woodelf</code> switches to MN for leaves with $D > 18$
-      (where $2^D$ becomes prohibitively large) or when $2^DD$ exceeds the product of
-      the capped dataset sizes.
+      This is why <code>hybrid_woodelf</code> switches to MN when $D > 12$
+      (where $2^D$ becomes prohibitively large for the HighDepth backend).
     </p>
 
     <hr/>
