@@ -28,7 +28,7 @@ class MNBackgroundPathToSVectors(PathToSVectors):
         self.t_preprocess = time.perf_counter() - t0
         self.t_s_matrix = 0.0
         self.t_unique = self.t_pos_neg = self.t_bitcount = 0.0
-        self.t_weighted = self.t_bit_matrix = self.t_multiply = 0.0
+        self.t_np_indexing = self.t_weighted = self.t_bit_matrix = self.t_multiply = 0.0
 
     @staticmethod
     def _build_contribution_matrices(metric: CubeMetric, D: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -88,8 +88,13 @@ class MNBackgroundPathToSVectors(PathToSVectors):
         self.t_bitcount += time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        pos_weighted = self.pos_contributions[p, n] * b_freqs * valid  # (batch, U_b)
-        neg_weighted = self.neg_contributions[p, n] * b_freqs * valid  # (batch, U_b)
+        pos_contribs = self.pos_contributions[p, n]                     # (batch, U_b)
+        neg_contribs = self.neg_contributions[p, n]                     # (batch, U_b)
+        self.t_np_indexing += time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        pos_weighted = pos_contribs * b_freqs * valid                   # (batch, U_b)
+        neg_weighted = neg_contribs * b_freqs * valid                   # (batch, U_b)
         self.t_weighted += time.perf_counter() - t0
 
         t0 = time.perf_counter()
@@ -170,8 +175,8 @@ class MNBackgroundPathToSVectors(PathToSVectors):
             f"[{self.__class__.__name__}] "
             f"total={t_total:.3f}s | preprocess={self.t_preprocess:.3f}s | s_matrix={self.t_s_matrix:.3f}s | "
             f"unique={self.t_unique:.3f}s | pos_neg={self.t_pos_neg:.3f}s | "
-            f"bitcount={self.t_bitcount:.3f}s | weighted={self.t_weighted:.3f}s | "
-            f"bit_matrix={self.t_bit_matrix:.3f}s | multiply={self.t_multiply:.3f}s"
+            f"bitcount={self.t_bitcount:.3f}s | np_indexing={self.t_np_indexing:.3f}s | "
+            f"weighted={self.t_weighted:.3f}s | bit_matrix={self.t_bit_matrix:.3f}s | multiply={self.t_multiply:.3f}s"
         )
 
 
@@ -224,8 +229,13 @@ class MNBackgroundFasterPathToSVectors(MNBackgroundPathToSVectors):
         self.t_bitcount += time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        pos_weighted = self.pos_contributions[p, n] * b_freqs * valid  # (batch, U_b)
-        neg_weighted = self.neg_contributions[p, n] * b_freqs * valid  # (batch, U_b)
+        pos_contribs = self.pos_contributions[p, n]                    # (batch, U_b)
+        neg_contribs = self.neg_contributions[p, n]                    # (batch, U_b)
+        self.t_np_indexing += time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        pos_weighted = pos_contribs * b_freqs * valid                  # (batch, U_b)
+        neg_weighted = neg_contribs * b_freqs * valid                  # (batch, U_b)
         self.t_weighted += time.perf_counter() - t0
 
         t0 = time.perf_counter()
