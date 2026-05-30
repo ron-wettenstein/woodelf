@@ -7,10 +7,10 @@ import xgboost as xgb
 
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.explainer import WoodelfExplainer
-from shared_fixtures_and_utils import testset, trainset, xgb_model, xgb_model_depth_16
+from shared_fixtures_and_utils import testset, trainset, xgb_model, xgb_model_depth_16, xgb_model_depth_22
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 
-FIXTURES = [testset, trainset, xgb_model, xgb_model_depth_16]
+FIXTURES = [testset, trainset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
 
 TOLERANCE = 0.00001
 
@@ -69,18 +69,36 @@ def test_path_dependent_shap_iv_using_shap_package_is_same_as_using_woodelf_expl
     np.testing.assert_allclose(woodelf_values, shap_package_values, atol=TOLERANCE, strict=True)
 
 
-def test_woodelf_explainer_with_xgboost_model_of_depth_16(trainset, testset, xgb_model_depth_16):
-    start_time = time.time()
-    explainer = shap.TreeExplainer(xgb_model_depth_16)
-    shap_package_values = explainer.shap_values(testset)
-    print("shap took: ", time.time() - start_time)
 
-    start_time = time.time()
-    woodelf_explainer = WoodelfExplainer(xgb_model_depth_16, feature_perturbation='tree_path_dependent')
-    woodelf_values = woodelf_explainer.shap_values(testset)
-    print("woodelf took: ", time.time() - start_time)
+def test_woodelf_explainer_path_dependent_high_depths(trainset, testset, xgb_model_depth_16, xgb_model_depth_22):
+    for xgb_model_high_depth in [xgb_model_depth_16, xgb_model_depth_22]:
+        start_time = time.time()
+        explainer = shap.TreeExplainer(xgb_model_high_depth)
+        shap_package_values = explainer.shap_values(testset)
+        print("shap took: ", time.time() - start_time)
 
-    np.testing.assert_allclose(woodelf_values, shap_package_values, atol=TOLERANCE, strict=True)
+        start_time = time.time()
+        woodelf_explainer = WoodelfExplainer(xgb_model_high_depth, feature_perturbation='tree_path_dependent')
+        woodelf_values = woodelf_explainer.shap_values(testset)
+        print("woodelf took: ", time.time() - start_time)
+
+        np.testing.assert_allclose(woodelf_values, shap_package_values, atol=TOLERANCE, strict=True)
+
+
+def test_woodelf_explainer_background_high_depths(trainset, testset, xgb_model_depth_16, xgb_model_depth_22):
+    background = trainset.head(10)
+    for xgb_model_high_depth in [xgb_model_depth_16, xgb_model_depth_22]:
+        start_time = time.time()
+        explainer = shap.TreeExplainer(xgb_model_high_depth, background)
+        shap_package_values = explainer.shap_values(testset)
+        print("shap took: ", time.time() - start_time)
+
+        start_time = time.time()
+        woodelf_explainer = WoodelfExplainer(xgb_model_high_depth, background)
+        woodelf_values = woodelf_explainer.shap_values(testset)
+        print("woodelf took: ", time.time() - start_time)
+
+        np.testing.assert_allclose(woodelf_values, shap_package_values, atol=TOLERANCE, strict=True)
 
 
 def test_tree_limit(trainset, testset, xgb_model):

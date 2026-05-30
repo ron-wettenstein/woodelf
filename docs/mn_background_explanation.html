@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MN Background SHAP — WOODELF</title>
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$','$'], ['\\(','\\)']], displayMath: [['$$','$$'], ['\\[','\\]']] },
+      options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <style>
+    :root {
+      --bg:       #f8f9fa;
+      --surface:  #ffffff;
+      --border:   #dee2e6;
+      --accent:   #3b82f6;
+      --accent2:  #7c3aed;
+      --green:    #059669;
+      --orange:   #d97706;
+      --red:      #dc2626;
+      --text:     #1e293b;
+      --muted:    #64748b;
+      --code-bg:  #1e293b;
+      --code-fg:  #e2e8f0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 16px;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #3b82f6 100%);
+      color: white;
+      padding: 3rem 4rem;
+    }
+
+    header h1 { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.02em; }
+    header p  { font-size: 1.1rem; opacity: 0.85; margin-top: 0.5rem; }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 2rem 2rem 4rem; }
+
+    .toc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      padding: 1.4rem 1.8rem;
+      margin: 2rem 0;
+    }
+    .toc h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.7rem; }
+    .toc ol  { padding-left: 1.4rem; }
+    .toc li  { margin: 0.25rem 0; }
+    .toc a   { color: var(--accent); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+
+    section { margin-top: 3rem; }
+
+    h2 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text);
+      padding-bottom: 0.4rem;
+      border-bottom: 2px solid var(--accent);
+      margin-bottom: 1.2rem;
+    }
+
+    h3 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--accent2);
+      margin: 1.6rem 0 0.6rem;
+    }
+
+    p { margin: 0.75rem 0; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.4rem 1.8rem;
+      margin: 1.2rem 0;
+    }
+
+    .card.highlight { border-left: 4px solid var(--accent); }
+    .card.green     { border-left: 4px solid var(--green); }
+    .card.purple    { border-left: 4px solid var(--accent2); }
+    .card.orange    { border-left: 4px solid var(--orange); }
+
+    .card-title {
+      font-weight: 700;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.6rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.95rem;
+    }
+    th {
+      background: #f1f5f9;
+      padding: 0.6rem 1rem;
+      text-align: left;
+      font-weight: 600;
+      border: 1px solid var(--border);
+    }
+    td {
+      padding: 0.55rem 1rem;
+      border: 1px solid var(--border);
+    }
+    tr:nth-child(even) td { background: #f8fafc; }
+
+    :not(pre) > code {
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+      font-size: 0.88em;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 0.1em 0.35em;
+    }
+
+    pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: inherit;
+    }
+
+    pre {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      border-radius: 8px;
+      padding: 1.2rem 1.4rem;
+      overflow-x: auto;
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+      font-size: 0.87rem;
+      line-height: 1.6;
+      margin: 1rem 0;
+    }
+
+    .kw  { color: #93c5fd; }
+    .cm  { color: #64748b; font-style: italic; }
+    .st  { color: #6ee7b7; }
+    .nm  { color: #fcd34d; }
+    .fn  { color: #c4b5fd; }
+
+    .step-grid {
+      display: grid;
+      grid-template-columns: 2.4rem 1fr;
+      gap: 0.5rem 1rem;
+      align-items: start;
+      margin: 1rem 0;
+    }
+
+    .step-num {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-weight: 700;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 0.2rem;
+    }
+
+    .step-num.purple { background: var(--accent2); }
+    .step-num.green  { background: var(--green); }
+
+    .step-body { padding-top: 0.1rem; }
+
+    .bit-table {
+      display: inline-grid;
+      grid-template-columns: repeat(4, 2.5rem);
+      gap: 2px;
+      margin: 0.5rem 0;
+    }
+    .bit-cell {
+      width: 2.5rem;
+      height: 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: monospace;
+      font-weight: 700;
+      font-size: 1rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    .bit-cell.header { background: #f1f5f9; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+    .bit-cell.pos    { background: #dcfce7; color: #166534; border-color: #86efac; }
+    .bit-cell.neg    { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .bit-cell.same1  { background: #f1f5f9; color: var(--muted); }
+    .bit-cell.same0  { background: #fff7ed; color: #92400e; border-color: #fed7aa; }
+    .bit-cell.num    { background: var(--surface); }
+
+    .legend {
+      display: flex;
+      gap: 1.2rem;
+      flex-wrap: wrap;
+      margin: 0.5rem 0;
+      font-size: 0.88rem;
+    }
+    .legend-item { display: flex; align-items: center; gap: 0.4rem; }
+    .legend-dot  { width: 1rem; height: 1rem; border-radius: 3px; }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 1.2rem 0;
+    }
+
+    .comparison .card { margin: 0; }
+
+    .tag {
+      display: inline-block;
+      padding: 0.15em 0.55em;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .tag.blue   { background: #dbeafe; color: #1d4ed8; }
+    .tag.green  { background: #dcfce7; color: #166534; }
+    .tag.purple { background: #ede9fe; color: #5b21b6; }
+    .tag.orange { background: #fff7ed; color: #c2410c; }
+
+    .math-block {
+      background: #f8f9ff;
+      border: 1px solid #c7d2fe;
+      border-radius: 6px;
+      padding: 1rem 1.4rem;
+      margin: 0.8rem 0;
+      overflow-x: auto;
+    }
+
+    .derive-arrow {
+      text-align: center;
+      color: var(--muted);
+      font-size: 1.4rem;
+      margin: 0.2rem 0;
+    }
+
+    .complexity-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.8rem 1rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+    }
+    .complexity-row.v1 { background: #fff1f2; border: 1px solid #fecdd3; }
+    .complexity-row.v2 { background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .complexity-label  { font-weight: 600; min-width: 220px; }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>MN Background SHAP — WOODELF</h1>
+  <p>A vectorized, symmetry-exploiting algorithm for background Shapley values in decision tree ensembles</p>
+</header>
+
+<div class="container">
+
+  <div class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#setup">Setup: Background SHAP at a Leaf</a></li>
+      <li><a href="#patterns">Decision Patterns and the WDNF</a></li>
+      <li><a href="#symmetry">Symmetry: Contributions Depend Only on Counts</a></li>
+      <li><a href="#tables">Precomputed Contribution Tables</a></li>
+      <li><a href="#base">Base Algorithm — <code>MNBackgroundPathToSVectors</code></a></li>
+      <li><a href="#batching">Batching to Avoid Memory Explosion</a></li>
+      <li><a href="#faster">Faster Algorithm — <code>MNBackgroundFasterPathToSVectors</code></a></li>
+      <li><a href="#derivation">Full Derivation of the Factorization</a></li>
+      <li><a href="#neighbor">Neighbor Leaf Trick</a></li>
+      <li><a href="#complexity">Complexity Summary</a></li>
+    </ol>
+  </div>
+
+
+  <!-- ============================================================ -->
+  <section id="setup">
+    <h2>1 · Setup: Background SHAP at a Leaf</h2>
+
+    <p>
+      In background (interventional) SHAP, the model's prediction is explained by comparing
+      a <em>consumer</em> data point $\mathbf{x}$ against a <em>background</em> dataset
+      $\mathcal{B} = \{b_1, \ldots, b_m\}$.
+      The background Shapley value of feature $k$ for consumer $\mathbf{x}$ can be viewed as
+      the average of baseline SHAP over all baselines $b \in \mathcal{B}$, where each baseline
+      SHAP explains the difference $f(\mathbf{x}) - f(b)$ using the Shapley-weighted coalition average.
+    </p>
+
+    <p>
+      WOODELF decomposes this computation tree-by-tree, leaf-by-leaf.
+      At each leaf $\ell$ with leaf weight $w_\ell$, we need the <strong>S-vector</strong>:
+      a per-feature array of shape $(U_c,)$ giving each unique consumer pattern's
+      contribution to the final Shapley values from this leaf.
+    </p>
+
+    <div class="card highlight">
+      <div class="card-title">Key quantities at one leaf</div>
+      <table>
+        <tr><th>Symbol</th><th>Meaning</th></tr>
+        <tr><td>$D$</td><td>Number of unique features along the root-to-leaf path</td></tr>
+        <tr><td>$w_\ell$</td><td>Leaf prediction value (weight)</td></tr>
+        <tr><td>$U_c$</td><td>Number of <em>unique</em> consumer decision patterns at this leaf</td></tr>
+        <tr><td>$U_b$</td><td>Number of <em>unique</em> background decision patterns at this leaf</td></tr>
+        <tr><td>$\hat{b}_j$</td><td>Frequency of background pattern $j$ (fraction of background rows)</td></tr>
+      </table>
+    </div>
+
+    <p>
+      The MN approach processes each of the $U_c$ unique consumer patterns against
+      each of the $U_b$ unique background patterns — hence the name "MN"
+      (after the two dataset sizes). Crucially, $U_c \ll n$ and $U_b \ll m$
+      because many rows land in the same leaf and receive identical binary patterns.
+    </p>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="patterns">
+    <h2>2 · Decision Patterns and the WDNF</h2>
+
+    <p>
+      Each data point is routed through the tree by comparing feature values to thresholds
+      at each internal node. Encoding the result as bits gives a compact integer representation.
+    </p>
+
+    <div class="card">
+      <div class="card-title">Decision pattern encoding</div>
+      <p>
+        For the $D$ features on the path (in order), bit $d$ of the integer pattern is
+        <strong>1</strong> if the data point <em>follows the path</em> at that node (i.e. goes in the
+        same direction the path does — left or right),
+        and <strong>0</strong> if it <em>diverges</em> from the path.
+      </p>
+      <p>For example, with $D = 4$ features <code>[f0, f1, f2, f3]</code>:</p>
+      <div style="display:flex; gap:2rem; align-items:flex-start; flex-wrap:wrap; margin-top:0.8rem;">
+        <div>
+          <div style="font-size:0.85rem; color:var(--muted); margin-bottom:0.4rem;">Consumer: follows path at f0, f2, f3 → pattern <strong>1101</strong> = 13</div>
+          <div class="bit-table">
+            <div class="bit-cell header">f3</div><div class="bit-cell header">f2</div>
+            <div class="bit-cell header">f1</div><div class="bit-cell header">f0</div>
+            <div class="bit-cell num">1</div><div class="bit-cell num">1</div>
+            <div class="bit-cell num">0</div><div class="bit-cell num">1</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:0.85rem; color:var(--muted); margin-bottom:0.4rem;">Background: follows path at f1, f2 → pattern <strong>0110</strong> = 6</div>
+          <div class="bit-table">
+            <div class="bit-cell header">f3</div><div class="bit-cell header">f2</div>
+            <div class="bit-cell header">f1</div><div class="bit-cell header">f0</div>
+            <div class="bit-cell num">0</div><div class="bit-cell num">1</div>
+            <div class="bit-cell num">1</div><div class="bit-cell num">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3>WDNF cube from a (consumer, background) pair</h3>
+
+    <p>
+      WOODELF represents the leaf's characteristic function as a Weighted Disjunctive Normal Form (WDNF).
+      For a given consumer pattern $c$ and background pattern $b$, the relevant cube has:
+    </p>
+
+    <table>
+      <tr>
+        <th>Bit configuration</th>
+        <th>Meaning for feature $d$</th>
+        <th>Role in cube</th>
+      </tr>
+      <tr>
+        <td>$c_d = 1,\ b_d = 0$</td>
+        <td>Consumer follows the path, background diverges</td>
+        <td><span class="tag green">Positive literal</span> — feature $d \in s^+$</td>
+      </tr>
+      <tr>
+        <td>$c_d = 0,\ b_d = 1$</td>
+        <td>Consumer diverges from the path, background follows</td>
+        <td><span class="tag orange">Negative literal</span> — feature $d \in s^-$</td>
+      </tr>
+      <tr>
+        <td>$c_d = 1,\ b_d = 1$</td>
+        <td>Both follow the path</td>
+        <td>Null player — feature $d \notin s$, no contribution</td>
+      </tr>
+      <tr>
+        <td>$c_d = 0,\ b_d = 0$</td>
+        <td>Both diverge from the path</td>
+        <td><span class="tag orange" style="background:#fff7ed;">Invalid pair</span> — we will never traverse in this direction, no cube will be created (filtered out)</td>
+      </tr>
+    </table>
+
+    <p>
+      The <strong>validity condition</strong> filters out all pairs $(c, b)$ where for
+      some feature $d$ both $c_d = 0$ and $b_d = 0$ — i.e. both consumer and background diverge
+      from the path at $d$. When this happens, no interpolated coalition (formed by choosing
+      feature values from either $c$ or $b$) can ever traverse the path in the $d$-direction,
+      so the leaf is unreachable from that direction and no WDNF cube is created for this pair.
+    </p>
+    <p>
+      Bit-level, $c_d = 0$ and $b_d = 0$ simultaneously iff bit $d$ of $(c \mathbin{|} b)$ is $0$.
+      So the condition "no feature has both sides diverging" is equivalent to all bits of
+      $(c \mathbin{|} b)$ being $1$:
+    </p>
+    <div class="math-block">
+      $$\text{valid}(c, b) = \bigl[(c \mathbin{|} b) = \underbrace{11\cdots1}_{D}\bigr]$$
+    </div>
+    <p>
+      In code: <code>(consumer | background) == (1 &lt;&lt; D) - 1</code>.
+      Pairs that fail are masked to zero before any contribution is computed.
+    </p>
+
+    <div class="card" style="margin-top:1rem;">
+      <div class="card-title">Worked example: consumer = 13 (1101), background = 6 (0110), D = 4</div>
+      <div style="display:flex; gap:2rem; flex-wrap:wrap; margin-top:0.6rem;">
+        <div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-bottom:0.3rem;"><code>diff = c XOR b = 1101 XOR 0110 = 1011 = 11</code></div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-bottom:0.3rem;"><code>positive = c AND diff = 1101 AND 1011 = 1001 = 9</code> &nbsp;→ f0, f3 ∈ s⁺</div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-bottom:0.3rem;"><code>negative = b AND diff = 0110 AND 1011 = 0010 = 2</code> &nbsp;→ f1 ∈ s⁻</div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-bottom:0.3rem;"><code>c OR b = 1111 = 15 = (1&lt;&lt;4)-1</code> &nbsp;→ valid ✓ (p=2, n=1)</div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-bottom:0.3rem;">f2: both follow the path (c=1, b=1) → null player, f2 ∉ s</div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-bottom:0.3rem; margin-top:0.4rem;">The constructed cube for this case: $f_3 \wedge f_0 \wedge \neg f_1$</div>
+        </div>
+        <div class="bit-table">
+          <div class="bit-cell header">f3</div><div class="bit-cell header">f2</div>
+          <div class="bit-cell header">f1</div><div class="bit-cell header">f0</div>
+          <div class="bit-cell pos">s⁺</div><div class="bit-cell same1">∅</div>
+          <div class="bit-cell neg">s⁻</div><div class="bit-cell pos">s⁺</div>
+        </div>
+      </div>
+      <div class="legend" style="margin-top:0.8rem;">
+        <div class="legend-item"><div class="legend-dot" style="background:#dcfce7; border:1px solid #86efac;"></div> Positive literal — consumer follows, background diverges (c=1, b=0)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fee2e2; border:1px solid #fca5a5;"></div> Negative literal — background follows, consumer diverges (c=0, b=1)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f1f5f9; border:1px solid var(--border);"></div> Null player — both follow the path (c=1, b=1), feature ∉ s</div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="symmetry">
+    <h2>3 · Symmetry: Contributions Depend Only on Counts</h2>
+
+
+    <div class="card green">
+      <div class="card-title">Symmetry insight</div>
+      <p>
+        Let $p = |s^+|$ and $n = |s^-|$ for a given (consumer, background) pair.
+        By symmetry, every positive literal contributes the same amount to its own Shapley value,
+        and every negative literal contributes the same amount. Call these:
+      </p>
+      <div class="math-block" style="margin-top:0.8rem;">
+        $$\alpha(p, n) = \text{contribution of each feature in } s^+$$
+        $$\beta(p, n) = \text{contribution of each feature in } s^-$$
+      </div>
+      <p>
+        For Shapley values specifically (from the WDNF formula in the paper):
+        $$\alpha(p,n) = \frac{1}{p \cdot \binom{p+n}{p}}, \qquad \beta(p,n) = \frac{-1}{n \cdot \binom{p+n}{n}}$$
+      </p>
+    </div>
+
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="tables">
+    <h2>4 · Precomputed Contribution Tables</h2>
+
+    <p>
+      At initialization, the algorithm precomputes two $(D{+}1) \times (D{+}1)$ lookup tables
+      covering all valid $(p, n)$ combinations:
+    </p>
+
+    <pre><code><span class="kw">for</span> p <span class="kw">in</span> range(D + <span class="nm">1</span>):
+    <span class="kw">for</span> n <span class="kw">in</span> range(D + <span class="nm">1</span> - p):
+        s_plus  = set(range(p))           <span class="cm"># use feature indices 0..p-1 as proxies</span>
+        s_minus = set(range(p, p + n))    <span class="cm"># use indices p..p+n-1 as proxies</span>
+        contributions = metric.calc_metric(s_plus, s_minus)
+        pos_matrix[p][n] = contributions.get(<span class="nm">0</span>, <span class="nm">0.0</span>)   <span class="cm"># feature 0 ∈ s_plus</span>
+        neg_matrix[p][n] = contributions.get(p, <span class="nm">0.0</span>)   <span class="cm"># feature p ∈ s_minus</span></code></pre>
+
+    <div class="card orange">
+      <div class="card-title">Why integer proxies work</div>
+      <p>
+        The metric is symmetric, so the actual feature names don't matter for the contribution
+        value — only the counts $p$ and $n$. Using integer proxies $\{0,\ldots,p{-}1\}$ for
+        $s^+$ and $\{p,\ldots,p{+}n{-}1\}$ for $s^-$ gives the same contribution values as
+        using the real feature names, at a fraction of the setup cost.
+      </p>
+    </div>
+
+    <p>
+      The two tables are computed once per <code>MNBackgroundPathToSVectors</code> instance
+      and reused across all leaves and all trees. The cost is $O(D^2)$ metric evaluations at
+      construction time.
+    </p>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="base">
+    <h2>5 · Base Algorithm — <code>MNBackgroundPathToSVectors</code></h2>
+
+    <p>
+      The base class implements the core vectorized computation in <code>_compute_s_batch</code>.
+      It processes a batch of unique consumer patterns against all unique background patterns simultaneously.
+    </p>
+
+    <h3>Step-by-step walkthrough</h3>
+
+    <div class="step-grid">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <strong>Uniquify background patterns.</strong>
+        <code>pd.Series.value_counts(normalize=True)</code> compresses $m$ background rows
+        into $U_b$ unique patterns with their frequencies $\hat{b}_j$.
+        This is the key complexity reduction: subsequent work scales with $U_b$, not $m$.
+      </div>
+
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <strong>Compute diff, positive, negative (shape: U_c × U_b).</strong>
+        <div class="math-block">
+          $$\text{diff}_{c,b} = c \oplus b \qquad \text{(bits that differ)}$$
+          $$\text{positive}_{c,b} = c \mathbin{\&} \text{diff}_{c,b} \qquad \text{(bits where } c_d=1, b_d=0\text{)}$$
+          $$\text{negative}_{c,b} = b \mathbin{\&} \text{diff}_{c,b} \qquad \text{(bits where } c_d=0, b_d=1\text{)}$$
+        </div>
+      </div>
+
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <strong>Count bits and look up per-pair contributions.</strong>
+        For each (consumer, background) pair we count how many features are positive literals
+        and how many are negative, then look up the per-literal contribution from the precomputed tables:
+        $$p_{c,b} = \text{popcount}(\text{positive}_{c,b}), \quad n_{c,b} = \text{popcount}(\text{negative}_{c,b})$$
+        The contribution of every positive literal in the cube is $\alpha(p_{c,b}, n_{c,b})$,
+        and of every negative literal is $\beta(p_{c,b}, n_{c,b})$.
+        Multiplying by the background frequency $\hat{b}_b$ and the validity mask gives the final
+        weighted contribution for this pair:
+        $$\text{pos_weighted}_{c,b} = \alpha(p_{c,b},\, n_{c,b}) \cdot \hat{b}_b \cdot \text{valid}_{c,b}$$
+        $$\text{neg_weighted}_{c,b} = \beta(p_{c,b},\, n_{c,b}) \cdot \hat{b}_b \cdot \text{valid}_{c,b}$$
+        The result is two $(U_c \times U_b)$ arrays holding the scalar contribution of each literal type for every pair.
+      </div>
+
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <strong>Route contributions to the right feature positions and sum over backgrounds.</strong>
+        So far we have a scalar weight for every (consumer, background) pair, but we need to assign it
+        to the specific features that are positive or negative literals in that pair's cube.
+        <code>bits_matrix</code> unpacks the <code>positive</code> and <code>negative</code> integers
+        into binary $(D \times U_c \times U_b)$ tensors, giving a 1 at position $[d, c, b]$
+        exactly when feature $d$ is a positive (or negative) literal for that pair.
+        Multiplying elementwise by <code>pos_weighted</code> or <code>neg_weighted</code> — both
+        broadcast from $(U_c \times U_b)$ to $(D \times U_c \times U_b)$ — and contracting along
+        the $U_b$ axis gives the final S-vector for each consumer pattern:
+        $$\mathbf{s} = \bigl(\mathbf{pos_bits} \odot \mathbf{pos_weighted} + \mathbf{neg_bits} \odot \mathbf{neg_weighted}\bigr)_{(D \times U_c \times U_b) \to (D \times U_c)} \cdot w_\ell$$
+        The output $\mathbf{s}$ has shape $(D \times U_c)$: one value per feature per unique consumer pattern,
+        ready to be scattered back to the full consumer dataset via the factorize inverse index.
+      </div>
+    </div>
+
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="batching">
+    <h2>5.5 · Batching to Avoid Memory Explosion</h2>
+
+    <p>
+      The 3D tensors <code>pos_bits</code> and <code>neg_bits</code> in the base class have shape
+      $(D \times U_c \times U_b)$. For large $U_c$ or $U_b$ this can exhaust RAM.
+      For example, $D = 18$, $U_c = 1000$, $U_b = 1000$ already requires
+      $18 \times 1000 \times 1000 = 18\text{M}$ entries per tensor.
+    </p>
+
+    <div class="card orange">
+      <div class="card-title">Batching strategy</div>
+      <p>
+        The background patterns $U_b$ are fixed for the whole leaf, so the safe chunk size for
+        the consumer dimension is:
+        $$\text{chunk} = \left\lfloor \frac{\text{BATCH_SIZE}}{U_b} \right\rfloor$$
+        If $U_c \leq \text{chunk}$, the entire computation runs in one call (the common case).
+        Otherwise $U_c$ is split into chunks of size <code>chunk</code> and the results are
+        concatenated along the $U_c$ axis. Either way, the peak 3D allocation is bounded by
+        $D \times \text{BATCH_SIZE}$ entries, regardless of $U_c$.
+      </p>
+      <p style="margin-top:0.6rem;">
+        The faster class (<code>MNBackgroundFasterPathToSVectors</code>) never allocates the 3D
+        tensor at all, so it can afford a 10× larger <code>BATCH_SIZE</code> and still uses far
+        less peak memory than the base class at its smaller limit.
+      </p>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="faster">
+    <h2>6 · Faster Algorithm — <code>MNBackgroundFasterPathToSVectors</code></h2>
+
+    <p>
+      <code>MNBackgroundFasterPathToSVectors</code> overrides only <code>_compute_s_batch</code>.
+      Everything else — construction, uniquification, batching, neighbor trick — is inherited unchanged.
+      The key improvement is <strong>eliminating the 3D tensor</strong> by factorizing bit spreading
+      into two matrix multiplications.
+    </p>
+
+    <div class="card purple">
+      <div class="card-title">The factorization identity</div>
+      <p>Bit $d$ of the <code>positive</code> integer is set iff the consumer follows the path at $d$ AND the background diverges:</p>
+      <div class="math-block">
+        $$\text{pos_bits}[d, c, b] = c_d \cdot (1 - b_d)$$
+      </div>
+      <p>Bit $d$ of the <code>negative</code> integer is set iff the consumer diverges from the path at $d$ AND the background follows:</p>
+      <div class="math-block">
+        $$\text{neg_bits}[d, c, b] = (1 - c_d) \cdot b_d$$
+      </div>
+      <p>where $c_d$ and $b_d$ are the $d$-th bits of consumer and background patterns respectively.</p>
+    </div>
+
+    <p>Substituting into the sum over backgrounds and pulling $c_d$ outside (it doesn't depend on $b$):</p>
+
+    <div class="math-block">
+      $$s[d, c] = c_d \cdot \underbrace{\sum_b (1 - b_d) \cdot \text{pos_weighted}_{c,b}}_{\text{total_pos}[c] - \text{BPW}[d,c]}
+               + (1 - c_d) \cdot \underbrace{\sum_b b_d \cdot \text{neg_weighted}_{c,b}}_{\text{BNW}[d,c]}$$
+    </div>
+
+    <p>Define the two matrix products:</p>
+
+    <div class="math-block">
+      $$\mathbf{BPW} = \mathbf{b_bits} \cdot \mathbf{pos_weighted}^\top \qquad (D \times U_c)$$
+      $$\mathbf{BNW} = \mathbf{b_bits} \cdot \mathbf{neg_weighted}^\top \qquad (D \times U_c)$$
+    </div>
+
+    <p>where $\mathbf{b_bits}$ is the $(D \times U_b)$ binary matrix of background patterns.
+    Let $\text{total_pos}[c] = \sum_b \text{pos_weighted}_{c,b}$. Then the formula collapses to:</p>
+
+    <div class="math-block" style="border-color: #a5b4fc; background: #eef2ff;">
+      $$\boxed{s = \mathbf{BNW} + \mathbf{c_bits} \odot \bigl(\text{total_pos} - \mathbf{BPW} - \mathbf{BNW}\bigr)}$$
+    </div>
+
+    <p>
+      The two dominant operations are now BLAS-optimized matrix multiplications on
+      <em>2D</em> matrices — no 3D tensor is ever allocated.
+    </p>
+
+    <h3>Operations in code</h3>
+
+    <pre><code>c_bits = <span class="fn">bits_matrix</span>(consumer_batch, D)      <span class="cm"># (D, U_c)</span>
+b_bits = <span class="fn">bits_matrix</span>(unique_b, D)             <span class="cm"># (D, U_b)</span>
+
+BPW = b_bits @ pos_weighted.T               <span class="cm"># (D, U_b) @ (U_b, U_c) → (D, U_c)</span>
+BNW = b_bits @ neg_weighted.T               <span class="cm"># (D, U_b) @ (U_b, U_c) → (D, U_c)</span>
+total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="cm"># (U_c,)</span>
+
+<span class="kw">return</span> (BNW + c_bits * (total_pos - BPW - BNW)) * w</code></pre>
+
+    <div class="comparison">
+      <div class="card">
+        <div class="card-title" style="color:var(--red);">Base class</div>
+        <p><strong>Peak allocation:</strong> two $(D \times U_c \times U_b)$ boolean tensors</p>
+        <p><strong>Dominant op:</strong> elementwise multiply + reduce along axis 2</p>
+        <p><strong>BATCH_SIZE:</strong> 1,000,000</p>
+        <p><strong>Cache behavior:</strong> poor — 3D strides jump around in memory</p>
+      </div>
+      <div class="card">
+        <div class="card-title" style="color:var(--green);">Faster class</div>
+        <p><strong>Peak allocation:</strong> two $(D \times U_c)$ and one $(D \times U_b)$ matrix</p>
+        <p><strong>Dominant op:</strong> two BLAS <code>dgemm</code> matrix multiplications</p>
+        <p><strong>BATCH_SIZE:</strong> 10,000,000 (10× larger batch without OOM)</p>
+        <p><strong>Cache behavior:</strong> excellent — matmul is highly cache-optimized</p>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="derivation">
+    <h2>7 · Full Derivation of the Factorization</h2>
+
+    <p>Starting from the definition of $s[d, c]$ in the base class:</p>
+
+    <div class="math-block">
+      $$s[d, c] = \sum_b \bigl(\text{pos_bits}[d,c,b] \cdot \text{pos_weighted}_{c,b} + \text{neg_bits}[d,c,b] \cdot \text{neg_weighted}_{c,b}\bigr)$$
+    </div>
+
+    <div class="derive-arrow">↓ substitute factorization identities</div>
+
+    <div class="math-block">
+      $$= \sum_b \bigl[c_d(1-b_d)\cdot \text{pos_weighted}_{c,b} + (1-c_d)b_d\cdot \text{neg_weighted}_{c,b}\bigr]$$
+    </div>
+
+    <div class="derive-arrow">↓ pull $c_d$ and $(1-c_d)$ outside the sum (independent of $b$)</div>
+
+    <div class="math-block">
+      $$= c_d \sum_b(1-b_d)\cdot\text{pos_weighted}_{c,b} + (1-c_d)\sum_b b_d\cdot\text{neg_weighted}_{c,b}$$
+    </div>
+
+    <div class="derive-arrow">↓ split first sum into total minus $b_d$-weighted part</div>
+
+    <div class="math-block">
+      $$= c_d\Bigl[\underbrace{\sum_b\text{pos_weighted}_{c,b}}_{\text{total_pos}[c]} - \underbrace{\sum_b b_d\cdot\text{pos_weighted}_{c,b}}_{\text{BPW}[d,c]}\Bigr] + (1-c_d)\underbrace{\sum_b b_d\cdot\text{neg_weighted}_{c,b}}_{\text{BNW}[d,c]}$$
+    </div>
+
+    <div class="derive-arrow">↓ expand and collect $\text{BNW}$</div>
+
+    <div class="math-block" style="border-color: #a5b4fc; background: #eef2ff;">
+      $$s[d,c] = \text{BNW}[d,c] + c_d\bigl(\text{total_pos}[c] - \text{BPW}[d,c] - \text{BNW}[d,c]\bigr)$$
+    </div>
+
+    <p>
+      The two sums $\text{BPW}$ and $\text{BNW}$ are computed in one matrix multiplication each:
+      $\mathbf{b\_bits} \in \mathbb{R}^{D \times U_b}$ times $\mathbf{pos\_weighted}^\top \in \mathbb{R}^{U_b \times U_c}$.
+    </p>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="neighbor">
+    <h2>8 · Neighbor Leaf Trick</h2>
+
+    <p>
+      Some leaves can be merged with their sibling to save computation.
+      When a left leaf $\ell$ has a right sibling $\ell'$ that is also a leaf and whose
+      feature does not repeat elsewhere in the path, the two leaves can be processed together.
+    </p>
+
+    <div class="card green">
+      <div class="card-title">Why flipping the LSB works</div>
+      <p>
+        Because neighbor leaves share all inner nodes and agree on the split traversal in all of
+        them except the very last split, flipping the least-significant bit of a pattern
+        (which encodes that last split) converts any pattern that lands in $\ell$ into the
+        corresponding pattern that would have landed in $\ell'$.
+      </p>
+      <p style="margin-top:0.6rem;">
+        The neighbor's contribution uses weight $w' = w_{\ell'}$ and the flipped patterns:
+      </p>
+      <div class="math-block" style="margin-top:0.6rem;">
+        $$\text{result}(c) = \underbrace{\text{s-matrix}(c,\; \mathcal{B},\; w_\ell)}_{\text{own leaf}} + \underbrace{\text{s-matrix}(c \oplus 1,\; \mathcal{B} \oplus 1,\; w')}_{\text{sibling leaf via recursion}}$$
+      </div>
+    </div>
+
+    <p>
+      In code this is a single recursive call at the end of <code>get_background_s_matrix</code>,
+      with both consumer and background patterns XORed with 1 (flip LSB) and $w$ replaced by $w'$.
+      The recursion depth is always 1 — the flipped call never has a non-None <code>w_neighbor</code>.
+    </p>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="complexity">
+    <h2>9 · Complexity Summary</h2>
+
+    <p>
+      Let $T$ = trees, $L$ = leaves per tree, $D$ = depth of a leaf path,
+      $n$ = consumer rows, $m$ = background rows, $U_c$ = unique consumer patterns per leaf,
+      $U_b$ = unique background patterns per leaf.
+    </p>
+
+    <div class="complexity-row v1">
+      <div class="complexity-label">SHAP package / naive O(mn)</div>
+      <div>$O(\mathbf{m \cdot n \cdot T \cdot L \cdot D})$</div>
+    </div>
+    <div class="complexity-row v2">
+      <div class="complexity-label"><code>MNBackgroundPathToSVectors</code></div>
+      <div>$O(mTL + nTLD + \mathbf{U_c \cdot U_b \cdot T \cdot L \cdot D})$</div>
+    </div>
+    <div class="complexity-row v2">
+      <div class="complexity-label"><code>MNBackgroundFasterPathToSVectors</code></div>
+      <div>$O(mTL + nTLD + \mathbf{U_c \cdot U_b \cdot T \cdot L \cdot D})$</div>
+    </div>
+
+    <div class="card highlight" style="margin-top:1.2rem;">
+      <div class="card-title">Why $U_c \ll n$ and $U_b \ll m$</div>
+      <p>
+        For each leaf, <em>every</em> consumer (and background) data point is assigned a $D$-bit
+        decision pattern encoding whether it follows or diverges from the path at each of the $D$
+        nodes.
+        Because there are only $D$ bits, at most $2^D$ distinct patterns can exist, so
+        $U_c \leq \min(n,\, 2^D)$ and $U_b \leq \min(m,\, 2^D)$.
+        For deep paths $2^D$ is the binding constraint, and in practice patterns concentrate
+        around a small number of common follow/diverge combinations.
+      </p>
+    </div>
+
+    <h3>When does MN win over HighDepth (WOODELF's anti-diagonal approach)?</h3>
+
+    <p>
+      The HighDepth backend costs $O(2^D \cdot D^2)$ per leaf (all $2^D$ consumer pattern
+      slots pre-filled). MN costs $O(U_c \cdot U_b \cdot D)$.
+      MN is faster when:
+    </p>
+
+    <div class="math-block">
+      $$U_c \cdot U_b < 2^D \cdot D \quad\Longleftrightarrow\quad \text{small datasets relative to tree depth}$$
+    </div>
+
+    <p>
+      This is why <code>hybrid_woodelf</code> switches to MN when $D > 12$
+      (where $2^D$ becomes prohibitively large for the HighDepth backend).
+    </p>
+
+    <hr/>
+
+    <p style="color:var(--muted); font-size:0.88rem; text-align:center;">
+      WOODELF — Background SHAP MN Approach · Presented for internal review
+    </p>
+  </section>
+
+</div>
+</body>
+</html>

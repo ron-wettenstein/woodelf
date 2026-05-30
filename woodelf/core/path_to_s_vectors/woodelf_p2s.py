@@ -87,7 +87,7 @@ class HighDepthWoodelfPathToSVectors(WoodelfPathToSVectors):
             self.matrices_frs_subsets[depth] = list(matrices.keys())
             if self.GPU:
                 if not IMPORTED_CP:
-                    raise ImportError("Couldn't import CuPy. To use GPU, please install Cu{y via 'pip install cupy'")
+                    raise ImportError("Couldn't import CuPy. To use GPU, please install Cupy via 'pip install cupy'")
                 self.matrices[depth] = cp.array(
                     [matrices[k] for k in self.matrices_frs_subsets[depth]], dtype=cp.float32
                 ).T
