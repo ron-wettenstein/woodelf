@@ -140,7 +140,6 @@ def woodelf_sparse(
     mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth) if is_background else None
     lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU) if not is_background else None
 
-    # TODO think how this connects with lts and mn approaches
     if isinstance(metric, ShapleyInteractionValues) and not is_background:
         use_neighbor_leaf_trick = False # Linear TreeSHAP doesn't support the neighbor_leaf_trick for interaction values
 
