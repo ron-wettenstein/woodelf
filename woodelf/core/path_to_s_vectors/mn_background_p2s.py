@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple
+from typing import List, Dict, Optional, Tuple
 
 import numpy as np
 
@@ -192,3 +192,49 @@ class MNBackgroundFasterPathToSVectors(MNBackgroundPathToSVectors):
         BNW = b_bits @ neg_weighted.T                                  # (D, batch)
         total_pos = pos_weighted.sum(axis=1)                           # (batch,)
         return (BNW + c_bits * (total_pos - BPW - BNW)) * w           # (D, batch)
+
+
+class PersonalizedBaselinePathToSVectors(MNBackgroundPathToSVectors):
+    """
+    Personalized-baseline variant: consumer i is explained against background i (1-to-1 pairing).
+    Consumer and background datasets must have the same length.
+    """
+
+    def get_background_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        background_patterns: np.ndarray, w: float, w_neighbor: Optional[float] = None,
+    ) -> Dict:
+        assert len(consumer_patterns) == len(background_patterns), (
+            f"PersonalizedBaselinePathToSVectors requires consumer and background datasets of the same length. "
+            f"Got {len(consumer_patterns)} and {len(background_patterns)}."
+        )
+        if not features_in_path:
+            return {}
+        D = len(features_in_path)
+
+        diff     = consumer_patterns ^ background_patterns               # (N,)
+        positive = consumer_patterns & diff                              # (N,)
+        negative = background_patterns & diff                            # (N,)
+        valid    = (consumer_patterns | background_patterns) == ((1 << D) - 1)  # (N,)
+
+        p = np.bitwise_count(positive)                              # (N,)
+        n = np.bitwise_count(negative)                              # (N,)
+
+        pos_contribs = self.pos_contributions[p, n]                 # (N,)
+        neg_contribs = self.neg_contributions[p, n]                 # (N,)
+
+        pos_bits = bits_matrix(positive, D)                             # (D, N)
+        neg_bits = bits_matrix(negative, D)                             # (D, N)
+
+        s = (pos_bits * pos_contribs + neg_bits * neg_contribs) * valid * w  # (D, N)
+
+        result = {features_in_path[i]: s[i] for i in range(D)}
+
+        if w_neighbor is not None:
+            neighbor = self.get_background_s_matrix(
+                features_in_path, consumer_patterns ^ 1, background_patterns ^ 1, w_neighbor,
+            )
+            for f in result:
+                result[f] = result[f] + neighbor[f]
+
+        return result

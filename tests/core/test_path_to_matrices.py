@@ -4,7 +4,7 @@ from woodelf.core.cube_metric import ShapleyValues
 from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors
-from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundPathToSVectors, MNBackgroundFasterPathToSVectors
+from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundPathToSVectors, MNBackgroundFasterPathToSVectors, PersonalizedBaselinePathToSVectors
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
 
 TOLERANCE = 0.00001
@@ -134,6 +134,44 @@ def test_lts_recursive_matches_high_depth_woodelf():
     reference = reference_p2s.get_path_dependent_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _COVERS, w=3.0)
     actual = lts_p2s.get_path_dependent_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _COVERS, w=3.0)
     _assert_s_dicts_close(actual, reference)
+
+def test_personalized_baseline_matches_mn_background():
+    rng = np.random.default_rng(42)
+    N = 10
+    consumer_patterns = rng.integers(0, 2 ** _DEPTH, size=N, dtype=np.int64)
+    baseline_patterns = rng.integers(0, 2 ** _DEPTH, size=N, dtype=np.int64)
+
+    personalized_p2s = PersonalizedBaselinePathToSVectors(metric=ShapleyValues(), max_depth=_DEPTH)
+    mn_p2s = MNBackgroundPathToSVectors(metric=ShapleyValues(), max_depth=_DEPTH)
+
+    personalized_result = personalized_p2s.get_background_s_matrix(
+        _FEATURES_IN_PATH, consumer_patterns, baseline_patterns, w=1.0
+    )
+
+    for i in range(N):
+        mn_result = mn_p2s.get_background_s_matrix(
+            _FEATURES_IN_PATH, consumer_patterns[i:i+1], baseline_patterns[i:i+1], w=1.0
+        )
+        for feature in _FEATURES_IN_PATH:
+            np.testing.assert_allclose(
+                personalized_result[feature][i], mn_result[feature][0], atol=TOLERANCE,
+                err_msg=f"Mismatch at consumer {i}, feature {feature}"
+            )
+
+    # with neighbor leaf trick
+    personalized_result_nb = personalized_p2s.get_background_s_matrix(
+        _FEATURES_IN_PATH, consumer_patterns, baseline_patterns, w=1.0, w_neighbor=2.0
+    )
+    for i in range(N):
+        mn_result_nb = mn_p2s.get_background_s_matrix(
+            _FEATURES_IN_PATH, consumer_patterns[i:i+1], baseline_patterns[i:i+1], w=1.0, w_neighbor=2.0
+        )
+        for feature in _FEATURES_IN_PATH:
+            np.testing.assert_allclose(
+                personalized_result_nb[feature][i], mn_result_nb[feature][0], atol=TOLERANCE,
+                err_msg=f"Mismatch (w_neighbor) at consumer {i}, feature {feature}"
+            )
+
 
 def test_simple_and_high_depth_paper_are_equivalent():
     high_depth_p2m = HighDepthWoodelfPaperVersionPathToSVectors(metric=ShapleyValues(), max_depth=6, GPU=False)
