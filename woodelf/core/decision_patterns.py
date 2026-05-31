@@ -151,6 +151,7 @@ def consumer_and_background_decision_patterns_generator(
             combined_data = {col: cp.concatenate([consumer_data[col], background_data[col]]) for col in consumer_data.keys()}
         else:
             N = len(consumer_data)
+            # TODO concat can explode the RAM on large datasets, do this only for smaller ones.
             combined_data = pd.concat([consumer_data, background_data], ignore_index=True)
         for leaf, patterns in decision_patterns_generator(tree, combined_data, GPU, ignore_neighbor_leaf):
             yield leaf, patterns[:N], patterns[N:]
