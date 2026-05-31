@@ -129,3 +129,31 @@ def decision_patterns_generator(
         else:
             nodes_to_visit_left.append(node.left)
             nodes_to_visit_right.append(node.right)
+
+
+def consumer_and_background_decision_patterns_generator(
+    tree: DecisionTreeNode,
+    consumer_data,
+    background_data,
+    GPU: bool = False,
+    ignore_neighbor_leaf: bool = False,
+) -> Generator:
+    """
+    Yields (leaf, consumer_patterns, background_patterns) for every leaf in the tree.
+
+    When background_data is provided, consumer and background are concatenated into a single
+    decision_patterns_generator pass (halving the tree traversal cost), then the output is split.
+    When background_data is None, background_patterns is always None.
+    """
+    if background_data is not None:
+        if GPU:
+            N = len(consumer_data[list(consumer_data.keys())[0]])
+            combined_data = {col: cp.concatenate([consumer_data[col], background_data[col]]) for col in consumer_data.keys()}
+        else:
+            N = len(consumer_data)
+            combined_data = pd.concat([consumer_data, background_data], ignore_index=True)
+        for leaf, patterns in decision_patterns_generator(tree, combined_data, GPU, ignore_neighbor_leaf):
+            yield leaf, patterns[:N], patterns[N:]
+    else:
+        for leaf, patterns in decision_patterns_generator(tree, consumer_data, GPU, ignore_neighbor_leaf):
+            yield leaf, patterns, None

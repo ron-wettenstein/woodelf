@@ -8,7 +8,7 @@ import scipy
 from tqdm import tqdm
 
 from woodelf.core.cube_metric import PDIVOrder1Or2, CPDVMetric
-from woodelf.core.decision_patterns import decision_patterns_generator
+from woodelf.core.decision_patterns import consumer_and_background_decision_patterns_generator
 from woodelf.core.path_to_s_vectors.pdp_p2s import PDPPathToSVectors, PDPIVPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
@@ -143,15 +143,13 @@ def fast_pdp_for_a_single_tree(
         if not accurate:
             leaf_index_to_covers[leaf.index] = np.array(get_covers_vector(path + [leaf], unique_features_in_path))
 
-    background_patterns_generator = None
-    if accurate:
-        background_patterns_generator = decision_patterns_generator(tree, background_data, GPU, ignore_neighbor_leaf=False)
-    for leaf, consumer_patterns in decision_patterns_generator(tree, consumer_data, GPU, ignore_neighbor_leaf=False):
+    patterns_generator = consumer_and_background_decision_patterns_generator(
+        tree, consumer_data, background_data if accurate else None, GPU, ignore_neighbor_leaf=False
+    )
+    for leaf, consumer_patterns, background_patterns in patterns_generator:
         features_in_path = leaf_index_to_unique_features_in_path[leaf.index]
         w = leaf_index_to_weight[leaf.index]
         if accurate:
-            leaf_b, background_patterns = next(background_patterns_generator)
-            assert leaf_b.index == leaf.index
             s_matrix = p2s.get_background_s_matrix(features_in_path, consumer_patterns, background_patterns, w)
         else:
             s_matrix = p2s.get_path_dependent_s_matrix(features_in_path, consumer_patterns, leaf_index_to_covers[leaf.index], w)

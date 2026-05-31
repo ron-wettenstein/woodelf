@@ -5,7 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from woodelf.core.cube_metric import CubeMetric
-from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.core.decision_patterns import consumer_and_background_decision_patterns_generator, ignore_right_neighbor
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors, compute_f_from_patterns
@@ -31,22 +31,18 @@ def woodelf_for_high_depth_single_tree(
     Run the woodelf algorithm that is optimized for a high depth trees on a single tree
     """
     leaves_to_path = tree.get_nodes_to_path_dict()
-    consumer_patterns_generator = decision_patterns_generator(tree, consumer_data, GPU, use_neighbor_leaf_trick)
     is_background = background_data is not None
-    background_patterns_generator = None
-    if is_background:
-        background_patterns_generator = decision_patterns_generator(tree, background_data, GPU, use_neighbor_leaf_trick)
 
-    for leaf, consumer_patterns in consumer_patterns_generator:
+    patterns_generator = consumer_and_background_decision_patterns_generator(
+        tree, consumer_data, background_data, GPU, use_neighbor_leaf_trick
+    )
+    for leaf, consumer_patterns, background_patterns in patterns_generator:
         path = leaves_to_path[leaf.index]
         unique_features_in_path = get_unique_features_in_path(path)
 
         w_neighbor = leaf.parent.right.value if ignore_right_neighbor(leaf, path, use_neighbor_leaf_trick) else None
 
         if is_background:
-            leaf_b, background_patterns = next(background_patterns_generator)
-            assert leaf_b.index == leaf.index
-
             if cache_to_use is not None and leaf.index in cache_to_use and isinstance(path_to_matrices_calculator, HighDepthWoodelfPathToSVectors):
                 s_matrix = path_to_matrices_calculator.compose_with_neighbor_trick(
                     unique_features_in_path, cache_to_use[leaf.index], leaf.value, w_neighbor

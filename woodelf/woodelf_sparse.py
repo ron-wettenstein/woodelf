@@ -5,7 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues
-from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.core.decision_patterns import decision_patterns_generator, consumer_and_background_decision_patterns_generator, ignore_right_neighbor
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
 from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterPathToSVectors, MNBackgroundPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
@@ -52,16 +52,14 @@ def sparse_background_single_tree(
     use_neighbor_leaf_trick: bool,
 ):
     leaves_to_path = tree.get_nodes_to_path_dict()
-    consumer_gen    = decision_patterns_generator(tree, consumer_data,    GPU, use_neighbor_leaf_trick)
-    background_gen  = decision_patterns_generator(tree, background_data,  GPU, use_neighbor_leaf_trick)
 
-    for leaf, consumer_patterns in consumer_gen:
+    patterns_generator = consumer_and_background_decision_patterns_generator(
+        tree, consumer_data, background_data, GPU, use_neighbor_leaf_trick
+    )
+    for leaf, consumer_patterns, background_patterns in patterns_generator:
         path = leaves_to_path[leaf.index]
         features_in_path = get_unique_features_in_path(path)
         w_neighbor = leaf.parent.right.value if ignore_right_neighbor(leaf, path, use_neighbor_leaf_trick) else None
-
-        leaf_b, background_patterns = next(background_gen)
-        # assert leaf_b.index == leaf.index
 
         inverse, unique_c = pd.factorize(consumer_patterns, sort=False)
         s_matrix = mn_p2s.get_background_s_matrix(
