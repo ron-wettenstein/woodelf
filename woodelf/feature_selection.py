@@ -169,6 +169,7 @@ def feature_selection_ranking(
 
     # --- Selection loop ---
     with tqdm(total=len(all_features), desc="Selecting features", initial=len(all_features) - len(remaining)) as pbar:
+        pbar.refresh()
         while remaining:
             prev_remaining = len(remaining)
 
