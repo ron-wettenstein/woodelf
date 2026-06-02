@@ -28,7 +28,7 @@ class DecisionTreeNode:
         self.nan_go_left = nan_go_left
         self.cover = cover
         self.feature_contribution_replacement_values = feature_contribution_replacement_values
-        self.parent = -1
+        self.parent = None
         self.depth=None
 
     def shall_go_left(self, row, GPU: bool = False):
