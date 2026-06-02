@@ -59,6 +59,7 @@ def personalized_baseline_woodelf(
     GPU: bool = False,
     use_neighbor_leaf_trick: bool = True,
     model_was_loaded: bool = False,
+    verbose: bool = True
 ):
     """
     Compute personalized baseline SHAP/Banzhaf values for a decision tree ensemble.
@@ -77,6 +78,7 @@ def personalized_baseline_woodelf(
     improving performance on large datasets.
     @param model_was_loaded: If True, treats model as an already-parsed internal model object,
     skipping the parsing step.
+    @param verbose: Whether to show prints and tqdm progress bar
 
     @return A dictionary mapping each feature name to a NumPy array of length n (one value per consumer row).
     """
@@ -92,7 +94,7 @@ def personalized_baseline_woodelf(
     p2s = PersonalizedBaselinePathToSVectors(metric=metric, max_depth=effective_depth)
 
     values = {}
-    for tree in tqdm(model.trees, desc=f"Computing {metric.__class__.__name__} using personalized baseline WOODELF"):
+    for tree in tqdm(model.trees, desc=f"Computing {metric.__class__.__name__} using personalized baseline WOODELF", disable=not verbose):
         _personalized_single_tree(
             tree, consumer_data, background_data, values, p2s, GPU, use_neighbor_leaf_trick
         )
