@@ -1,4 +1,4 @@
-from typing import Tuple, Generator
+from typing import Dict, Generator, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -86,6 +86,79 @@ def ignore_right_neighbor(left_leaf, path, use_neighbor_leaf_trick):
             left_leaf.parent.feature_name not in path_features[:-1]  # 3. The feature of the current leaf does not repeat in the path
     )
     return ignored_neighbor
+
+
+def _build_subtree_features(root: DecisionTreeNode) -> Dict[int, frozenset]:
+    """Post-order traversal: each node maps to the set of split features in its subtree (including itself)."""
+    subtree_feats: Dict[int, frozenset] = {}
+    stack = [(root, False)]
+    while stack:
+        node, visited = stack.pop()
+        if node.is_leaf():
+            subtree_feats[node.index] = frozenset()
+        elif visited:
+            subtree_feats[node.index] = (
+                frozenset([node.feature_name])
+                | subtree_feats[node.left.index]
+                | subtree_feats[node.right.index]
+            )
+        else:
+            stack.append((node, True))
+            stack.append((node.right, False))
+            stack.append((node.left, False))
+    return subtree_feats
+
+
+def decision_patterns_generator_for_feature_subset(
+        tree: DecisionTreeNode, data: pd.DataFrame, features: List[str], GPU: bool = False, ignore_neighbor_leaf: bool = False
+) -> Generator[Tuple[DecisionTreeNode, np.array], None, None]:
+    """
+    Like decision_patterns_generator but only yields leaves whose root-to-leaf path contains at least one
+    feature from `features`.
+
+    Preprocessing (post-order) builds a subtree-features map so entire subtrees with no target features
+    are skipped in O(1). Once a target feature is encountered on the current path (already_met=True),
+    all descendant leaves are yielded without further checks.
+    """
+    features_set = set(features)
+    subtree_feats = _build_subtree_features(tree)
+
+    nodes_to_visit_left = [(tree, False)]  # (node, already_met)
+    nodes_to_visit_right = []
+
+    if tree.depth <= 1:
+        ignore_neighbor_leaf = False
+
+    all_features = list(data.columns) if not GPU else list(data.keys())
+    effective_max_decision_pattern_length = min(tree.depth, len(all_features))
+    int_dtype = GPU_get_int_dtype_from_depth(effective_max_decision_pattern_length) if GPU else get_int_dtype_from_depth(effective_max_decision_pattern_length)
+    patterns = init_patterns_dict(tree, data, GPU, int_dtype)
+    nodes_to_path = tree.get_nodes_to_path_dict()
+
+    while nodes_to_visit_left or nodes_to_visit_right:
+        if nodes_to_visit_left:
+            node, already_met = nodes_to_visit_left.pop()
+        else:
+            node, already_met = nodes_to_visit_right.pop()
+            clean_old_patterns(patterns, node.parent.left)
+
+        if not already_met and len(subtree_feats[node.index] & features_set) == 0:
+            if node.index in patterns:
+                patterns.pop(node.index)
+            continue
+
+        path = nodes_to_path[node.index]
+        path_features = [n.feature_name for n in path]
+
+        add_children_patterns(patterns, node, path_features, data, GPU, int_dtype, ignore_neighbor_leaf)
+
+        if node.is_leaf():
+            if node.index in patterns:
+                yield node, patterns[node.index]
+        else:
+            child_already_met = already_met or (node.feature_name in features_set)
+            nodes_to_visit_left.append((node.left, child_already_met))
+            nodes_to_visit_right.append((node.right, child_already_met))
 
 
 def decision_patterns_generator(

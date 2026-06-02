@@ -5,7 +5,7 @@ import pandas as pd
 
 from woodelf.core.cube_metric import BanzhafValues, CubeMetric
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.personalized_woodelf import personalized_baseline_woodelf
+from woodelf.personalized_woodelf import personalized_baseline_delta_update, personalized_baseline_woodelf
 from woodelf.woodelf_sparse import woodelf_sparse
 
 
@@ -122,7 +122,7 @@ def feature_selection_ranking(
     # --- Selection loop ---
     while remaining:
         ranking.append(top_f)
-        ranking_values[top_f] = result.get(top_f, np.zeros(n)).copy()
+        ranking_values[top_f] = result.pop(top_f, np.zeros(n)).copy()
         remaining.remove(top_f)
 
         for f in list(remaining):
@@ -133,7 +133,9 @@ def feature_selection_ranking(
         if not remaining:
             break
 
-        # Update B for remaining features where top_f is a better anchor
+        # Determine which features will switch anchor — pre-compute before touching B
+        changed_features: List[str] = []
+        new_anchor_data: Dict[str, Tuple] = {}
         for f in remaining:
             _, curr_best_corr, _, _ = anchor_info[f]
             abs_corr_with_top_f = abs(consumer_data[f].corr(consumer_data[top_f]))
@@ -141,16 +143,27 @@ def feature_selection_ranking(
                 abs_corr_with_top_f = 0.0
             if abs_corr_with_top_f > curr_best_corr:
                 const, coef = _linreg_coeffs(consumer_data[top_f], consumer_data[f])
-                anchor_info[f] = (top_f, abs_corr_with_top_f, const, coef)
-                B[f] = const + coef * consumer_data[top_f]
+                new_anchor_data[f] = (top_f, abs_corr_with_top_f, const, coef)
+                changed_features.append(f)
 
-        # top_f is now selected: neutralize its background
-        B[top_f] = consumer_data[top_f]
-        selected.append(top_f)
+        # top_f included because B[top_f] is also changing (neutralized to consumer)
+        features_subset_delta = [top_f] + changed_features
 
-        result = personalized_baseline_woodelf(
-            model_obj, consumer_data, B, metric, GPU=GPU, model_was_loaded=True, verbose=False
+        # Build new B (apply anchor switches and neutralize top_f)
+        new_B = B.copy()
+        for f, (anchor, abs_corr, const, coef) in new_anchor_data.items():
+            new_B[f] = const + coef * consumer_data[top_f]
+        new_B[top_f] = consumer_data[top_f]
+
+        result = personalized_baseline_delta_update(
+            model_obj, consumer_data, B, new_B, features_subset_delta, result, metric,
+            GPU=GPU, model_was_loaded=True,
         )
+
+        for f, (anchor, abs_corr, const, coef) in new_anchor_data.items():
+            anchor_info[f] = (anchor, abs_corr, const, coef)
+        B = new_B
+        selected.append(top_f)
 
         scores = _mean_abs(result, remaining, n)
         top_f = max(remaining, key=scores.get)
