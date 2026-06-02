@@ -38,20 +38,51 @@ def _mean_abs(values: Dict[str, np.ndarray], features: List[str], n: int) -> Dic
     return {f: float(np.mean(np.abs(values.get(f, np.zeros(n))))) for f in features}
 
 
+def _init_background(
+    consumer_data: pd.DataFrame,
+    remaining: List[str],
+    baseline_init_scheme: str,
+    anchor_info: Dict[str, Tuple[str, float, float, float]],
+) -> pd.DataFrame:
+    """
+    Build the initial background B for remaining features.
+
+    Selected features: B[f] = C[f] (copy of consumer, already set).
+    Remaining features depend on the scheme:
+      - pearson_correlation: B[f] = const + coef * C[best_anchor], taken from anchor_info.
+      - median: B[f] = median(C[f]) — same constant for all rows.
+      - mean:   B[f] = mean(C[f])  — same constant for all rows.
+    """
+    B = consumer_data.copy()
+    if baseline_init_scheme == "pearson_correlation":
+        for f in remaining:
+            anchor, _, const, coef = anchor_info[f]
+            B[f] = const + coef * consumer_data[anchor]
+    elif baseline_init_scheme == "median":
+        for f in remaining:
+            B[f] = consumer_data[f].median()
+    elif baseline_init_scheme == "mean":
+        for f in remaining:
+            B[f] = consumer_data[f].mean()
+    return B
+
+
 def feature_selection_ranking(
     model,
     consumer_data: pd.DataFrame,
     initial_selection: Optional[List[str]] = None,
     metric: Optional[CubeMetric] = None,
     GPU: bool = False,
+    baseline_updating_scheme: str = "pearson_correlation",
+    baseline_init_scheme: str = "pearson_correlation",
 ) -> Tuple[List[str], Dict[str, np.ndarray]]:
     """
     Ranks features by their marginal contribution under personalized baselines.
 
     Starting from an initial selection of "anchor" features (whose background equals their consumer
-    values), each remaining feature's background is set to a linear approximation via its most
-    correlated anchor. The feature with the highest mean absolute personalized Banzhaf value is
-    then selected, added to the ranking, becomes an anchor itself, and the process repeats.
+    values), each remaining feature's background is set according to baseline_init_scheme. The feature
+    with the highest mean absolute personalized Banzhaf value is then selected, added to the ranking,
+    becomes an anchor itself, and the process repeats.
 
     Returns:
         ranking: all feature names in selection order. Initial selection features are prepended —
@@ -59,7 +90,27 @@ def feature_selection_ranking(
         values_at_selection: maps each feature to its metric values at selection time. For
             auto-computed initial selection this is the path-dependent value; for user-provided
             initial selection these entries are absent.
+
+    @param baseline_init_scheme: How to set the initial background B for remaining features:
+        - "pearson_correlation": B[f] = const + coef * C[best_anchor] via OLS (default).
+        - "median": B[f] = median(C[f]) — same constant for all rows.
+        - "mean":   B[f] = mean(C[f])  — same constant for all rows.
+    @param baseline_updating_scheme: How to update B each time a new feature is selected:
+        - "pearson_correlation": re-anchor each remaining feature to the best correlated selected
+          feature using OLS (default).
+        - "do_nothing": only neutralize B[top_f] = C[top_f]; leave all other baselines unchanged.
+        - "median_correlation": not yet implemented.
     """
+    _VALID_INIT_SCHEMES = {"pearson_correlation", "median", "mean"}
+    if baseline_init_scheme not in _VALID_INIT_SCHEMES:
+        raise ValueError(f"baseline_init_scheme must be one of {_VALID_INIT_SCHEMES}, got {baseline_init_scheme!r}")
+
+    _VALID_UPDATE_SCHEMES = {"pearson_correlation", "do_nothing", "median_correlation"}
+    if baseline_updating_scheme not in _VALID_UPDATE_SCHEMES:
+        raise ValueError(f"baseline_updating_scheme must be one of {_VALID_UPDATE_SCHEMES}, got {baseline_updating_scheme!r}")
+    if baseline_updating_scheme == "median_correlation":
+        raise NotImplementedError("baseline_updating_scheme='median_correlation' is not yet implemented")
+
     if metric is None:
         metric = BanzhafValues()
 
@@ -84,16 +135,12 @@ def feature_selection_ranking(
         return list(initial_selection), initial_selection_values or {}
 
     # --- Build initial background B ---
-    # selected features: B[f] = C[f]  (already true in a copy of consumer_data)
-    # remaining features: B[f] = const + coef * C[best_anchor]
-    B = consumer_data.copy()
-
-    # For each remaining feature track (anchor, abs_corr, const, coef)
     anchor_info: Dict[str, Tuple[str, float, float, float]] = {}
-    for f in remaining:
-        anchor, abs_corr, const, coef = _best_anchor(f, selected, consumer_data)
-        anchor_info[f] = (anchor, abs_corr, const, coef)
-        B[f] = const + coef * consumer_data[anchor]
+    if baseline_init_scheme == "pearson_correlation" or baseline_updating_scheme == "pearson_correlation":
+        for f in remaining:
+            anchor_info[f] = _best_anchor(f, selected, consumer_data)
+
+    B = _init_background(consumer_data, remaining, baseline_init_scheme, anchor_info)
 
     # --- Initial personalized baseline run ---
     result = personalized_baseline_woodelf(
@@ -136,15 +183,16 @@ def feature_selection_ranking(
         # Determine which features will switch anchor — pre-compute before touching B
         changed_features: List[str] = []
         new_anchor_data: Dict[str, Tuple] = {}
-        for f in remaining:
-            _, curr_best_corr, _, _ = anchor_info[f]
-            abs_corr_with_top_f = abs(consumer_data[f].corr(consumer_data[top_f]))
-            if np.isnan(abs_corr_with_top_f):
-                abs_corr_with_top_f = 0.0
-            if abs_corr_with_top_f > curr_best_corr:
-                const, coef = _linreg_coeffs(consumer_data[top_f], consumer_data[f])
-                new_anchor_data[f] = (top_f, abs_corr_with_top_f, const, coef)
-                changed_features.append(f)
+        if baseline_updating_scheme == "pearson_correlation":
+            for f in remaining:
+                _, curr_best_corr, _, _ = anchor_info[f]
+                abs_corr_with_top_f = abs(consumer_data[f].corr(consumer_data[top_f]))
+                if np.isnan(abs_corr_with_top_f):
+                    abs_corr_with_top_f = 0.0
+                if abs_corr_with_top_f > curr_best_corr:
+                    const, coef = _linreg_coeffs(consumer_data[top_f], consumer_data[f])
+                    new_anchor_data[f] = (top_f, abs_corr_with_top_f, const, coef)
+                    changed_features.append(f)
 
         # top_f included because B[top_f] is also changing (neutralized to consumer)
         features_subset_delta = [top_f] + changed_features
