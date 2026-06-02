@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from woodelf.core.cube_metric import BanzhafValues, CubeMetric
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
@@ -167,54 +168,59 @@ def feature_selection_ranking(
     top_f = max(remaining, key=scores.get)
 
     # --- Selection loop ---
-    while remaining:
-        ranking.append(top_f)
-        ranking_values[top_f] = result.pop(top_f, np.zeros(n)).copy()
-        remaining.remove(top_f)
+    with tqdm(total=len(all_features), desc="Selecting features", initial=len(all_features) - len(remaining)) as pbar:
+        while remaining:
+            prev_remaining = len(remaining)
 
-        for f in list(remaining):
-            if scores[f] == 0.0:
-                zero_contrib_features.append(f)
-                remaining.remove(f)
+            ranking.append(top_f)
+            ranking_values[top_f] = result.pop(top_f, np.zeros(n)).copy()
+            remaining.remove(top_f)
 
-        if not remaining:
-            break
+            for f in list(remaining):
+                if scores[f] == 0.0:
+                    zero_contrib_features.append(f)
+                    remaining.remove(f)
 
-        # Determine which features will switch anchor — pre-compute before touching B
-        changed_features: List[str] = []
-        new_anchor_data: Dict[str, Tuple] = {}
-        if baseline_updating_scheme == "pearson_correlation":
-            for f in remaining:
-                _, curr_best_corr, _, _ = anchor_info[f]
-                abs_corr_with_top_f = abs(consumer_data[f].corr(consumer_data[top_f]))
-                if np.isnan(abs_corr_with_top_f):
-                    abs_corr_with_top_f = 0.0
-                if abs_corr_with_top_f > curr_best_corr:
-                    const, coef = _linreg_coeffs(consumer_data[top_f], consumer_data[f])
-                    new_anchor_data[f] = (top_f, abs_corr_with_top_f, const, coef)
-                    changed_features.append(f)
+            pbar.update(prev_remaining - len(remaining))
 
-        # top_f included because B[top_f] is also changing (neutralized to consumer)
-        features_subset_delta = [top_f] + changed_features
+            if not remaining:
+                break
 
-        # Build new B (apply anchor switches and neutralize top_f)
-        new_B = B.copy()
-        for f, (anchor, abs_corr, const, coef) in new_anchor_data.items():
-            new_B[f] = const + coef * consumer_data[top_f]
-        new_B[top_f] = consumer_data[top_f]
+            # Determine which features will switch anchor — pre-compute before touching B
+            changed_features: List[str] = []
+            new_anchor_data: Dict[str, Tuple] = {}
+            if baseline_updating_scheme == "pearson_correlation":
+                for f in remaining:
+                    _, curr_best_corr, _, _ = anchor_info[f]
+                    abs_corr_with_top_f = abs(consumer_data[f].corr(consumer_data[top_f]))
+                    if np.isnan(abs_corr_with_top_f):
+                        abs_corr_with_top_f = 0.0
+                    if abs_corr_with_top_f > curr_best_corr:
+                        const, coef = _linreg_coeffs(consumer_data[top_f], consumer_data[f])
+                        new_anchor_data[f] = (top_f, abs_corr_with_top_f, const, coef)
+                        changed_features.append(f)
 
-        result = personalized_baseline_delta_update(
-            model_obj, consumer_data, B, new_B, features_subset_delta, result, metric,
-            GPU=GPU, model_was_loaded=True,
-        )
+            # top_f included because B[top_f] is also changing (neutralized to consumer)
+            features_subset_delta = [top_f] + changed_features
 
-        for f, (anchor, abs_corr, const, coef) in new_anchor_data.items():
-            anchor_info[f] = (anchor, abs_corr, const, coef)
-        B = new_B
-        selected.append(top_f)
+            # Build new B (apply anchor switches and neutralize top_f)
+            new_B = B.copy()
+            for f, (anchor, abs_corr, const, coef) in new_anchor_data.items():
+                new_B[f] = const + coef * consumer_data[top_f]
+            new_B[top_f] = consumer_data[top_f]
 
-        scores = _mean_abs(result, remaining, n)
-        top_f = max(remaining, key=scores.get)
+            result = personalized_baseline_delta_update(
+                model_obj, consumer_data, B, new_B, features_subset_delta, result, metric,
+                GPU=GPU, model_was_loaded=True,
+            )
+
+            for f, (anchor, abs_corr, const, coef) in new_anchor_data.items():
+                anchor_info[f] = (anchor, abs_corr, const, coef)
+            B = new_B
+            selected.append(top_f)
+
+            scores = _mean_abs(result, remaining, n)
+            top_f = max(remaining, key=scores.get)
 
     for f in reversed(zero_contrib_features):
         ranking.append(f)
