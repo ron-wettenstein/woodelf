@@ -26,11 +26,19 @@ _SUPPORTED_SPARSE_BACKGROUND_METRICS = (ShapleyValues, BanzhafValues)
 _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS = (ShapleyValues, BanzhafValues, ShapleyInteractionValues)
 
 
-def use_sparse_approach(depth, metric, is_background):
-    if is_background:
-        return depth > _MAX_DEPTH_FOR_HIGH_WOODELF and isinstance(metric, _SUPPORTED_SPARSE_BACKGROUND_METRICS)
-    return depth > _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF and isinstance(metric, _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS)
-
+def use_sparse_approach(depth, metric, background_data_size, consumer_data_size):
+    if background_data_size > 0:
+        if not isinstance(metric, _SUPPORTED_SPARSE_BACKGROUND_METRICS):
+            return False
+        if depth > _MAX_DEPTH_FOR_HIGH_WOODELF:
+            return True
+        return background_data_size * consumer_data_size <= (2 ** depth) * depth
+    else:
+        if not isinstance(metric, _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS):
+            return False
+        if depth > _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF:
+            return True
+        return consumer_data_size <= (2 ** depth) * depth
 
 def _accumulate(values: Dict, s_matrix: Dict, indices: np.ndarray, GPU: bool):
     for feature, s_vec in s_matrix.items():
@@ -181,9 +189,9 @@ def hybrid_woodelf(
         model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
 
     effective_depth = min(model.max_depth, len(consumer_data.columns))
-    is_background = background_data is not None
+    background_data_size = len(background_data) if background_data is not None else 0
 
-    if use_sparse_approach(effective_depth, metric, is_background):
+    if use_sparse_approach(effective_depth, metric, background_data_size, len(consumer_data)):
         return woodelf_sparse(
             model, consumer_data, background_data, metric, GPU=GPU,
             use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True, mn_p2s_class=mn_p2s_class
