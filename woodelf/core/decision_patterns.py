@@ -147,14 +147,29 @@ def consumer_and_background_decision_patterns_generator(
     """
     if background_data is not None:
         if GPU:
-            N = len(consumer_data[list(consumer_data.keys())[0]])
-            combined_data = {col: cp.concatenate([consumer_data[col], background_data[col]]) for col in consumer_data.keys()}
+            n_cols = len(consumer_data)
+            n_consumer_rows = len(consumer_data[list(consumer_data.keys())[0]])
+            n_bg_rows = len(background_data[list(background_data.keys())[0]])
+            data_size = n_consumer_rows * n_cols + n_bg_rows * n_cols
         else:
-            N = len(consumer_data)
-            # TODO concat can explode the RAM on large datasets, do this only for smaller ones.
-            combined_data = pd.concat([consumer_data, background_data], ignore_index=True)
-        for leaf, patterns in decision_patterns_generator(tree, combined_data, GPU, ignore_neighbor_leaf):
-            yield leaf, patterns[:N], patterns[N:]
+            data_size = len(consumer_data) * len(consumer_data.columns) + len(background_data) * len(background_data.columns)
+
+        if data_size <= 100_000_000:
+            if GPU:
+                N = n_consumer_rows
+                combined_data = {col: cp.concatenate([consumer_data[col], background_data[col]]) for col in consumer_data.keys()}
+            else:
+                N = len(consumer_data)
+                combined_data = pd.concat([consumer_data, background_data], ignore_index=True)
+            for leaf, patterns in decision_patterns_generator(tree, combined_data, GPU, ignore_neighbor_leaf):
+                yield leaf, patterns[:N], patterns[N:]
+        else:
+            # Large dataset: avoid concat to prevent RAM explosion — run two generators instead.
+            # Both traverse the same tree in the same DFS order, so their leaves can be safely zipped.
+            consumer_gen = decision_patterns_generator(tree, consumer_data, GPU, ignore_neighbor_leaf)
+            background_gen = decision_patterns_generator(tree, background_data, GPU, ignore_neighbor_leaf)
+            for (leaf, consumer_patterns), (_, background_patterns) in zip(consumer_gen, background_gen):
+                yield leaf, consumer_patterns, background_patterns
     else:
         for leaf, patterns in decision_patterns_generator(tree, consumer_data, GPU, ignore_neighbor_leaf):
             yield leaf, patterns, None
