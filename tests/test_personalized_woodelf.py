@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import shap
 
-from shared_fixtures_and_utils import testset, xgb_model
+from shared_fixtures_and_utils import testset, xgb_model, assert_woodelf_dicts_equal
 from woodelf.core.cube_metric import BanzhafValues, ShapleyValues
 from woodelf.personalized_woodelf import personalized_baseline_delta_update, personalized_baseline_woodelf
 
@@ -87,9 +87,4 @@ def test_delta_trick_is_exact(testset, xgb_model):
         xgb_model, consumer_data, B, B_new, subset, full_result_old, metric,
     )
 
-    zeros = np.zeros(N)
-    for f in testset.columns:
-        np.testing.assert_allclose(
-            updated.get(f, zeros), full_result_new.get(f, zeros),
-            atol=TOLERANCE, err_msg=f"Delta trick mismatch for feature {f!r}",
-        )
+    assert_woodelf_dicts_equal(updated, full_result_new, testset, TOLERANCE)

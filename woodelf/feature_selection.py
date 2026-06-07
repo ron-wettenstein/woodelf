@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from woodelf.core.cube_metric import BanzhafValues, CubeMetric
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+from woodelf.always_participating_woodelf import always_participating_delta_update, path_dependent_under_always_participating_features
 from woodelf.personalized_woodelf import personalized_baseline_delta_update, personalized_baseline_woodelf
 from woodelf.woodelf_sparse import woodelf_sparse
 
@@ -226,5 +227,82 @@ def feature_selection_ranking(
     for f in reversed(zero_contrib_features):
         ranking.append(f)
         ranking_values[f] = np.zeros(n)
+
+    return ranking, ranking_values
+
+
+def _get_tree_features(model) -> List[str]:
+    seen = set()
+    for tree in model.trees:
+        for node in tree.bfs(including_leaves=False):
+            seen.add(node.feature_name)
+    return list(seen)
+
+
+def path_dependent_feature_selection_ranking(
+    model,
+    consumer_data: pd.DataFrame,
+    metric: Optional[CubeMetric] = None,
+    verbose: bool = True,
+) -> Tuple[List[str], Dict[str, float]]:
+    """
+    Ranks features by their marginal contribution in the path-dependent restricted game.
+
+    Starting from the standard path-dependent Banzhaf game (no always-participating features),
+    at each step the most significant remaining feature is selected, added to always_participating,
+    and values are updated exactly via always_participating_delta_update. The process repeats
+    until all features that appear in any tree split are ranked.
+
+    Returns:
+        ranking: feature names in selection order.
+        ranking_values: maps each feature to its metric values at the time it was selected.
+
+    @param model: A fitted decision-tree ensemble.
+    @param consumer_data: The data to explain.
+    @param metric: The metric to compute. Defaults to BanzhafValues().
+    @param verbose: Whether to show tqdm progress bars.
+    """
+    if metric is None:
+        metric = BanzhafValues()
+
+    n = len(consumer_data)
+    model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+
+    remaining = _get_tree_features(model_obj)
+
+    result = path_dependent_under_always_participating_features(
+        model_obj, consumer_data, metric, always_participating_features=[],
+        model_was_loaded=True, verbose=verbose,
+    )
+
+    always_participating: List[str] = []
+    ranking: List[str] = []
+    ranking_values: Dict[str, float] = {}
+
+    scores = _mean_abs(result, remaining, n)
+
+    with tqdm(total=len(remaining), desc="Selecting features", disable=not verbose) as pbar:
+        while remaining:
+            top_f = max(remaining, key=lambda f: scores[f])
+            ranking.append(top_f)
+            ranking_values[top_f] = scores[top_f]
+            remaining.remove(top_f)
+
+            if not remaining:
+                pbar.update(1)
+                break
+
+            prev_always_participating = list(always_participating)
+            always_participating.append(top_f)
+
+            result = always_participating_delta_update(
+                model_obj, consumer_data,
+                prev_always_participating, always_participating,
+                [top_f], result, metric, model_was_loaded=True,
+            )
+            result.pop(top_f, None)
+
+            scores = _mean_abs(result, remaining, n)
+            pbar.update(1)
 
     return ranking, ranking_values

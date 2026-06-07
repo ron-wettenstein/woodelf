@@ -122,6 +122,45 @@ def personalized_baseline_woodelf(
     return values
 
 
+def apply_metric_delta(
+    result: Dict[str, np.ndarray],
+    prev_effect: Dict[str, np.ndarray],
+    new_effect: Dict[str, np.ndarray],
+    changed_features: List[str],
+    n: int,
+) -> None:
+    """
+    Apply a Group A / Group B delta update to result in-place.
+
+    Leaves are partitioned into two groups by whether their path contains a changed feature:
+      Group A — affected leaves (recomputed in prev_effect and new_effect).
+      Group B — unaffected leaves (their contribution is identical before and after the change,
+                so it cancels out and result is left untouched for those leaves).
+
+    For features IN changed_features:
+      They only appear in Group A leaves, so result[f] = new_effect[f] exactly.
+
+    For features NOT IN changed_features:
+      result[f] = (Group B contribution, unchanged)
+                + (Group A contribution, delta-updated)
+                = prev_result[f] - prev_effect[f] + new_effect[f]
+    """
+    zeros = np.zeros(n)
+
+    for f in changed_features:
+        if f in new_effect:
+            result[f] = new_effect[f]
+        elif f in result:
+            del result[f]
+
+    for f in (set(prev_effect) | set(new_effect)) - set(changed_features):
+        delta = new_effect.get(f, zeros) - prev_effect.get(f, zeros)
+        if f in result:
+            result[f] = result[f] + delta
+        else:
+            result[f] = delta
+
+
 def personalized_baseline_delta_update(
     model,
     consumer_data: pd.DataFrame,
@@ -172,7 +211,6 @@ def personalized_baseline_delta_update(
     @return Updated metric values dict with all features from prev_values adjusted by the delta.
     """
     n = len(consumer_data)
-    zeros = np.zeros(n)
     result = dict(prev_values)
 
     prev_effect = personalized_baseline_woodelf(
@@ -188,17 +226,5 @@ def personalized_baseline_delta_update(
         features_subset=features_subset, compute_effect_on_other_features=True,
     )
 
-    for f in features_subset:
-        if f in new_effect:
-            result[f] = new_effect[f]
-        elif f in result:
-            del result[f]
-
-    for f in (set(prev_effect) | set(new_effect)) - set(features_subset):
-        delta = new_effect.get(f, zeros) - prev_effect.get(f, zeros)
-        if f in result:
-            result[f] = result[f] + delta
-        else:
-            result[f] = delta
-
+    apply_metric_delta(result, prev_effect, new_effect, features_subset, n)
     return result

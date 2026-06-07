@@ -98,6 +98,55 @@ class LTSRecursivePathToSVectors(PathToSVectors):
         print(f"LTSRecursivePathToSVectors took {round(self.computation_time, 2)}")
 
 
+class AlwaysParticipatingLTSPathToSVectors(LTSRecursivePathToSVectors):
+    """
+    Extends LTSRecursivePathToSVectors for the restricted game where a fixed set of features
+    is always in every coalition S (always participating).
+
+    Implementation Details:
+        Always-participating features have their cover forced to 1, making q_i = 1 and their
+        marginal contribution 0. Regular features (not in always_participating) are the free
+        players whose Shapley/Banzhaf values are computed.
+
+        Consumers that do not satisfy all always-participating path conditions at a leaf contribute
+        nothing at that leaf (zeroed out), because the always-participating features are fixed as
+        consumer-side and the consumer does not reach the leaf through those splits.
+
+        w_neighbor is not supported — the neighbor trick couples the last feature's cover across
+        two leaves, which would break the Null-player guarantee for always-participating features.
+    """
+
+    def __init__(self, metric: CubeMetric, max_depth: int, always_participating: List[str], GPU: bool = False):
+        super().__init__(metric, max_depth, GPU)
+        self._always_participating: set = set(always_participating)
+
+    def get_path_dependent_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        covers: np.ndarray, w: float, w_neighbor: Optional[float] = None
+    ) -> Dict:
+        assert w_neighbor is None, "AlwaysParticipatingLTSPathToSVectors does not support w_neighbor"
+        if not features_in_path:
+            return {}
+
+        n = len(features_in_path)
+        always_participating_bit_pattern = 0
+        modified_covers = covers.copy()
+        for i, f in enumerate(features_in_path):
+            if f in self._always_participating:
+                always_participating_bit_pattern |= (1 << (n - 1 - i))
+                modified_covers[i] = 1.0
+
+        result = super().get_path_dependent_s_matrix(
+            features_in_path, consumer_patterns, modified_covers, w, w_neighbor=None
+        )
+
+        if always_participating_bit_pattern == 0:
+            return result
+
+        mask = (consumer_patterns & always_participating_bit_pattern) == always_participating_bit_pattern
+        return {f: s_vec * mask for f, s_vec in result.items()}
+
+
 # !!!!!!!!!!!!!!!! The Recursive Linear TreeSHAP Logic !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 

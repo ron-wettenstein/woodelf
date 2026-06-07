@@ -76,6 +76,17 @@ def xgb_model_depth_16() -> xgb.Booster:
 def xgb_model_depth_22() -> xgb.Booster:
     return load_xgboost("IEEE-CIS_xgboost_model_depth_22.json")
 
+def assert_woodelf_dicts_equal(
+        result_a: dict, result_b: dict, testset: pd.DataFrame, tolerance: float
+):
+    zeros = np.zeros(len(testset))
+    for f in testset.columns:
+        np.testing.assert_allclose(
+            result_a.get(f, zeros), result_b.get(f, zeros),
+            atol=tolerance, err_msg=f"Mismatch for feature {f!r}",
+        )
+
+
 def assert_shap_package_is_same_as_woodelf(
         woodelf_result, shap_package_result, testset: pd.DataFrame, tolerance: float
 ):
