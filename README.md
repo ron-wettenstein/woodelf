@@ -112,19 +112,6 @@ explainer = WoodelfExplainer(xgb_model, X_train)
 background_iv_df = explainer.shap_interaction_values(X_test, as_df=True, exclude_zero_contribution_features=False)
 ```
 
-#### Built-in Cache
-
-The cache stores the preprocessed background data, eliminating the need to recompute it across repeated uses of the same explainer instance. By default, caching is disabled.
-
-**Note:** Caching may be memory-intensive for deep trees (e.g., `max_depth ≥ 8`).
-```python
-explainer = WoodelfExplainer(xgb_model, X_train, use_cache=True)
-shap_sample_1 = explainer.shap_values(X_test.sample(100))
-# No need to preprocess the background data from here on, the cache will be used instead.
-shap_sample_2 = explainer.shap_values(X_test.sample(100)) 
-shap_sample_3 = explainer.shap_values(X_test.sample(100))
-...
-```
 
 ## Partial Dependence Plots (PDP)
 
