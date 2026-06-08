@@ -137,6 +137,8 @@ On a 400,000-row dataset:
 | PDP 100 points               | 19 hours*  | 15 seconds |
 | Joint-PDP 5 points           | 35 days*   | 19 seconds |
 
+For full algorithmic and theoretical details, see [our paper on arXiv](https://arxiv.org/abs/2605.14578).
+
 **Low-level API:** use `woodelf.pdp.woodelf_pdp` to get the PDP values and `woodelf.pdp.woodelf_pdp_joint` to get the joint PDPs values directly.
 
 **High-level API:** `WoodelfPartialDependenceDisplay` is a drop-in replacement for sklearn's
