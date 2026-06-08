@@ -305,4 +305,10 @@ def path_dependent_feature_selection_ranking(
             scores = _mean_abs(result, remaining, n)
             pbar.update(1)
 
+    ranked_set = set(ranking)
+    for f in consumer_data.columns:
+        if f not in ranked_set:
+            ranking.append(f)
+            ranking_values[f] = 0.0
+
     return ranking, ranking_values

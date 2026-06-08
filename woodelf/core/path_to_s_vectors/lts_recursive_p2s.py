@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 
 import numpy as np
 
-from woodelf.core.cube_metric import CubeMetric, ShapleyInteractionValues, ShapleyValues, BanzhafValues
+from woodelf.core.cube_metric import CubeMetric, ShapleyInteractionValues, ShapleyValues, BanzhafValues, CPDVMetric
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
 from woodelf.core.utils import bits_matrix, neg_bits_matrix
 
@@ -14,6 +14,9 @@ def nCk(n, k):
 
 def shapley_values_f_w(depth):
     return np.array([[1 / (depth * nCk(depth-1, s))] for s in range(depth)])
+
+def cpdv_f_w(depth):
+    return np.array([[0] for s in range(depth-1)] + [[1]])
 
 def banzhaf_values_f_w(depth):
     return np.array([[1 / 2 ** (depth - 1)] for s in range(depth)])
@@ -25,9 +28,11 @@ class LTSRecursivePathToSVectors(PathToSVectors):
         super().__init__(metric, max_depth, GPU)
 
         self.f_ws = None
-        if isinstance(metric, ShapleyInteractionValues) or isinstance(metric, ShapleyValues):
+        if isinstance(metric, (ShapleyInteractionValues, ShapleyValues)):
             # None f_ws for depth 0, in the rest use shapley_values_f_w(depth)
             self.f_ws = [None] + [shapley_values_f_w(depth) for depth in range(1, max_depth + 1)]
+        elif isinstance(metric, CPDVMetric):
+            self.f_ws = [None] + [cpdv_f_w(depth) for depth in range(1, max_depth + 1)]
 
         self.computation_time = 0
 
@@ -41,7 +46,7 @@ class LTSRecursivePathToSVectors(PathToSVectors):
                 return []
             f_w = self.f_ws[len(covers)-1]
             s_matrix = improved_linear_tree_shap_iv(covers, consumer_patterns, f_w, w)
-        elif isinstance(self.metric, ShapleyValues):
+        elif isinstance(self.metric, (ShapleyValues, CPDVMetric)):
             f_w = self.f_ws[len(covers)]
             if w_neighbor is None:
                 # s_matrix = linear_tree_shap_magic_faster_v2(covers, consumer_patterns, f_w, w)
