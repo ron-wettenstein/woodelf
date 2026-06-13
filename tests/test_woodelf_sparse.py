@@ -5,6 +5,7 @@ import shap
 from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, \
     assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyInteractionValues, CPDVMetric
+from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import QuadratureSHAPPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.woodelf_sparse import woodelf_sparse
 from woodelf.simple_woodelf import calculate_path_dependent_metric, calculate_background_metric
@@ -23,6 +24,17 @@ def test_linear_tree_path_dependent_on_a_model(testset, xgb_model, metric):
         np.testing.assert_allclose(
             simple_woodelf_values[feature], vectorized_values[feature], atol=TOLERANCE
         )
+
+def test_abs_banzhaf_curve_is_nonneg_and_dominates_shapley(testset, xgb_model):
+    shapley_values = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False)
+    abs_values     = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, abs_banzhaf_curve=True)
+
+    for feature in testset.columns:
+        sv  = shapley_values.get(feature, np.zeros(len(testset)))
+        abv = abs_values.get(feature, np.zeros(len(testset)))
+        assert np.all(abv >= -TOLERANCE), f"abs_banzhaf_curve result is negative for feature {feature!r}"
+        assert np.all(abv >= sv - TOLERANCE), f"abs_banzhaf_curve result < Shapley value for feature {feature!r}"
+
 
 def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):
     for model in [xgb_model_depth_16, xgb_model_depth_22]:
@@ -54,6 +66,16 @@ def test_mn_background_shap_on_a_model(trainset, testset, xgb_model):
     for feature in simple_woodelf_values:
         np.testing.assert_allclose(
             simple_woodelf_values[feature], mn_values[feature], atol=TOLERANCE
+        )
+
+def test_quadrature_tree_shap(trainset, testset, xgb_model):
+
+    simple_woodelf_values = calculate_path_dependent_metric(xgb_model, testset, metric=ShapleyValues())
+    vectorized_values = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, mn_p2s_class=QuadratureSHAPPathToSVectors)
+
+    for feature in simple_woodelf_values:
+        np.testing.assert_allclose(
+            simple_woodelf_values[feature], vectorized_values[feature], atol=TOLERANCE
         )
 
 

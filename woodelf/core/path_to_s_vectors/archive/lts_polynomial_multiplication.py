@@ -313,7 +313,8 @@ def quadrature_tree_shap_batched_approach(
     p: np.ndarray,
     leaf_value: float = 1.0,
     quad_nodes = None,
-    quad_weights = None
+    quad_weights = None,
+    abs_banzhaf_curve: bool = False,
 ) -> np.ndarray:
     """
     SHAP values for m unique decision patterns on a root-to-leaf path of length n.
@@ -372,7 +373,11 @@ def quadrature_tree_shap_batched_approach(
         suffix[:, d, :] = suffix[:, d + 1, :] * linear_factors[:, d + 1, :]
 
     # Leave-one-out integral: prefix * suffix omits factor d → integrand without feature d
-    phi = alpha_e * (leaf_value * w_prod) * ((prefix * suffix) @ quad_weights)  # (m, n)
+    if abs_banzhaf_curve:
+        per_node = alpha_e[:, :, None] * (leaf_value * w_prod) * (prefix * suffix)  # (m, n, n_quad)
+        phi = (np.abs(per_node) * quad_weights[None, None, :]).sum(axis=-1)         # (m, n)
+    else:
+        phi = alpha_e * (leaf_value * w_prod) * ((prefix * suffix) @ quad_weights)  # (m, n)
     return phi
 
 
@@ -382,7 +387,8 @@ def quadrature_tree_shap_batched_approach_for_neighbors(
     w1: float = 1.0,
     w2: float = 1.0,
     quad_nodes=None,
-    quad_weights=None
+    quad_weights=None,
+    abs_banzhaf_curve: bool = False,
 ) -> np.ndarray:
     """
     SHAP values for two sibling leaves (sharing the same parent) simultaneously.
@@ -482,14 +488,23 @@ def quadrature_tree_shap_batched_approach_for_neighbors(
 
         scale = DTYPE(leaf_value * w_prod)
 
-        # Shared depths: multiply leave_one_out_shared by this leaf's last factor
-        integrals_shared = (
-            leave_one_out_shared * lf_last[:, None, :]   # (m, n-1, n_quad)
-        ) @ c_quad_weights                                              # (m, n-1)
-        phi_shared = alpha_e_shared * scale * integrals_shared        # (m, n-1)
-
-        # Last depth: suffix is 1, so integrand = prefix[:, n-1, :]
-        phi_last = alpha_e_last * scale * integral_last               # (m,)
+        if abs_banzhaf_curve:
+            # Shared depths: per-node values before weighting
+            per_node_shared = (
+                alpha_e_shared[:, :, None] * scale * (leave_one_out_shared * lf_last[:, None, :])
+            )                                                               # (m, n-1, n_quad)
+            phi_shared = (np.abs(per_node_shared) * c_quad_weights[None, None, :]).sum(-1)  # (m, n-1)
+            # Last depth: suffix is 1, integrand = prefix[:, n-1, :]
+            per_node_last = alpha_e_last[:, None] * scale * prefix[:, n - 1, :]  # (m, n_quad)
+            phi_last = (np.abs(per_node_last) * c_quad_weights[None, :]).sum(-1)  # (m,)
+        else:
+            # Shared depths: multiply leave_one_out_shared by this leaf's last factor
+            integrals_shared = (
+                leave_one_out_shared * lf_last[:, None, :]   # (m, n-1, n_quad)
+            ) @ c_quad_weights                                              # (m, n-1)
+            phi_shared = alpha_e_shared * scale * integrals_shared        # (m, n-1)
+            # Last depth: suffix is 1, so integrand = prefix[:, n-1, :]
+            phi_last = alpha_e_last * scale * integral_last               # (m,)
 
         return np.concatenate([phi_shared, phi_last[:, None]], axis=1)  # (m, n)
 
