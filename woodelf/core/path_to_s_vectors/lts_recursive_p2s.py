@@ -16,6 +16,10 @@ def shapley_values_f_w(depth):
     return np.array([[1 / (depth * nCk(depth-1, s))] for s in range(depth)])
 
 def cpdv_f_w(depth):
+    # TODO this is in reversed order: LTSRecursivePathToSVectors consumes f_w[t] as the weight
+    # for coalitions of size (depth-1-t), so the "1" sits at the last index (the empty coalition).
+    # The others should in principle be reversed as well, but they work as-is because their arrays
+    # are symmetric (shapley_values_f_w is palindromic, banzhaf_values_f_w is constant).
     return np.array([[0] for s in range(depth-1)] + [[1]])
 
 def banzhaf_values_f_w(depth):
