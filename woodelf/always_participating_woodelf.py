@@ -7,7 +7,9 @@ from tqdm import tqdm
 from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.decision_patterns import decision_patterns_generator, decision_patterns_generator_for_feature_subset
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import AlwaysParticipatingLTSPathToSVectors
-from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import AlwaysParticipatingQuadratureSHAPPathToSVectors
+from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import (
+    AlwaysParticipatingQuadratureSHAPPathToSVectors, ABS_STRATEGY_NORMAL, ABS_STRATEGIES,
+)
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.utils import get_unique_features_in_path, get_covers_vector
@@ -58,7 +60,7 @@ def path_dependent_under_always_participating_features(
     verbose: bool = True,
     features_subset: Optional[List[str]] = None,
     compute_effect_on_other_features: bool = False,
-    abs_banzhaf_curve: bool = False,
+    abs_strategy: str = ABS_STRATEGY_NORMAL,
 ) -> Dict[str, np.ndarray]:
     """
     Compute path-dependent Shapley/Banzhaf values where a fixed set of features is always
@@ -78,19 +80,20 @@ def path_dependent_under_always_participating_features(
     one feature from this list. Used by the delta update for efficiency.
     @param compute_effect_on_other_features: When features_subset is set, also accumulate
     values for features outside features_subset. Used by the delta update.
-    @param abs_banzhaf_curve: If True, compute ∫|BZ_i(p)|dp instead of ∫BZ_i(p)dp using
-    Gauss-Legendre quadrature. See woodelf_sparse for details on this approximation.
+    @param abs_strategy: "normal", "abs_banzhaf_curve_leaves" or "abs_shapley_leaves".
+    See woodelf_sparse for details. The two abs strategies use Gauss-Legendre quadrature.
 
     @return A dictionary mapping each feature name to a NumPy array of length n.
     """
     if not model_was_loaded:
         model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
 
+    assert abs_strategy in ABS_STRATEGIES, f"abs_strategy must be one of {ABS_STRATEGIES}, got {abs_strategy!r}"
     effective_depth = min(model.max_depth, len(consumer_data.columns))
-    if abs_banzhaf_curve:
+    if abs_strategy != ABS_STRATEGY_NORMAL:
         p2s = AlwaysParticipatingQuadratureSHAPPathToSVectors(
             metric=metric, max_depth=effective_depth, always_participating=always_participating_features,
-            abs_banzhaf_curve=True,
+            abs_strategy=abs_strategy,
         )
     else:
         p2s = AlwaysParticipatingLTSPathToSVectors(
@@ -114,7 +117,7 @@ def always_participating_delta_update(
     prev_values: Dict[str, np.ndarray],
     metric: CubeMetric,
     model_was_loaded: bool = False,
-    abs_banzhaf_curve: bool = False,
+    abs_strategy: str = ABS_STRATEGY_NORMAL,
 ) -> Dict[str, np.ndarray]:
     """
     Exactly updates values after always_participating_features gains new members.
@@ -124,7 +127,7 @@ def always_participating_delta_update(
 
     @param changed_features: The features added to always_participating. Must cover every
     feature whose always-participating status changed between prev and new.
-    @param abs_banzhaf_curve: Passed through to path_dependent_under_always_participating_features.
+    @param abs_strategy: Passed through to path_dependent_under_always_participating_features.
 
     @return Updated values dict with all features adjusted by the delta.
     """
@@ -135,13 +138,13 @@ def always_participating_delta_update(
         model, consumer_data, metric, prev_always_participating,
         model_was_loaded=model_was_loaded, verbose=False,
         features_subset=changed_features, compute_effect_on_other_features=True,
-        abs_banzhaf_curve=abs_banzhaf_curve,
+        abs_strategy=abs_strategy,
     )
     new_effect = path_dependent_under_always_participating_features(
         model, consumer_data, metric, new_always_participating,
         model_was_loaded=model_was_loaded, verbose=False,
         features_subset=changed_features, compute_effect_on_other_features=True,
-        abs_banzhaf_curve=abs_banzhaf_curve,
+        abs_strategy=abs_strategy,
     )
 
     apply_metric_delta(result, prev_effect, new_effect, changed_features, n)

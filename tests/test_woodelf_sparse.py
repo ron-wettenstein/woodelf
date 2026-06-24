@@ -25,15 +25,23 @@ def test_linear_tree_path_dependent_on_a_model(testset, xgb_model, metric):
             simple_woodelf_values[feature], vectorized_values[feature], atol=TOLERANCE
         )
 
-def test_abs_banzhaf_curve_is_nonneg_and_dominates_shapley(testset, xgb_model):
-    shapley_values = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False)
-    abs_values     = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, abs_banzhaf_curve=True)
+def test_abs_strategies_are_nonneg_and_follow_dominance_chain(testset, xgb_model):
+    # Per leaf the triangle inequality gives ∫|BZ|dp >= |∫BZ dp|, and summing |leaf shapley| over
+    # leaves dominates |sum of leaf shapley|. Since Gauss-Legendre is exact for the Shapley integrand,
+    # the chain holds (up to numerical tolerance):
+    #   abs_banzhaf_curve_leaves >= abs_shapley_leaves >= |shapley| >= shapley
+    shapley     = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False)
+    abs_banzhaf = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, abs_strategy="abs_banzhaf_curve_leaves")
+    abs_shapley = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, abs_strategy="abs_shapley_leaves")
 
     for feature in testset.columns:
-        sv  = shapley_values.get(feature, np.zeros(len(testset)))
-        abv = abs_values.get(feature, np.zeros(len(testset)))
-        assert np.all(abv >= -TOLERANCE), f"abs_banzhaf_curve result is negative for feature {feature!r}"
-        assert np.all(abv >= sv - TOLERANCE), f"abs_banzhaf_curve result < Shapley value for feature {feature!r}"
+        sv  = shapley.get(feature, np.zeros(len(testset)))
+        abz = abs_banzhaf.get(feature, np.zeros(len(testset)))
+        ash = abs_shapley.get(feature, np.zeros(len(testset)))
+        assert np.all(abz >= -TOLERANCE), f"abs_banzhaf_curve_leaves is negative for feature {feature!r}"
+        assert np.all(ash >= -TOLERANCE), f"abs_shapley_leaves is negative for feature {feature!r}"
+        assert np.all(abz >= ash - TOLERANCE), f"abs_banzhaf_curve_leaves < abs_shapley_leaves for feature {feature!r}"
+        assert np.all(ash >= np.abs(sv) - TOLERANCE), f"abs_shapley_leaves < |shapley| for feature {feature!r}"
 
 
 def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):

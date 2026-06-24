@@ -7,7 +7,9 @@ from tqdm import tqdm
 from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
-from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import QuadratureSHAPPathToSVectors
+from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import (
+    QuadratureSHAPPathToSVectors, ABS_STRATEGY_NORMAL, ABS_STRATEGIES,
+)
 from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterPathToSVectors, MNBackgroundPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
@@ -123,7 +125,7 @@ def woodelf_sparse(
     use_neighbor_leaf_trick: bool = True,
     model_was_loaded: bool = False,
     mn_p2s_class=None,
-    abs_banzhaf_curve: bool = False,
+    abs_strategy: str = ABS_STRATEGY_NORMAL,
 ):
     """
     Sparse WOODELF: uses pattern-factorized sparse algorithms for all leaves.
@@ -131,10 +133,13 @@ def woodelf_sparse(
     Background mode (background_data provided): MNBackgroundFasterPathToSVectors (default) or mn_p2s_class.
     Path-dependent mode (background_data is None): LTSRecursivePathToSVectors.
 
-    @param abs_banzhaf_curve: If True, compute ∫|BZ_i(p)|dp instead of ∫BZ_i(p)dp (Shapley values).
-        Uses Gauss-Legendre quadrature (same nodes as the Shapley integral). Note: unlike Shapley values,
-        this integral is approximated (not exact) because |BZ_i(p)| is not a polynomial.
-        Only supported in path-dependent mode (background_data must be None).
+    @param abs_strategy: Controls absolute-value handling of per-leaf contributions (path-dependent mode only):
+        "normal" (default): compute ∫BZ_i(p)dp = Shapley values (exact, via LTSRecursivePathToSVectors).
+        "abs_banzhaf_curve_leaves": per leaf compute ∫|BZ_i(p)|dp (abs the banzhaf curve before the
+            Gauss-Legendre integral), then sum over leaves. Approximated, because |BZ_i(p)| is not a polynomial.
+        "abs_shapley_leaves": per leaf compute |∫BZ_i(p)dp| (abs the leaf's Shapley contribution after the
+            Gauss-Legendre integral), then sum over leaves.
+        The two abs strategies require background_data to be None.
     """
     if not model_was_loaded:
         model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
@@ -142,14 +147,15 @@ def woodelf_sparse(
     effective_depth = min(model.max_depth, len(consumer_data.columns))
     is_background = background_data is not None
 
-    assert not abs_banzhaf_curve or not is_background, "abs_banzhaf_curve is only supported in path-dependent mode (background_data must be None)"
+    assert abs_strategy in ABS_STRATEGIES, f"abs_strategy must be one of {ABS_STRATEGIES}, got {abs_strategy!r}"
+    assert abs_strategy == ABS_STRATEGY_NORMAL or not is_background, "abs strategies are only supported in path-dependent mode (background_data must be None)"
 
     if mn_p2s_class is None:
         mn_p2s_class = MNBackgroundFasterPathToSVectors
     mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth) if is_background else None
     if not is_background:
-        if abs_banzhaf_curve:
-            lts_p2s = QuadratureSHAPPathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU, abs_banzhaf_curve=True)
+        if abs_strategy != ABS_STRATEGY_NORMAL:
+            lts_p2s = QuadratureSHAPPathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU, abs_strategy=abs_strategy)
         else:
             lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU)
     else:

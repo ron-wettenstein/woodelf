@@ -8,16 +8,18 @@ from typing import List
 
 from woodelf.core.cube_metric import ShapleyValues, CubeMetric
 from woodelf.core.path_to_s_vectors.archive.lts_polynomial_multiplication import (
-    quadrature_tree_shap_batched_approach, quadrature_tree_shap_batched_approach_for_neighbors
+    quadrature_tree_shap_batched_approach, quadrature_tree_shap_batched_approach_for_neighbors,
+    ABS_STRATEGY_NORMAL, ABS_STRATEGIES,
 )
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import AlwaysParticipatingLTSPathToSVectors, LTSRecursivePathToSVectors
 
 
 class QuadratureSHAPPathToSVectors(LTSRecursivePathToSVectors):
 
-    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False, abs_banzhaf_curve: bool = False):
+    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False, abs_strategy: str = ABS_STRATEGY_NORMAL):
         super().__init__(metric, max_depth, GPU)
-        self.abs_banzhaf_curve = abs_banzhaf_curve
+        assert abs_strategy in ABS_STRATEGIES, f"abs_strategy must be one of {ABS_STRATEGIES}, got {abs_strategy!r}"
+        self.abs_strategy = abs_strategy
         self.quad_nodes, self.quad_weights = self.compute_quads()
 
     def compute_quads(self):
@@ -31,14 +33,14 @@ class QuadratureSHAPPathToSVectors(LTSRecursivePathToSVectors):
         return quad_nodes, quad_weights
 
     def _get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float, w_neighbor: Optional[float] = None):
-        assert self.abs_banzhaf_curve or isinstance(self.metric, ShapleyValues), "Banzhaf and interaction values are not supported in this PathToSVectors class"
+        assert self.abs_strategy != ABS_STRATEGY_NORMAL or isinstance(self.metric, ShapleyValues), "Banzhaf and interaction values are not supported in this PathToSVectors class"
         start_time = time.time()
         # For D<4 use 2, for D > 32 use 16 for 4<=D<=32 use 0.5*D
         n_quads = min(max(int(math.ceil(len(covers) / 2)), 2), 16)
         if w_neighbor is None:
-            s_matrix = quadrature_tree_shap_batched_approach(covers, consumer_patterns, w, self.quad_nodes[n_quads], self.quad_weights[n_quads], self.abs_banzhaf_curve)
+            s_matrix = quadrature_tree_shap_batched_approach(covers, consumer_patterns, w, self.quad_nodes[n_quads], self.quad_weights[n_quads], self.abs_strategy)
         else:
-            s_matrix = quadrature_tree_shap_batched_approach_for_neighbors(covers, consumer_patterns, w, w_neighbor, self.quad_nodes[n_quads], self.quad_weights[n_quads], self.abs_banzhaf_curve)
+            s_matrix = quadrature_tree_shap_batched_approach_for_neighbors(covers, consumer_patterns, w, w_neighbor, self.quad_nodes[n_quads], self.quad_weights[n_quads], self.abs_strategy)
         self.computation_time += time.time() - start_time
         return s_matrix
 
@@ -50,9 +52,9 @@ class AlwaysParticipatingQuadratureSHAPPathToSVectors(AlwaysParticipatingLTSPath
     """
 
     def __init__(self, metric: CubeMetric, max_depth: int, always_participating: List[str],
-                 GPU: bool = False, abs_banzhaf_curve: bool = False):
+                 GPU: bool = False, abs_strategy: str = ABS_STRATEGY_NORMAL):
         super().__init__(metric, max_depth, always_participating, GPU)
-        self._quadrature = QuadratureSHAPPathToSVectors(metric, max_depth, GPU, abs_banzhaf_curve)
+        self._quadrature = QuadratureSHAPPathToSVectors(metric, max_depth, GPU, abs_strategy)
 
     def _get_s_matrix(self, covers: np.array, consumer_patterns: np.array, w: float, w_neighbor: Optional[float] = None):
         return self._quadrature._get_s_matrix(covers, consumer_patterns, w, w_neighbor)
