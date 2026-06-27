@@ -156,6 +156,25 @@ class AlwaysParticipatingLTSPathToSVectors(LTSRecursivePathToSVectors):
         return {f: s_vec * mask for f, s_vec in result.items()}
 
 
+class AbsLeavesLTSPathToSVectors(LTSRecursivePathToSVectors):
+    """
+    Applies |.| to each leaf's exact metric contribution before it is summed across leaves,
+    producing Σ_leaves |contribution_i^leaf|. With BanzhafValues this is Σ_leaves |Banzhaf_i^leaf|
+    (the Banzhaf value, p=0.5, abs'd per leaf); with ShapleyValues it is Σ_leaves |Shapley_i^leaf|.
+
+    Unlike the Gauss-Legendre abs strategies it stays on the exact path and respects the metric.
+    The neighbor-leaf trick must be off so sibling leaves are abs'd separately, not combined.
+    """
+
+    def get_path_dependent_s_matrix(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        covers: np.ndarray, w: float, w_neighbor: Optional[float] = None
+    ) -> Dict:
+        assert w_neighbor is None, "AbsLeavesLTSPathToSVectors does not support the neighbor-leaf trick"
+        result = super().get_path_dependent_s_matrix(features_in_path, consumer_patterns, covers, w, w_neighbor=None)
+        return {key: np.abs(s_vec) for key, s_vec in result.items()}
+
+
 # !!!!!!!!!!!!!!!! The Recursive Linear TreeSHAP Logic !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 

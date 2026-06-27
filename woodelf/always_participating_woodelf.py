@@ -7,8 +7,9 @@ from tqdm import tqdm
 from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.decision_patterns import decision_patterns_generator, decision_patterns_generator_for_feature_subset
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import AlwaysParticipatingLTSPathToSVectors
-from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import (
-    AlwaysParticipatingQuadratureSHAPPathToSVectors, ABS_STRATEGY_NORMAL, ABS_STRATEGIES,
+from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import AlwaysParticipatingQuadratureSHAPPathToSVectors
+from woodelf.core.path_to_s_vectors.archive.lts_polynomial_multiplication import (
+    ABS_STRATEGY_NORMAL, ABS_STRATEGY_BANZHAF_CURVE_LEAVES,
 )
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
@@ -80,15 +81,20 @@ def path_dependent_under_always_participating_features(
     one feature from this list. Used by the delta update for efficiency.
     @param compute_effect_on_other_features: When features_subset is set, also accumulate
     values for features outside features_subset. Used by the delta update.
-    @param abs_strategy: "normal", "abs_banzhaf_curve_leaves" or "abs_shapley_leaves".
-    See woodelf_sparse for details. The two abs strategies use Gauss-Legendre quadrature.
+    @param abs_strategy: "normal" (default) or "abs_banzhaf_curve_leaves" (per-leaf ∫|BZ_i(p)|dp via
+    Gauss-Legendre). The whole-ensemble ("abs_banzhaf_curve") and exact per-leaf ("abs_leaves") strategies
+    are only available in woodelf_sparse.
 
     @return A dictionary mapping each feature name to a NumPy array of length n.
     """
     if not model_was_loaded:
         model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
 
-    assert abs_strategy in ABS_STRATEGIES, f"abs_strategy must be one of {ABS_STRATEGIES}, got {abs_strategy!r}"
+    _supported_abs_strategies = (ABS_STRATEGY_NORMAL, ABS_STRATEGY_BANZHAF_CURVE_LEAVES)
+    assert abs_strategy in _supported_abs_strategies, (
+        f"path_dependent_under_always_participating_features supports abs_strategy in "
+        f"{_supported_abs_strategies}, got {abs_strategy!r}"
+    )
     effective_depth = min(model.max_depth, len(consumer_data.columns))
     if abs_strategy != ABS_STRATEGY_NORMAL:
         p2s = AlwaysParticipatingQuadratureSHAPPathToSVectors(

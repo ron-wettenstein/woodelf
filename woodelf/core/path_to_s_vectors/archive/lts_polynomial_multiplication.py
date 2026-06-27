@@ -6,12 +6,15 @@ import numpy as np
 from woodelf.core.utils import bits_matrix, neg_bits_matrix
 
 
-# Strategies for applying absolute value to per-leaf contributions (see QuadratureSHAPPathToSVectors).
-# All abs is applied per leaf, then summed over leaves by the caller.
+# Strategies for applying absolute value to feature contributions (see QuadratureSHAPPathToSVectors).
+# normal / "_leaves" strategies apply abs per leaf and the caller sums the resulting scalars.
+# The ensemble strategy defers abs: the caller sums the per-node curves over all leaves, then applies
+# abs and the Gauss-Legendre weighted average once on the whole-ensemble curve.
 ABS_STRATEGY_NORMAL = "normal"                                  # signed: ∫BZ_i(p)dp per leaf = the leaf's Shapley contribution
 ABS_STRATEGY_BANZHAF_CURVE_LEAVES = "abs_banzhaf_curve_leaves"  # ∫|BZ_i(p)|dp per leaf (abs inside the integral, before the GL weighted sum)
-ABS_STRATEGY_SHAPLEY_LEAVES = "abs_shapley_leaves"             # |∫BZ_i(p)dp| per leaf (abs outside the integral, after the GL weighted sum)
-ABS_STRATEGIES = (ABS_STRATEGY_NORMAL, ABS_STRATEGY_BANZHAF_CURVE_LEAVES, ABS_STRATEGY_SHAPLEY_LEAVES)
+ABS_STRATEGY_BANZHAF_CURVE_ENSEMBLE = "abs_banzhaf_curve"      # ∫|Σ_leaves BZ_i(p)|dp: abs the whole-ensemble curve (abs deferred until all leaves are summed)
+ABS_STRATEGY_LEAVES = "abs_leaves"                             # |metric_i| per leaf on the EXACT path (no quadrature): with BanzhafValues -> Σ_leaves |Banzhaf_i^leaf|, with ShapleyValues -> Σ_leaves |Shapley_i^leaf|
+ABS_STRATEGIES = (ABS_STRATEGY_NORMAL, ABS_STRATEGY_BANZHAF_CURVE_LEAVES, ABS_STRATEGY_BANZHAF_CURVE_ENSEMBLE, ABS_STRATEGY_LEAVES)
 
 
 def poly_mul_y_plus_q_inplace_archive(P: np.ndarray, q: np.ndarray) -> None:
@@ -380,6 +383,10 @@ def quadrature_tree_shap_batched_approach(
         suffix[:, d, :] = suffix[:, d + 1, :] * linear_factors[:, d + 1, :]
 
     # Leave-one-out integral: prefix * suffix omits factor d → integrand without feature d
+    if abs_strategy == ABS_STRATEGY_BANZHAF_CURVE_ENSEMBLE:
+        # Whole-ensemble curve: return the per-node banzhaf values and defer abs + the GL weighted sum.
+        # The caller sums these (m, n, n_quad) curves over all leaves, then abs + integrates once.
+        return alpha_e[:, :, None] * (leaf_value * w_prod) * (prefix * suffix)      # (m, n, n_quad)
     if abs_strategy == ABS_STRATEGY_BANZHAF_CURVE_LEAVES:
         # ∫|BZ_i(p)|dp per leaf: abs each Gauss-Legendre node's banzhaf value before the weighted sum
         per_node = alpha_e[:, :, None] * (leaf_value * w_prod) * (prefix * suffix)  # (m, n, n_quad)
@@ -387,9 +394,6 @@ def quadrature_tree_shap_batched_approach(
     else:
         # ∫BZ_i(p)dp per leaf (the leaf's signed Shapley contribution)
         phi = alpha_e * (leaf_value * w_prod) * ((prefix * suffix) @ quad_weights)  # (m, n)
-        if abs_strategy == ABS_STRATEGY_SHAPLEY_LEAVES:
-            # |∫BZ_i(p)dp| per leaf: abs the leaf's Shapley contribution after the Gauss-Legendre integral
-            phi = np.abs(phi)
     return phi
 
 
@@ -500,6 +504,14 @@ def quadrature_tree_shap_batched_approach_for_neighbors(
 
         scale = DTYPE(leaf_value * w_prod)
 
+        if abs_strategy == ABS_STRATEGY_BANZHAF_CURVE_ENSEMBLE:
+            # Whole-ensemble curve: per-node banzhaf values, no abs and no integration
+            # (the caller sums these (m, n, n_quad) curves over all leaves before abs + integrating).
+            per_node_shared = (
+                alpha_e_shared[:, :, None] * scale * (leave_one_out_shared * lf_last[:, None, :])
+            )                                                               # (m, n-1, n_quad)
+            per_node_last = alpha_e_last[:, None] * scale * prefix[:, n - 1, :]  # (m, n_quad)
+            return np.concatenate([per_node_shared, per_node_last[:, None, :]], axis=1)  # (m, n, n_quad)
         if abs_strategy == ABS_STRATEGY_BANZHAF_CURVE_LEAVES:
             # Shared depths: per-node values before weighting
             per_node_shared = (
@@ -522,9 +534,6 @@ def quadrature_tree_shap_batched_approach_for_neighbors(
 
     phi_left  = _phi_leaf(satisfies[:, n - 1],          w_e[n - 1],    w1, w_prod_left, quad_nodes, quad_weights)
     phi_right = _phi_leaf(DTYPE(1.0) - satisfies[:, n - 1], w_e_right_last, w2, w_prod_right, quad_nodes, quad_weights)
-    if abs_strategy == ABS_STRATEGY_SHAPLEY_LEAVES:
-        # The two siblings are distinct leaves: abs each leaf's Shapley contribution, then sum over the two leaves
-        return np.abs(phi_left) + np.abs(phi_right)
     return phi_left + phi_right
 
 

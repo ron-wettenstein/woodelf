@@ -26,22 +26,41 @@ def test_linear_tree_path_dependent_on_a_model(testset, xgb_model, metric):
         )
 
 def test_abs_strategies_are_nonneg_and_follow_dominance_chain(testset, xgb_model):
-    # Per leaf the triangle inequality gives ∫|BZ|dp >= |∫BZ dp|, and summing |leaf shapley| over
-    # leaves dominates |sum of leaf shapley|. Since Gauss-Legendre is exact for the Shapley integrand,
-    # the chain holds (up to numerical tolerance):
-    #   abs_banzhaf_curve_leaves >= abs_shapley_leaves >= |shapley| >= shapley
-    shapley     = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False)
-    abs_banzhaf = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, abs_strategy="abs_banzhaf_curve_leaves")
-    abs_shapley = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, abs_strategy="abs_shapley_leaves")
+    # Triangle inequalities over leaves / quadrature nodes (all weights positive), with Gauss-Legendre
+    # exact for the Shapley integrand, give these chains (up to numerical tolerance):
+    #   abs_banzhaf_curve_leaves >= abs_leaves (Shapley)    >= |shapley| >= shapley
+    #   abs_banzhaf_curve_leaves >= abs_banzhaf_curve (ens) >= |shapley| >= shapley
+    # (abs_leaves with ShapleyValues = Σ_leaves |leaf Shapley|, the exact twin of the old abs_shapley_leaves)
+    shapley      = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False)
+    abs_banzhaf  = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, abs_strategy="abs_banzhaf_curve_leaves")
+    abs_leaves   = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, abs_strategy="abs_leaves")
+    abs_ensemble = woodelf_sparse(xgb_model, testset, None, ShapleyValues(), GPU=False, abs_strategy="abs_banzhaf_curve")
 
     for feature in testset.columns:
         sv  = shapley.get(feature, np.zeros(len(testset)))
         abz = abs_banzhaf.get(feature, np.zeros(len(testset)))
-        ash = abs_shapley.get(feature, np.zeros(len(testset)))
+        al  = abs_leaves.get(feature, np.zeros(len(testset)))
+        aen = abs_ensemble.get(feature, np.zeros(len(testset)))
         assert np.all(abz >= -TOLERANCE), f"abs_banzhaf_curve_leaves is negative for feature {feature!r}"
-        assert np.all(ash >= -TOLERANCE), f"abs_shapley_leaves is negative for feature {feature!r}"
-        assert np.all(abz >= ash - TOLERANCE), f"abs_banzhaf_curve_leaves < abs_shapley_leaves for feature {feature!r}"
-        assert np.all(ash >= np.abs(sv) - TOLERANCE), f"abs_shapley_leaves < |shapley| for feature {feature!r}"
+        assert np.all(al >= -TOLERANCE), f"abs_leaves is negative for feature {feature!r}"
+        assert np.all(aen >= -TOLERANCE), f"abs_banzhaf_curve is negative for feature {feature!r}"
+        assert np.all(abz >= al - TOLERANCE), f"abs_banzhaf_curve_leaves < abs_leaves for feature {feature!r}"
+        assert np.all(abz >= aen - TOLERANCE), f"abs_banzhaf_curve_leaves < abs_banzhaf_curve for feature {feature!r}"
+        assert np.all(al >= np.abs(sv) - TOLERANCE), f"abs_leaves < |shapley| for feature {feature!r}"
+        assert np.all(aen >= np.abs(sv) - TOLERANCE), f"abs_banzhaf_curve < |shapley| for feature {feature!r}"
+
+
+def test_abs_leaves_banzhaf_is_nonneg_and_dominates_signed_banzhaf(testset, xgb_model):
+    # abs_leaves with BanzhafValues = Σ_leaves |Banzhaf_i^leaf| (Banzhaf value at p=0.5, abs'd per leaf),
+    # which is non-negative and dominates |Σ_leaves Banzhaf_i^leaf| = |signed Banzhaf value|.
+    banzhaf     = woodelf_sparse(xgb_model, testset, None, BanzhafValues(), GPU=False)
+    abs_banzhaf = woodelf_sparse(xgb_model, testset, None, BanzhafValues(), GPU=False, abs_strategy="abs_leaves")
+
+    for feature in testset.columns:
+        bz  = banzhaf.get(feature, np.zeros(len(testset)))
+        abz = abs_banzhaf.get(feature, np.zeros(len(testset)))
+        assert np.all(abz >= -TOLERANCE), f"abs_leaves (Banzhaf) is negative for feature {feature!r}"
+        assert np.all(abz >= np.abs(bz) - TOLERANCE), f"abs_leaves (Banzhaf) < |signed Banzhaf| for feature {feature!r}"
 
 
 def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):

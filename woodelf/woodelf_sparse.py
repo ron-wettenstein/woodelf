@@ -6,9 +6,10 @@ from tqdm import tqdm
 
 from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
-from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
-from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import (
-    QuadratureSHAPPathToSVectors, ABS_STRATEGY_NORMAL, ABS_STRATEGIES,
+from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors, AbsLeavesLTSPathToSVectors
+from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import QuadratureSHAPPathToSVectors
+from woodelf.core.path_to_s_vectors.archive.lts_polynomial_multiplication import (
+    ABS_STRATEGY_NORMAL, ABS_STRATEGY_LEAVES, ABS_STRATEGY_BANZHAF_CURVE_ENSEMBLE, ABS_STRATEGIES,
 )
 from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterPathToSVectors, MNBackgroundPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
@@ -133,13 +134,16 @@ def woodelf_sparse(
     Background mode (background_data provided): MNBackgroundFasterPathToSVectors (default) or mn_p2s_class.
     Path-dependent mode (background_data is None): LTSRecursivePathToSVectors.
 
-    @param abs_strategy: Controls absolute-value handling of per-leaf contributions (path-dependent mode only):
+    @param abs_strategy: Controls absolute-value handling of contributions (path-dependent mode only):
         "normal" (default): compute ∫BZ_i(p)dp = Shapley values (exact, via LTSRecursivePathToSVectors).
+        "abs_leaves": per leaf, abs the EXACT metric contribution then sum over leaves: Σ_leaves |metric_i^leaf|.
+            Respects the metric — with BanzhafValues this is the |Banzhaf value (p=0.5)| per leaf; with
+            ShapleyValues it is |Shapley contribution| per leaf. No quadrature/integral.
         "abs_banzhaf_curve_leaves": per leaf compute ∫|BZ_i(p)|dp (abs the banzhaf curve before the
             Gauss-Legendre integral), then sum over leaves. Approximated, because |BZ_i(p)| is not a polynomial.
-        "abs_shapley_leaves": per leaf compute |∫BZ_i(p)dp| (abs the leaf's Shapley contribution after the
-            Gauss-Legendre integral), then sum over leaves.
-        The two abs strategies require background_data to be None.
+        "abs_banzhaf_curve": ∫|Σ_leaves BZ_i(p)|dp — abs the whole-ensemble banzhaf curve (abs deferred until
+            all leaves are summed), then integrate. Approximated.
+        The abs strategies require background_data to be None.
     """
     if not model_was_loaded:
         model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
@@ -154,12 +158,18 @@ def woodelf_sparse(
         mn_p2s_class = MNBackgroundFasterPathToSVectors
     mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth) if is_background else None
     if not is_background:
-        if abs_strategy != ABS_STRATEGY_NORMAL:
+        if abs_strategy == ABS_STRATEGY_LEAVES:
+            # |metric_i| per leaf on the exact path (e.g. abs of the Banzhaf value in each leaf).
+            lts_p2s = AbsLeavesLTSPathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU)
+        elif abs_strategy != ABS_STRATEGY_NORMAL:
             lts_p2s = QuadratureSHAPPathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU, abs_strategy=abs_strategy)
         else:
             lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU)
     else:
         lts_p2s = None
+
+    if abs_strategy == ABS_STRATEGY_LEAVES:
+        use_neighbor_leaf_trick = False  # abs each physical leaf separately; the neighbor trick combines siblings
 
     if isinstance(metric, ShapleyInteractionValues) and not is_background:
         use_neighbor_leaf_trick = False # Linear TreeSHAP doesn't support the neighbor_leaf_trick for interaction values
@@ -181,6 +191,14 @@ def woodelf_sparse(
         mn_p2s.present_statistics()
     if lts_p2s is not None:
         lts_p2s.present_statistics()
+
+    if abs_strategy == ABS_STRATEGY_BANZHAF_CURVE_ENSEMBLE:
+        # Each values[feature] holds the accumulated per-node whole-ensemble banzhaf curve (n_consumers, n_quad).
+        # Apply |.| to the full curve, then the Gauss-Legendre weighted average: ∫|Σ_leaves BZ_i(p)|dp.
+        xp = cp if GPU else np
+        weights = xp.asarray(lts_p2s.get_ensemble_quad_weights())
+        for feature in values:
+            values[feature] = (xp.abs(values[feature]) * weights).sum(axis=-1)
 
     return values
 
