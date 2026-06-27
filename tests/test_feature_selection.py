@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import xgboost as xgb
 
-from woodelf.feature_selection import feature_selection_ranking
+from woodelf.feature_selection import feature_selection_ranking, _monotone_xgboost_impute
 
 N = 10
 N_TOTAL = 60
@@ -115,3 +115,79 @@ def test_correlated_features_neutralized_with_auto_selection():
             assert len(nonzero) == 0, f"{group_name}-group anchor in initial selection but {nonzero} have non-zero contribution"
         else:
             assert len(nonzero) <= 1, f"No {group_name}-group anchor selected but {nonzero} have non-zero contribution"
+
+
+# --- monoton_xgboost baseline scheme ---
+
+_XGB_N_TOTAL = 500
+_XGB_N_TRAIN = 400
+_XGB_N_CONSUMER = _XGB_N_TOTAL - _XGB_N_TRAIN  # 100
+
+
+def _monotone_redundancy_data() -> pd.DataFrame:
+    # 'x3' is a monotone-but-NON-linear function of the anchor 'x'. 'x' is placed last so that its
+    # column index sits beyond the model's features (model is trained on the first five columns),
+    # keeping the parser's positional feature mapping aligned while 'x' stays an unused-by-model anchor.
+    rng = np.random.default_rng(0)
+    x = rng.standard_normal(_XGB_N_TOTAL)
+    return pd.DataFrame({
+        'x3': x ** 3,
+        'B': rng.standard_normal(_XGB_N_TOTAL),
+        'C': rng.standard_normal(_XGB_N_TOTAL),
+        'D': rng.standard_normal(_XGB_N_TOTAL),
+        'E': rng.standard_normal(_XGB_N_TOTAL),
+        'x': x,
+    })
+
+
+def _redundancy_model(df: pd.DataFrame) -> xgb.Booster:
+    model_cols = ['x3', 'B', 'C', 'D', 'E']  # excludes 'x' so the model genuinely splits on the nonlinear x3
+    train = df.iloc[:_XGB_N_TRAIN]
+    rng = np.random.default_rng(1)
+    y = 2 * train['x3'] - train['B'] + 0.5 * train['C'] + rng.standard_normal(_XGB_N_TRAIN) * 0.1
+    return xgb.train(
+        {'max_depth': 4, 'nthread': 1, 'seed': 1},
+        xgb.DMatrix(train[model_cols], label=y),
+        num_boost_round=40,
+    )
+
+
+def test_monoton_xgboost_ranking_structure():
+    df = _monotone_redundancy_data()
+    model = _redundancy_model(df)
+    consumer = df.iloc[_XGB_N_TRAIN:].reset_index(drop=True)
+    ranking, values = feature_selection_ranking(
+        model, consumer,
+        baseline_init_scheme="monoton_xgboost", baseline_updating_scheme="monoton_xgboost",
+    )
+    assert set(ranking) == set(consumer.columns)
+    assert len(ranking) == len(set(ranking)) == len(consumer.columns)
+    for f, v in values.items():
+        assert isinstance(v, np.ndarray) and len(v) == _XGB_N_CONSUMER
+
+
+def test_monoton_xgboost_neutralizes_nonlinear_redundancy_better_than_pearson():
+    df = _monotone_redundancy_data()
+    model = _redundancy_model(df)
+    consumer = df.iloc[_XGB_N_TRAIN:].reset_index(drop=True)
+
+    def x3_residual(scheme: str) -> float:
+        _, values = feature_selection_ranking(
+            model, consumer, initial_selection=['x', 'B', 'C'],
+            baseline_init_scheme=scheme, baseline_updating_scheme=scheme,
+        )
+        return float(np.mean(np.abs(values.get('x3', np.zeros(_XGB_N_CONSUMER)))))
+
+    pearson = x3_residual("pearson_correlation")
+    monotone = x3_residual("monoton_xgboost")
+    # The OLS line a + b*x cannot cancel the cubic, so x3 keeps a large residual; the monotone XGBoost
+    # imputes x3 from x far better, so x3 is recognised as more redundant (smaller residual).
+    assert monotone < pearson, f"monoton_xgboost residual {monotone} should be < pearson residual {pearson}"
+
+
+def test_monotone_xgboost_impute_falls_back_on_degenerate():
+    # Constant anchor -> undefined correlation -> constant (mean) baseline, mirroring _linreg_coeffs.
+    x = pd.Series(np.ones(100))
+    y = pd.Series(np.arange(100, dtype=float))
+    out = _monotone_xgboost_impute(x, y, n=100)
+    np.testing.assert_allclose(out, float(y.mean()))

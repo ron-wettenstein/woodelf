@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import xgboost as xgb
 from tqdm import tqdm
 
 from woodelf.core.cube_metric import BanzhafValues, CubeMetric
@@ -9,6 +10,24 @@ from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.always_participating_woodelf import always_participating_delta_update, path_dependent_under_always_participating_features
 from woodelf.personalized_woodelf import personalized_baseline_delta_update, personalized_baseline_woodelf
 from woodelf.woodelf_sparse import woodelf_sparse
+
+
+# Correlation-based baseline schemes (impute a remaining feature from its most-correlated anchor).
+_CORRELATION_SCHEMES = ("pearson_correlation", "monoton_xgboost")
+
+# XGBoost hyper-parameters for the monotone single-feature imputation (the "monoton_xgboost" schemes).
+# Depth/trees/lr are deliberately small so the fit estimates E[f1|f2] (the signal) rather than memorising
+# f1; the min_child_weight floor (computed per-n at fit time) keeps every monotone bin backed by enough rows.
+_MONOTONE_XGB_PARAMS = dict(
+    n_estimators=10,
+    learning_rate=0.3,
+    max_depth=3,
+    subsample=1.0,
+    colsample_bytree=1.0,
+    reg_lambda=1.0,
+    random_state=0,
+    objective="reg:squarederror",
+)
 
 
 def _linreg_coeffs(x: pd.Series, y: pd.Series) -> Tuple[float, float]:
@@ -21,19 +40,54 @@ def _linreg_coeffs(x: pd.Series, y: pd.Series) -> Tuple[float, float]:
     return float(const), float(coef)
 
 
-def _best_anchor(f: str, candidates: List[str], consumer_data: pd.DataFrame) -> Tuple[str, float, float, float]:
-    """Find the candidate with the highest |Pearson r| to feature f. Returns (anchor, abs_corr, const, coef)."""
+def _monotone_xgboost_impute(x: pd.Series, y: pd.Series, n: int) -> np.ndarray:
+    """
+    Impute y from a single feature x with a monotone XGBoost (the "monoton_xgboost" baseline).
+
+    The monotone direction follows the sign of Spearman's rho, so the imputation is a robust, possibly
+    non-linear, monotone function of x — more robust to outliers and ordinal/non-linear relationships
+    than the OLS a + b*x baseline. Degenerate cases (constant x, or zero/NaN correlation) fall back to a
+    constant baseline (the mean of y), mirroring _linreg_coeffs.
+    """
+    if x.std() == 0:  # constant anchor: correlation is undefined, fall back without computing it
+        return np.full(len(y), float(y.mean()))
+    rho = x.corr(y, method="spearman")
+    if np.isnan(rho) or rho == 0.0:
+        return np.full(len(y), float(y.mean()))
+    sign = 1 if rho > 0 else -1
+    model = xgb.XGBRegressor(
+        monotone_constraints=(sign,),
+        min_child_weight=max(20, int(0.02 * n)),
+        **_MONOTONE_XGB_PARAMS,
+    )
+    x_2d = x.to_numpy().reshape(-1, 1)
+    model.fit(x_2d, y.to_numpy())
+    return model.predict(x_2d)
+
+
+def _impute_baseline(target: str, anchor: str, consumer_data: pd.DataFrame, scheme: str, n: int):
+    """Impute the background values B[target] from C[anchor] for a correlation-based scheme."""
+    x, y = consumer_data[anchor], consumer_data[target]
+    if scheme == "pearson_correlation":
+        const, coef = _linreg_coeffs(x, y)
+        return const + coef * x
+    if scheme == "monoton_xgboost":
+        return _monotone_xgboost_impute(x, y, n)
+    raise ValueError(f"scheme {scheme!r} is not a correlation-based imputation scheme")
+
+
+def _best_anchor(f: str, candidates: List[str], consumer_data: pd.DataFrame, corr_method: str) -> Tuple[str, float]:
+    """Find the candidate with the highest |corr| (corr_method) to feature f. Returns (anchor, abs_corr)."""
     best_abs_corr = -1.0
     best_f_sel = candidates[0]
     for f_sel in candidates:
-        abs_corr = abs(consumer_data[f].corr(consumer_data[f_sel]))
+        abs_corr = abs(consumer_data[f].corr(consumer_data[f_sel], method=corr_method))
         if np.isnan(abs_corr):
             abs_corr = 0.0
         if abs_corr > best_abs_corr:
             best_abs_corr = abs_corr
             best_f_sel = f_sel
-    const, coef = _linreg_coeffs(consumer_data[best_f_sel], consumer_data[f])
-    return best_f_sel, best_abs_corr, const, coef
+    return best_f_sel, best_abs_corr
 
 
 def _mean_abs(values: Dict[str, np.ndarray], features: List[str], n: int) -> Dict[str, float]:
@@ -44,22 +98,24 @@ def _init_background(
     consumer_data: pd.DataFrame,
     remaining: List[str],
     baseline_init_scheme: str,
-    anchor_info: Dict[str, Tuple[str, float, float, float]],
+    anchor_info: Dict[str, Tuple[str, float]],
+    n: int,
 ) -> pd.DataFrame:
     """
     Build the initial background B for remaining features.
 
     Selected features: B[f] = C[f] (copy of consumer, already set).
     Remaining features depend on the scheme:
-      - pearson_correlation: B[f] = const + coef * C[best_anchor], taken from anchor_info.
+      - pearson_correlation: B[f] = const + coef * C[best_anchor] via OLS.
+      - monoton_xgboost:     B[f] = monotone XGBoost prediction from C[best_anchor].
       - median: B[f] = median(C[f]) — same constant for all rows.
       - mean:   B[f] = mean(C[f])  — same constant for all rows.
     """
     B = consumer_data.copy()
-    if baseline_init_scheme == "pearson_correlation":
+    if baseline_init_scheme in _CORRELATION_SCHEMES:
         for f in remaining:
-            anchor, _, const, coef = anchor_info[f]
-            B[f] = const + coef * consumer_data[anchor]
+            anchor, _ = anchor_info[f]
+            B[f] = _impute_baseline(f, anchor, consumer_data, baseline_init_scheme, n)
     elif baseline_init_scheme == "median":
         for f in remaining:
             B[f] = consumer_data[f].median()
@@ -95,23 +151,31 @@ def feature_selection_ranking(
 
     @param baseline_init_scheme: How to set the initial background B for remaining features:
         - "pearson_correlation": B[f] = const + coef * C[best_anchor] via OLS (default).
+        - "monoton_xgboost": B[f] = monotone XGBoost prediction from C[best_anchor]. The anchor is chosen
+          by Spearman correlation and the model is constrained monotone in the Spearman-sign direction.
+          More robust to outliers and ordinal/non-linear relationships than the OLS line.
         - "median": B[f] = median(C[f]) — same constant for all rows.
         - "mean":   B[f] = mean(C[f])  — same constant for all rows.
     @param baseline_updating_scheme: How to update B each time a new feature is selected:
         - "pearson_correlation": re-anchor each remaining feature to the best correlated selected
           feature using OLS (default).
+        - "monoton_xgboost": re-anchor (by Spearman correlation) using the monotone XGBoost imputation.
         - "do_nothing": only neutralize B[top_f] = C[top_f]; leave all other baselines unchanged.
         - "median_correlation": not yet implemented.
+
+    Correlation method: Spearman is used whenever either scheme is "monoton_xgboost", otherwise Pearson.
     """
-    _VALID_INIT_SCHEMES = {"pearson_correlation", "median", "mean"}
+    _VALID_INIT_SCHEMES = {"pearson_correlation", "monoton_xgboost", "median", "mean"}
     if baseline_init_scheme not in _VALID_INIT_SCHEMES:
         raise ValueError(f"baseline_init_scheme must be one of {_VALID_INIT_SCHEMES}, got {baseline_init_scheme!r}")
 
-    _VALID_UPDATE_SCHEMES = {"pearson_correlation", "do_nothing", "median_correlation"}
+    _VALID_UPDATE_SCHEMES = {"pearson_correlation", "monoton_xgboost", "do_nothing", "median_correlation"}
     if baseline_updating_scheme not in _VALID_UPDATE_SCHEMES:
         raise ValueError(f"baseline_updating_scheme must be one of {_VALID_UPDATE_SCHEMES}, got {baseline_updating_scheme!r}")
     if baseline_updating_scheme == "median_correlation":
         raise NotImplementedError("baseline_updating_scheme='median_correlation' is not yet implemented")
+
+    corr_method = "spearman" if "monoton_xgboost" in (baseline_init_scheme, baseline_updating_scheme) else "pearson"
 
     if metric is None:
         metric = BanzhafValues()
@@ -137,12 +201,12 @@ def feature_selection_ranking(
         return list(initial_selection), initial_selection_values or {}
 
     # --- Build initial background B ---
-    anchor_info: Dict[str, Tuple[str, float, float, float]] = {}
-    if baseline_init_scheme == "pearson_correlation" or baseline_updating_scheme == "pearson_correlation":
+    anchor_info: Dict[str, Tuple[str, float]] = {}
+    if baseline_init_scheme in _CORRELATION_SCHEMES or baseline_updating_scheme in _CORRELATION_SCHEMES:
         for f in remaining:
-            anchor_info[f] = _best_anchor(f, selected, consumer_data)
+            anchor_info[f] = _best_anchor(f, selected, consumer_data, corr_method)
 
-    B = _init_background(consumer_data, remaining, baseline_init_scheme, anchor_info)
+    B = _init_background(consumer_data, remaining, baseline_init_scheme, anchor_info, n)
 
     # --- Initial personalized baseline run ---
     result = personalized_baseline_woodelf(
@@ -190,16 +254,15 @@ def feature_selection_ranking(
 
             # Determine which features will switch anchor — pre-compute before touching B
             changed_features: List[str] = []
-            new_anchor_data: Dict[str, Tuple] = {}
-            if baseline_updating_scheme == "pearson_correlation":
+            new_anchor_data: Dict[str, Tuple[str, float]] = {}
+            if baseline_updating_scheme in _CORRELATION_SCHEMES:
                 for f in remaining:
-                    _, curr_best_corr, _, _ = anchor_info[f]
-                    abs_corr_with_top_f = abs(consumer_data[f].corr(consumer_data[top_f]))
+                    _, curr_best_corr = anchor_info[f]
+                    abs_corr_with_top_f = abs(consumer_data[f].corr(consumer_data[top_f], method=corr_method))
                     if np.isnan(abs_corr_with_top_f):
                         abs_corr_with_top_f = 0.0
                     if abs_corr_with_top_f > curr_best_corr:
-                        const, coef = _linreg_coeffs(consumer_data[top_f], consumer_data[f])
-                        new_anchor_data[f] = (top_f, abs_corr_with_top_f, const, coef)
+                        new_anchor_data[f] = (top_f, abs_corr_with_top_f)
                         changed_features.append(f)
 
             # top_f included because B[top_f] is also changing (neutralized to consumer)
@@ -207,8 +270,8 @@ def feature_selection_ranking(
 
             # Build new B (apply anchor switches and neutralize top_f)
             new_B = B.copy()
-            for f, (anchor, abs_corr, const, coef) in new_anchor_data.items():
-                new_B[f] = const + coef * consumer_data[top_f]
+            for f in new_anchor_data:
+                new_B[f] = _impute_baseline(f, top_f, consumer_data, baseline_updating_scheme, n)
             new_B[top_f] = consumer_data[top_f]
 
             result = personalized_baseline_delta_update(
@@ -216,8 +279,8 @@ def feature_selection_ranking(
                 GPU=GPU, model_was_loaded=True,
             )
 
-            for f, (anchor, abs_corr, const, coef) in new_anchor_data.items():
-                anchor_info[f] = (anchor, abs_corr, const, coef)
+            for f, anchor_data in new_anchor_data.items():
+                anchor_info[f] = anchor_data
             B = new_B
             selected.append(top_f)
 
