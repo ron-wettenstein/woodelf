@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import xgboost as xgb
 
-from woodelf.feature_selection import feature_selection_ranking, _monotone_xgboost_impute
+from woodelf.feature_selection import feature_selection_ranking, _monotone_xgboost_impute, _init_background
 
 N = 10
 N_TOTAL = 60
@@ -191,3 +191,50 @@ def test_monotone_xgboost_impute_falls_back_on_degenerate():
     y = pd.Series(np.arange(100, dtype=float))
     out = _monotone_xgboost_impute(x, y, n=100)
     np.testing.assert_allclose(out, float(y.mean()))
+
+
+# --- min_corr threshold ---
+
+def test_min_corr_forces_mean_baseline_for_weak_anchor():
+    # 'strong' is ~perfectly correlated with anchor 'a'; 'weak' is independent of it.
+    rng = np.random.default_rng(7)
+    a = rng.standard_normal(200)
+    consumer = pd.DataFrame({
+        'a': a,
+        'strong': a + rng.standard_normal(200) * 0.1,
+        'weak': rng.standard_normal(200),
+    })
+    anchor_info = {'strong': ('a', 0.9), 'weak': ('a', 0.02)}
+    remaining = ['strong', 'weak']
+
+    # Threshold above the weak anchor's |corr|: 'weak' falls back to a constant mean baseline,
+    # while 'strong' is still imputed (non-constant).
+    B = _init_background(consumer, remaining, "pearson_correlation", anchor_info, len(consumer), min_corr=0.5)
+    np.testing.assert_allclose(B['weak'].to_numpy(), consumer['weak'].mean())
+    assert B['strong'].nunique() > 1
+
+    # No threshold: 'weak' is imputed via OLS, not forced to the constant mean.
+    B_none = _init_background(consumer, remaining, "pearson_correlation", anchor_info, len(consumer), min_corr=None)
+    assert not np.allclose(B_none['weak'].to_numpy(), consumer['weak'].mean())
+
+
+def test_min_corr_none_matches_default(consumer, sim_model):
+    r_default, v_default = feature_selection_ranking(sim_model, consumer)
+    r_none, v_none = feature_selection_ranking(sim_model, consumer, min_corr=None)
+    assert r_default == r_none
+    assert set(v_default) == set(v_none)
+    for f in v_default:
+        np.testing.assert_array_equal(v_default[f], v_none[f])
+
+
+def test_min_corr_runs_end_to_end(consumer, sim_model):
+    ranking, values = feature_selection_ranking(sim_model, consumer, min_corr=0.3)
+    assert set(ranking) == set(consumer.columns)
+    assert len(ranking) == len(set(ranking)) == len(consumer.columns)
+    for f, v in values.items():
+        assert isinstance(v, np.ndarray) and len(v) == N
+
+
+def test_min_corr_out_of_range_raises(consumer, sim_model):
+    with pytest.raises(ValueError):
+        feature_selection_ranking(sim_model, consumer, min_corr=1.5)

@@ -100,6 +100,7 @@ def _init_background(
     baseline_init_scheme: str,
     anchor_info: Dict[str, Tuple[str, float]],
     n: int,
+    min_corr: Optional[float] = None,
 ) -> pd.DataFrame:
     """
     Build the initial background B for remaining features.
@@ -110,12 +111,18 @@ def _init_background(
       - monoton_xgboost:     B[f] = monotone XGBoost prediction from C[best_anchor].
       - median: B[f] = median(C[f]) — same constant for all rows.
       - mean:   B[f] = mean(C[f])  — same constant for all rows.
+
+    For the correlation-based schemes, a feature whose best-anchor |corr| < min_corr falls back to the
+    mean baseline (too weak an anchor to impute from reliably).
     """
     B = consumer_data.copy()
     if baseline_init_scheme in _CORRELATION_SCHEMES:
         for f in remaining:
-            anchor, _ = anchor_info[f]
-            B[f] = _impute_baseline(f, anchor, consumer_data, baseline_init_scheme, n)
+            anchor, abs_corr = anchor_info[f]
+            if min_corr is not None and abs_corr < min_corr:
+                B[f] = consumer_data[f].mean()
+            else:
+                B[f] = _impute_baseline(f, anchor, consumer_data, baseline_init_scheme, n)
     elif baseline_init_scheme == "median":
         for f in remaining:
             B[f] = consumer_data[f].median()
@@ -133,6 +140,7 @@ def feature_selection_ranking(
     GPU: bool = False,
     baseline_updating_scheme: str = "pearson_correlation",
     baseline_init_scheme: str = "pearson_correlation",
+    min_corr: Optional[float] = None,
 ) -> Tuple[List[str], Dict[str, np.ndarray]]:
     """
     Ranks features by their marginal contribution under personalized baselines.
@@ -156,6 +164,7 @@ def feature_selection_ranking(
           More robust to outliers and ordinal/non-linear relationships than the OLS line.
         - "median": B[f] = median(C[f]) — same constant for all rows.
         - "mean":   B[f] = mean(C[f])  — same constant for all rows.
+        The "mean"/"median" inits currently require baseline_updating_scheme="do_nothing".
     @param baseline_updating_scheme: How to update B each time a new feature is selected:
         - "pearson_correlation": re-anchor each remaining feature to the best correlated selected
           feature using OLS (default).
@@ -164,7 +173,16 @@ def feature_selection_ranking(
         - "median_correlation": not yet implemented.
 
     Correlation method: Spearman is used whenever either scheme is "monoton_xgboost", otherwise Pearson.
+
+    @param min_corr: Minimum |correlation| with the best anchor required to impute a feature from it.
+        When provided, any remaining feature whose best-anchor |corr| < min_corr is given a constant
+        mean baseline (B[f] = mean(C[f])) instead of a correlation-based imputation — a weak anchor
+        would fit noise, so the mean is the safer baseline. None (default) disables the threshold and
+        every feature is imputed from its best anchor. Only affects the correlation-based schemes
+        ("pearson_correlation", "monoton_xgboost"); a no-op for the "mean"/"median"/"do_nothing" schemes.
     """
+    if min_corr is not None and not 0.0 <= min_corr <= 1.0:
+        raise ValueError(f"min_corr must be in [0, 1] or None, got {min_corr!r}")
     _VALID_INIT_SCHEMES = {"pearson_correlation", "monoton_xgboost", "median", "mean"}
     if baseline_init_scheme not in _VALID_INIT_SCHEMES:
         raise ValueError(f"baseline_init_scheme must be one of {_VALID_INIT_SCHEMES}, got {baseline_init_scheme!r}")
@@ -174,6 +192,14 @@ def feature_selection_ranking(
         raise ValueError(f"baseline_updating_scheme must be one of {_VALID_UPDATE_SCHEMES}, got {baseline_updating_scheme!r}")
     if baseline_updating_scheme == "median_correlation":
         raise NotImplementedError("baseline_updating_scheme='median_correlation' is not yet implemented")
+    # mean/median init records no anchor correlations, so a correlation-based updating scheme would never
+    # re-anchor features that are correlated with the initial selection (they would stay on the constant
+    # baseline). Until that is handled, only the "do_nothing" updating scheme is supported with these inits.
+    if baseline_init_scheme in {"mean", "median"} and baseline_updating_scheme != "do_nothing":
+        raise ValueError(
+            f"baseline_init_scheme={baseline_init_scheme!r} only supports baseline_updating_scheme='do_nothing', "
+            f"got baseline_updating_scheme={baseline_updating_scheme!r}"
+        )
 
     corr_method = "spearman" if "monoton_xgboost" in (baseline_init_scheme, baseline_updating_scheme) else "pearson"
 
@@ -186,6 +212,8 @@ def feature_selection_ranking(
     model_obj = load_decision_tree_ensemble_model(model, all_features)
 
     # --- Determine initial selection ---
+    if initial_selection is not None and len(initial_selection) == 0:
+        initial_selection = None  # an empty list means "no anchors provided" -> auto-select below
     initial_selection_values: Optional[Dict[str, np.ndarray]] = None
     if initial_selection is None:
         values = woodelf_sparse(model_obj, consumer_data, None, metric, GPU=GPU, model_was_loaded=True)
@@ -206,7 +234,7 @@ def feature_selection_ranking(
         for f in remaining:
             anchor_info[f] = _best_anchor(f, selected, consumer_data, corr_method)
 
-    B = _init_background(consumer_data, remaining, baseline_init_scheme, anchor_info, n)
+    B = _init_background(consumer_data, remaining, baseline_init_scheme, anchor_info, n, min_corr)
 
     # --- Initial personalized baseline run ---
     result = personalized_baseline_woodelf(
@@ -263,14 +291,15 @@ def feature_selection_ranking(
                         abs_corr_with_top_f = 0.0
                     if abs_corr_with_top_f > curr_best_corr:
                         new_anchor_data[f] = (top_f, abs_corr_with_top_f)
-                        changed_features.append(f)
+                        if min_corr is None or abs_corr_with_top_f >= min_corr:
+                            changed_features.append(f)
 
             # top_f included because B[top_f] is also changing (neutralized to consumer)
             features_subset_delta = [top_f] + changed_features
 
-            # Build new B (apply anchor switches and neutralize top_f)
+            # Build new B (impute the features whose baseline changed and neutralize top_f)
             new_B = B.copy()
-            for f in new_anchor_data:
+            for f in changed_features:
                 new_B[f] = _impute_baseline(f, top_f, consumer_data, baseline_updating_scheme, n)
             new_B[top_f] = consumer_data[top_f]
 
