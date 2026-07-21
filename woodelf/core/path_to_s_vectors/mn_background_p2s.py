@@ -16,6 +16,8 @@ class MNBackgroundPathToSVectors(PathToSVectors):
     Our approach has O(mn) complexity but still have 2 advantages over the shap package:
     1. The m and n are not really the size of the consumer and background datasets but their number of unique decision patterns - which is effectively much smaller.
     2. All operations are vectorized using numpy.
+
+    Requires numpy >= 2, as it uses np.bitwise_count (added in numpy 2.0).
     """
 
     BATCH_SIZE = 1_000_000
