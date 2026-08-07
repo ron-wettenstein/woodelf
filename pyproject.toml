@@ -27,7 +27,8 @@ test = [
     "pytest",
     "xgboost>=2.0",
     "scikit-learn",
-    "shap"
+    "shap",
+    "treelite"
 ]
 
 gpu = [
