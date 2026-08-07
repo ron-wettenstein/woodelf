@@ -129,7 +129,7 @@ def find_the_right_decision_tree_class(model):
             return MODEL_CLASS_TO_DECISION_TREE_CLASS[class_name]
     return DecisionTreeNode
 
-def load_decision_tree_ensemble_model(model, features) -> DecisionTreesEnsemble:
+def load_model_using_shap(model, features) -> DecisionTreesEnsemble:
     """
     Load an XGBoost regressor tree (utilizing the shap python package parsing object)
     """
