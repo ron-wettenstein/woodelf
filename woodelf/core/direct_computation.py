@@ -212,12 +212,7 @@ class CIIDirectComputation(DirectComputation):
     Direct computation of an interaction index of any order k, straight from its definition:
         I(S) = sum over T subset of (variables minus S) of weight(|T|) * discrete_derivative_S(T)
         discrete_derivative_S(T) = sum over L subset of S of (-1)^(k-|L|) * v(T union L)
-    For order 1 the discrete derivative is v(T + i) - v(T), so this generalizes
-    GameTheoryMetricDirectComputation, and for order 2 it generalizes GameTheoryIVMetricDirectComputation.
-
-    Values are keyed by the sorted tuple of the subset's variables, each holding the full interaction value
-    once - matching the CardinalitySymmetricInteractionMetric convention (and unlike the IV classes above,
-    which report both orderings of every pair, each holding half of the value).
+    Generalizes the order 1 and order 2 classes above.
     """
     def __init__(self, order: int):
         assert order >= 1
