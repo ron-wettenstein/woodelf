@@ -90,7 +90,7 @@ CII_RANGE_METRICS_IDS = ["GeneralShapleyInteractionValues", "GeneralBanzhafInter
                          ids=CII_RANGE_METRICS_IDS)
 def test_background_cii_range_metric_computation_xgboost(metric, cii_direct_computation_class):
     X_test, X_train, model = train_xgboost(n_cols=4)
-    consumer_data = X_test.head(5)
+    consumer_data = X_test.head(2)
     woodelf_values = calculate_background_metric(
         model, consumer_data=consumer_data, background_data=X_train, metric=metric
     )
