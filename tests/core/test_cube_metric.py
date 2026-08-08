@@ -37,16 +37,6 @@ ALL_METRICS_IDS = [
 ] + GENERAL_METRICS_IDS
 
 
-def key_order(metric: CubeMetric, key) -> int:
-    """
-    The interaction order a value reported under `key` belongs to: the CII metrics key every subset by its
-    own tuple, while the dedicated classes are either order 1 (values) or order 2 (interaction values).
-    """
-    if isinstance(metric, CardinalityInteractionIndicesMetric):
-        return len(key)
-    return 2 if metric.INTERACTION_VALUE else 1
-
-
 @pytest.mark.parametrize("metric, direct_computation", ALL_METRICS_AND_DIRECT_COMPUTATIONS,
                          ids=ALL_METRICS_IDS)
 def test_metric(metric: CubeMetric, direct_computation: DirectComputation):
@@ -71,7 +61,10 @@ def test_metric_applies_on_wcnf(metric: CubeMetric, direct_computation: DirectCo
         values_using_metric = wdnf.calc_metric(metric)
         values_using_direct_computation = direct_computation.compute(wdnf_of_the_wdnf_treated_as_wdnf)
         for v in values_using_metric:
-            sign = (-1) ** (key_order(metric, v) + 1)
+            if not metric.INTERACTION_VALUE:
+                sign = 1
+            else:
+                sign = (-1) ** (len(v) + 1)
             assert abs(sign * values_using_metric[v] - values_using_direct_computation[v]) < TOLERANCE
 
 
