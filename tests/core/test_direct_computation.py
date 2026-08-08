@@ -19,8 +19,6 @@ from woodelf.simple_woodelf import calculate_background_metric, calculate_path_d
 
 class BackgroundXGBoostCF(BackgroundModelCF):
     def mean_model_prediction(self, data):
-        # nthread=1 as the direct computations call this on tiny frames, where spinning up the DMatrix
-        # worker threads costs an order of magnitude more than building the matrix single threaded.
         return np.mean(self.model.predict(xgb.DMatrix(data, nthread=1)))
 
 TOLERANCE = 1e-5
@@ -92,18 +90,15 @@ CII_RANGE_METRICS_IDS = ["GeneralShapleyInteractionValues", "GeneralBanzhafInter
                          ids=CII_RANGE_METRICS_IDS)
 def test_background_cii_range_metric_computation_xgboost(metric, cii_direct_computation_class):
     X_test, X_train, model = train_xgboost(n_cols=4)
-    # The direct computation explodes over all the assignments of every subset of every order in the range,
-    # so it is run on a small consumer and background data to keep the test fast.
     consumer_data = X_test.head(5)
-    background_data = X_train.head(10)
     woodelf_values = calculate_background_metric(
-        model, consumer_data=consumer_data, background_data=background_data, metric=metric
+        model, consumer_data=consumer_data, background_data=X_train, metric=metric
     )
 
     i = 0
     for index, df_row in consumer_data.iterrows():
         row = {k: float(v) for k,v in dict(df_row).items()}
-        cf = BackgroundXGBoostCF(model, row, background_data)
+        cf = BackgroundXGBoostCF(model, row, X_train)
         for order in range(metric.min_order, metric.max_order + 1):
             values_using_direct_computation = cii_direct_computation_class(order).compute(cf)
             for subset in woodelf_values:
