@@ -41,9 +41,7 @@ A simple pip install:
 pip install woodelf_explainer
 </pre>
 
-The required dependencies are `pandas`, `numpy`, `scipy`, and `shap`. 
-The `shap` package is used for parsing decision trees and for minor auxiliary operations, 
-while the Shapley value computation is handled entirely by WOODELF.
+The required dependencies are `pandas`, `numpy`, `scipy`, and `treelite`. 
 
 An optional dependency is `cupy`, which enables GPU-accelerated execution.
 
