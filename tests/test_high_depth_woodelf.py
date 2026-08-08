@@ -8,7 +8,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegr
     IsolationForest
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues
+from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues, GeneralShapleyInteractionValues
 from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
@@ -375,3 +375,20 @@ def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type
     assert_shap_package_is_same_as_woodelf_on_interaction_values(
         woodelf_values, shap_package_values, X, TOLERANCE
     )
+
+@pytest.mark.parametrize("path_dependent", [True, False],
+                         ids=["Path Dependent SHAP", "Background SHAP"])
+def test_general_interaction_value_classes(trainset, testset, xgb_model, path_dependent):
+    trainset = trainset if not path_dependent else None
+    woodelf_values = woodelf_for_high_depth(xgb_model, testset, trainset, metric=ShapleyValues())
+    woodelf_iv = woodelf_for_high_depth(xgb_model, testset, trainset, metric=ShapleyInteractionValues())
+    woodelf_general_shapley_iv = woodelf_for_high_depth(
+        xgb_model, testset, trainset,
+        metric=GeneralShapleyInteractionValues(1,2, shap_convention=True)
+    )
+
+    for features in woodelf_general_shapley_iv:
+        if len(features) == 1:
+            np.testing.assert_allclose(woodelf_values[features[0]], woodelf_general_shapley_iv[features], atol=TOLERANCE)
+        else:
+            np.testing.assert_allclose(woodelf_iv[features], woodelf_general_shapley_iv[features], atol=TOLERANCE)
