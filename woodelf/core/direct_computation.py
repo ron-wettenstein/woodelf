@@ -105,10 +105,11 @@ class PathDependentModelCF(PBFunction):
             nodes_to_visit = [(1, tree)] # include pairs of (weight, node)
             while len(nodes_to_visit) > 0:
                 weight, node = nodes_to_visit.pop(0)
-                node_participates = assignment[node.feature_name]
                 if node.is_leaf():
                     score += weight * node.value
                 else:
+                    # a leaf splits on no feature, so only an inner node has a feature to participate
+                    node_participates = assignment[node.feature_name]
                     row_v = self.row[node.feature_name]
                     shall_go_left = (row_v < node.value) or (node.nan_go_left and np.isnan(row_v))
                     if node.left is not None:

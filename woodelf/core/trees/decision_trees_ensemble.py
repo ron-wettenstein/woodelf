@@ -50,6 +50,15 @@ class DecisionTreeNode:
     def is_almost_leaf(self):
         return not self.is_leaf() and (self.right.is_leaf() or self.left.is_leaf())
 
+    def get_depth(self):
+        """
+        The number of edges on the longest path from this node down to one of its leaves.
+        A leaf has a depth of 0, so this is the depth of the tree rooted in this node.
+        """
+        if self.is_leaf():
+            return 0
+        return 1 + max(self.left.get_depth(), self.right.get_depth())
+
     def predict(self, data):
         GPU = False
         if self.is_leaf():

@@ -41,9 +41,7 @@ A simple pip install:
 pip install woodelf_explainer
 </pre>
 
-The required dependencies are `pandas`, `numpy`, `scipy`, and `shap`. 
-The `shap` package is used for parsing decision trees and for minor auxiliary operations, 
-while the Shapley value computation is handled entirely by WOODELF.
+The required dependencies are `pandas`, `numpy`, `scipy`, and `treelite`. 
 
 An optional dependency is `cupy`, which enables GPU-accelerated execution.
 
@@ -112,7 +110,6 @@ explainer = WoodelfExplainer(xgb_model, X_train)
 background_iv_df = explainer.shap_interaction_values(X_test, as_df=True, exclude_zero_contribution_features=False)
 ```
 
-
 ## Partial Dependence Plots (PDP)
 
 WOODELF computes Partial Dependence Plots orders of magnitude faster than sklearn.
@@ -123,6 +120,8 @@ On a 400,000-row dataset:
 | PDP 5 points                 | 58 minutes | 15 seconds |
 | PDP 100 points               | 19 hours*  | 15 seconds |
 | Joint-PDP 5 points           | 35 days*   | 19 seconds |
+
+For full algorithmic and theoretical details, see [our paper on arXiv](https://arxiv.org/abs/2605.14578).
 
 **Low-level API:** use `woodelf.pdp.woodelf_pdp` to get the PDP values and `woodelf.pdp.woodelf_pdp_joint` to get the joint PDPs values directly.
 

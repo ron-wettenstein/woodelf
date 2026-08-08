@@ -16,18 +16,30 @@ dependencies = [
     "numpy",
     "pandas",
     "scipy",
-    "shap"
+    "tqdm",
+    "treelite>=4.0"
 ]
 
 [tool.setuptools.dynamic]
 version = { attr = "woodelf.__version__" }
 
 [project.optional-dependencies]
+# Everything any woodelf flow can reach for: shap parses the models treelite cannot and backs the
+# expected_value and shap.Explanation interop, scikit-learn and matplotlib back the partial dependence display.
+full = [
+    "shap",
+    "scikit-learn",
+    "matplotlib"
+]
+
 test = [
     "pytest",
     "xgboost>=2.0",
+    "lightgbm",
     "scikit-learn",
-    "shap"
+    "matplotlib",
+    "shap",
+    "treelite"
 ]
 
 gpu = [
