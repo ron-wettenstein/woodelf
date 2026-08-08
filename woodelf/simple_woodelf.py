@@ -279,7 +279,7 @@ def calculate_background_metric(model, consumer_data: pd.DataFrame, background_d
     path_to_matrixes_calculator.present_statistics()
     values = calculation_given_preprocessed_tree_ensemble(
         preprocessed_trees, consumer_data, global_importance,
-        iv_one_sized=not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE, GPU=GPU
+        iv_one_sized=metric.should_mirror(), GPU=GPU
     )
     return values
 
@@ -350,5 +350,5 @@ def calculate_path_dependent_metric(model, consumer_data, metric: CubeMetric, gl
         f"cache misses: {path_to_matrixes_calculator.cache_miss}, cache used: {path_to_matrixes_calculator.cached_used}")
     return calculation_given_preprocessed_tree_ensemble(
         preprocessed_trees, consumer_data, global_importance,
-        iv_one_sized=not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE, GPU=GPU
+        iv_one_sized=metric.should_mirror(), GPU=GPU
     )

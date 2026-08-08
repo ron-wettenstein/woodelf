@@ -125,7 +125,7 @@ def woodelf_for_high_depth(
             use_neighbor_leaf_trick, global_importance,
         )
 
-    if not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE:
+    if metric.should_mirror():
         fill_mirror_pairs(values)
 
     path_to_matrices_calculator.present_statistics()

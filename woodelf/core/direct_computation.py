@@ -206,3 +206,52 @@ class ShapleyIVDirectComputation(GameTheoryIVMetricDirectComputation):
         n = len(variables)
         s_size = sum(assignment.values())
         return (factorial(s_size) * factorial(n - s_size - 2)) / (2 * factorial(n - 1))
+
+class CIIDirectComputation(DirectComputation):
+    """
+    Direct computation of an interaction index of any order k, straight from its definition:
+        I(S) = sum over T subset of (variables minus S) of weight(|T|) * discrete_derivative_S(T)
+        discrete_derivative_S(T) = sum over L subset of S of (-1)^(k-|L|) * v(T union L)
+    For order 1 the discrete derivative is v(T + i) - v(T), so this generalizes
+    GameTheoryMetricDirectComputation, and for order 2 it generalizes GameTheoryIVMetricDirectComputation.
+
+    Values are keyed by the sorted tuple of the subset's variables, each holding the full interaction value
+    once - matching the CardinalitySymmetricInteractionMetric convention (and unlike the IV classes above,
+    which report both orderings of every pair, each holding half of the value).
+    """
+    def __init__(self, order: int):
+        assert order >= 1
+        self.order = order
+
+    def compute(self, pb_function: PBFunction) -> Dict[Any, float]:
+        variables = pb_function.variables()
+        cii_values = {}
+        # For any S in V where V is all variables and |S| <= order
+        for subset in itertools.combinations(sorted(variables), self.order):
+            cii_values[subset] = 0
+            other_vs = [v for v in variables if v not in subset]
+            # For any T in V-S
+            for truth_values in itertools.product([True, False], repeat=len(other_vs)):
+                assignment = {v: t for v, t in zip(other_vs, truth_values)}
+                discrete_derivative = 0
+                # For any K in S. This inner loop compute delta v(S)
+                for subset_truth_values in itertools.product([True, False], repeat=len(subset)):
+                    # The subset's variables are the ones we explode, all other variables keep their assignment
+                    subset_assignment = assignment.copy()
+                    subset_assignment.update({v: t for v, t in zip(subset, subset_truth_values)})
+                    participating_size = sum(subset_truth_values)
+                    discrete_derivative += (
+                        ((-1) ** (self.order - participating_size)) * pb_function.assign(subset_assignment)
+                    )
+                cii_values[subset] += self.assignment_weight(assignment, variables) * discrete_derivative
+        return cii_values
+
+class BanzhafCIIDirectComputation(CIIDirectComputation):
+    def assignment_weight(self, assignment, variables) -> float:
+        return 1 / 2 ** len(assignment)
+
+class ShapleyCIIDirectComputation(CIIDirectComputation):
+    def assignment_weight(self, assignment, variables) -> float:
+        n = len(variables)
+        s_size = sum(assignment.values())
+        return (factorial(s_size) * factorial(n - s_size - self.order)) / factorial(n - self.order + 1)
