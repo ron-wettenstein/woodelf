@@ -15,6 +15,7 @@ from sklearn.ensemble import (
 )
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
+from woodelf.core.trees.custom_parsing import load_sklearn_single_decision_tree_model
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
 from woodelf.core.trees.parse_models_using_shap import load_model_using_shap
 from woodelf.core.trees.parse_models_using_treelite import load_model_using_treelite
@@ -235,3 +236,35 @@ class TestParseModelsUsingTreelite(ParseModelsTestsBase):
     UNSUPPORTED_MODEL_TYPES = ("DecisionTreeRegressor", "DecisionTreeClassifier")
 
     load_decision_tree_ensemble_model = staticmethod(load_model_using_treelite)
+
+
+def test_load_and_predict_sklearn_single_decision_tree():
+    """
+    Test loading and predicting with a single scikit-learn decision tree 
+    using our custom parsing.
+    """
+    X, y = shap.datasets.california(n_points=10000)
+    features = list(X.columns)
+    regressor = DecisionTreeRegressor(max_depth=6, random_state=42)
+    regressor.fit(X, y)
+    tree_ensemble = load_sklearn_single_decision_tree_model(model=regressor, features=features)
+    assert_predictions_equal(
+        original_pred=regressor.predict(X),
+        loaded_model_pred=tree_ensemble.predict(X),
+        base_score=0
+    )
+
+    X_classification, y_classification = make_classification(
+        n_samples=5000, n_features=12, n_informative=6, n_redundant=2, n_classes=2, class_sep=1.0, random_state=42,
+    )
+    classification_features = [f"x{i}" for i in range(X_classification.shape[1])]
+    X_classification_df = pd.DataFrame(X_classification, columns=classification_features)
+    classifier = DecisionTreeClassifier(max_depth=6, random_state=42)
+    classifier.fit(X_classification, y_classification)
+    tree_ensemble = load_sklearn_single_decision_tree_model(model=classifier, features=classification_features)
+    # A classifier's nodes hold one value per class, of which the parser keeps the first class' probability
+    assert_predictions_equal(
+        original_pred=classifier.predict_proba(X_classification)[:, 0],
+        loaded_model_pred=tree_ensemble.predict(X_classification_df),
+        base_score=0.0
+    )
