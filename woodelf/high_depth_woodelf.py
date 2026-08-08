@@ -8,7 +8,7 @@ from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors, compute_f_from_patterns
+from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
 from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
 from woodelf.core.utils import get_unique_features_in_path, get_covers_vector
 from woodelf.simple_woodelf import get_cupy_data, fill_mirror_pairs
@@ -25,7 +25,7 @@ except ModuleNotFoundError as e:
 def woodelf_for_high_depth_single_tree(
         tree: DecisionTreeNode, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
         values: Dict[Any, float], path_to_matrices_calculator: PathToSVectors, GPU: bool = False,
-        use_neighbor_leaf_trick: bool = True, global_importance: bool = False, cache_to_use: Dict = None, cache_to_fill: Dict = None
+        use_neighbor_leaf_trick: bool = True, global_importance: bool = False
 ):
     """
     Run the woodelf algorithm that is optimized for a high depth trees on a single tree
@@ -47,17 +47,9 @@ def woodelf_for_high_depth_single_tree(
             leaf_b, background_patterns = next(background_patterns_generator)
             assert leaf_b.index == leaf.index
 
-            if cache_to_use is not None and leaf.index in cache_to_use and isinstance(path_to_matrices_calculator, HighDepthWoodelfPathToSVectors):
-                s_matrix = path_to_matrices_calculator.compose_with_neighbor_trick(
-                    unique_features_in_path, cache_to_use[leaf.index], leaf.value, w_neighbor
-                )
-            else:
-                s_matrix = path_to_matrices_calculator.get_background_s_matrix(
-                    unique_features_in_path, consumer_patterns, background_patterns, leaf.value, w_neighbor
-                )
-                if cache_to_fill is not None:
-                    depth = len(unique_features_in_path)
-                    cache_to_fill[leaf.index] = compute_f_from_patterns(background_patterns, depth, GPU)
+            s_matrix = path_to_matrices_calculator.get_background_s_matrix(
+                unique_features_in_path, consumer_patterns, background_patterns, leaf.value, w_neighbor
+            )
         else:
             covers = np.array(get_covers_vector(path + [leaf], unique_features_in_path))
             s_matrix = path_to_matrices_calculator.get_path_dependent_s_matrix(
@@ -79,7 +71,7 @@ def woodelf_for_high_depth(
         model, consumer_data: pd.DataFrame, background_data: Optional[pd.DataFrame], metric: CubeMetric,
         GPU: bool=False, use_neighbor_leaf_trick: bool=True,
         path_to_matrices_calculator: PathToSVectors = None,
-        global_importance: bool = False, cache_to_use: List[Dict] = None, cache_to_fill: List[Dict] = None, model_was_loaded: bool = False
+        global_importance: bool = False, model_was_loaded: bool = False
 ):
     """
     WOODELF designed for higher depths decision trees.
@@ -101,9 +93,6 @@ def woodelf_for_high_depth(
     on large/medium size datasets)
     @param global_importance: If true return the average value across all consumer data rows. Used to
     save RAM.
-    @param cache_to_use: Cache to use and save some time (on Background approach only)
-    @param cache_to_fill: Fill the given cache so next time will be faster (on Background approach only)
-
     @return The computed values as a dictionary that maps between features/features pairs to np.arrays with
     the values.
     """
@@ -134,8 +123,6 @@ def woodelf_for_high_depth(
         woodelf_for_high_depth_single_tree(
             tree, consumer_data, background_data, values, path_to_matrices_calculator, GPU,
             use_neighbor_leaf_trick, global_importance,
-            cache_to_use[tree_index] if cache_to_use is not None else None,
-            cache_to_fill[tree_index] if cache_to_fill is not None else None
         )
 
     if not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE:

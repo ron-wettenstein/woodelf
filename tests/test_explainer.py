@@ -1,7 +1,6 @@
 import time
 
 import numpy as np
-import pandas as pd
 import shap
 import xgboost as xgb
 
@@ -130,47 +129,6 @@ def test_excluding_only_zero_contributions(trainset, testset, xgb_model):
             # assert all zeros
             assert woodelf_df[f].abs().max() == 0
 
-
-def test_explainer_cache(trainset, testset, xgb_model):
-    woodelf_head_5_df_1 = WoodelfExplainer(xgb_model, trainset.head(5), feature_perturbation='interventional').shap_values(
-        testset.head(5), as_df=True, exclude_zero_contribution_features=False
-    )
-    woodelf_tail_5_df_1 = WoodelfExplainer(xgb_model, trainset.tail(5), feature_perturbation='interventional').shap_values(
-        testset.head(5), as_df=True, exclude_zero_contribution_features=False
-    )
-
-    # When there is no cache one can modify the background data on the explainer, run shap and it will use
-    # the new background data (this is for testing, please never actually do it in an important code)
-    woodelf_explainer = WoodelfExplainer(
-        xgb_model, trainset.head(5), feature_perturbation='interventional', use_cache=False
-    )
-    woodelf_head_5_df_2 = woodelf_explainer.shap_values(
-        testset.head(5), as_df=True, exclude_zero_contribution_features=False
-    )
-    pd.testing.assert_frame_equal(woodelf_head_5_df_1, woodelf_head_5_df_2)
-
-    woodelf_explainer.background_data = trainset.tail(5)
-    woodelf_tail_5_df_2 = woodelf_explainer.shap_values(
-        testset.head(5), as_df=True, exclude_zero_contribution_features=False
-    )
-    pd.testing.assert_frame_equal(woodelf_tail_5_df_1, woodelf_tail_5_df_2)
-
-    # When the cache is enabled setting the background data will have no effect as the object
-    # already extracted the needed information from the background data and does not need to reuse it
-    woodelf_explainer = WoodelfExplainer(
-        xgb_model, trainset.head(5), feature_perturbation='interventional', use_cache=True
-    )
-    woodelf_head_5_df_3 = woodelf_explainer.shap_values(
-        testset.head(5), as_df=True, exclude_zero_contribution_features=False
-    )
-    assert woodelf_explainer.cache is not None and woodelf_explainer.cache_filled
-    pd.testing.assert_frame_equal(woodelf_head_5_df_1, woodelf_head_5_df_3)
-
-    woodelf_explainer.background_data = trainset.tail(5)
-    woodelf_head_5_df_4 = woodelf_explainer.shap_values(
-        testset.head(5), as_df=True, exclude_zero_contribution_features=False
-    ) # This is the test! return the background shap of head(5) although we just override the background data to tail(5)
-    pd.testing.assert_frame_equal(woodelf_head_5_df_1, woodelf_head_5_df_4)
 
 
 def test_expected_value_property(trainset, testset, xgb_model):
