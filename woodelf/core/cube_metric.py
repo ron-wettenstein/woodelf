@@ -1,5 +1,5 @@
 from math import factorial
-from typing import Set, Dict, Any, Tuple
+from typing import Set, Dict, Any, Optional, Tuple
 from itertools import combinations
 
 
@@ -20,6 +20,16 @@ class CubeMetric(object):
 
     def calc_metric(self, s_plus, s_minus) -> Dict[Any, float]:
         raise NotImplemented()
+
+    def should_mirror(self) -> bool:
+        """
+        In case of pairwise interaction values (and where order does not matter) shap output include
+        both (f1, f2) and (f2, f1). So we do mirroring v[(f2,f1)] = v[(f1,f2)].
+        """
+        return (
+            self.INTERACTION_VALUE and not self.INTERACTION_VALUES_ORDER_MATTERS
+            and self.INTERACTION_VALUES_RETURN_ALL_SUBSET_PERMUTATIONS
+        )
 
 class ShapleyValues(CubeMetric):
     """
@@ -171,6 +181,104 @@ class BanzhafInteractionValues(CubeMetric):
         return banzhaf_values
 
 
+class CardinalityInteractionIndicesMetric(CubeMetric):
+    """
+    An abstract class for symmetric interaction metrics whose value on a cube depends only on
+    cardinalities: the number of negative and positive literals in the cube, and how many of the
+    subset's variables appear as positive/negative literals. Subsets containing a variable that does not
+    appear in the cube always get 0 (such variables are dummy players of the cube's game).
+
+    The metric reports every subset whose size k satisfies min_order <= k <= max_order, where
+    max_order=None means no upper limit (so the subsets are bounded only by the cube's own variables).
+    The default min_order=1, max_order=None is therefore the any-order metric.
+
+    Implement cardinality_value to define the metric; calc_metric is derived from it generically.
+    """
+    INTERACTION_VALUE = True
+    INTERACTION_VALUES_ORDER_MATTERS = False
+
+    def __init__(self, min_order: int = 1, max_order: Optional[int] = None):
+        assert min_order >= 1
+        assert max_order is None or max_order >= min_order
+        self.min_order = min_order
+        self.max_order = max_order
+
+    def orders(self, num_variables: int) -> range:
+        """
+        The subset sizes the metric reports over num_variables variables: min_order...max_order, capped by
+        num_variables (larger subsets must contain a dummy player and are therefore always 0).
+        """
+        highest = num_variables if self.max_order is None else min(self.max_order, num_variables)
+        return range(self.min_order, highest + 1)
+
+    def cardinality_value(
+            self, num_neg_literals: int, num_pos_literals: int, num_subset_pos: int, num_subset_neg: int
+    ) -> float:
+        """
+        The metric value, on a cube with num_pos_literals positive and num_neg_literals negative literals,
+        of a variables subset with num_subset_pos variables appearing as positive literals in the cube and
+        num_subset_neg appearing as negative literals (the subset's order is num_subset_pos + num_subset_neg).
+        For example the subset S = {x1, x2, x5} of the cube (x1 and x4 and not x2 and not x5) is encoded to
+        (num_neg_literals=2, num_pos_literals=2, num_subset_pos=1, num_subset_neg=2).
+        """
+        raise NotImplemented()
+
+    def calc_metric(self, s_plus, s_minus) -> Dict[Tuple, float]:
+        if len(s_plus & s_minus) > 0:
+            return {}  # se and sne must be disjoint sets
+
+        variables = sorted(s_plus | s_minus)
+        values = {}
+        for order in self.orders(len(variables)):
+            for subset in combinations(variables, order):
+                num_subset_pos = len(s_plus.intersection(subset))
+                values[subset] = self.cardinality_value(
+                    len(s_minus), len(s_plus), num_subset_pos, order - num_subset_pos
+                )
+        return values
+
+
+class GeneralShapleyInteractionValues(CardinalityInteractionIndicesMetric):
+    """
+    Shapley (Grabisch-Roubens) interaction values of any order k. On a cube with p positive and q negative
+    literals, a subset with a positive-literal variables and b negative-literal variables gets:
+        I = (-1)^b * (p-a)! * (q-b)! / (p+q-k+1)!
+    """
+
+    def __init__(self, min_order: int = 1, max_order: Optional[int] = None, shap_convention: bool = False):
+        """
+        @param shap_convention: If True, divide the values by order! - matching the shap package convention
+        of spreading each interaction value across all permutations of the subset (for order=2 the shap
+        package reports each pair twice, each holding half the value).
+        """
+        super().__init__(min_order, max_order)
+        self.shap_convention = shap_convention
+
+    def cardinality_value(self, num_neg_literals, num_pos_literals, num_subset_pos, num_subset_neg):
+        order = num_subset_pos + num_subset_neg
+        value = (
+            ((-1) ** num_subset_neg)
+            * factorial(num_pos_literals - num_subset_pos) * factorial(num_neg_literals - num_subset_neg)
+            / factorial(num_pos_literals + num_neg_literals - order + 1)
+        )
+        if self.shap_convention:
+            value /= factorial(order)
+        return value
+
+
+class GeneralBanzhafInteractionValues(CardinalityInteractionIndicesMetric):
+    """
+    Banzhaf interaction values of any order k. On a cube with p positive and q negative literals, a subset
+    with a positive-literal variables and b negative-literal variables gets:
+        I = (-1)^b / 2^(p+q-k)
+    For k=1 this reduces to the BanzhafValues formulas and for k=2 to BanzhafInteractionValues.
+    """
+
+    def cardinality_value(self, num_neg_literals, num_pos_literals, num_subset_pos, num_subset_neg):
+        order = num_subset_pos + num_subset_neg
+        return ((-1) ** num_subset_neg) / (2 ** (num_pos_literals + num_neg_literals - order))
+
+
 ############################################################################################################################################################
 #
 #   PDPs matrices
@@ -201,6 +309,7 @@ def all_subsets_of_size_0_1_2(s):
 
 class PDIVOrder1Or2(CubeMetric):
     INTERACTION_VALUE = True
+    INTERACTION_VALUES_RETURN_ALL_SUBSET_PERMUTATIONS = True
 
     def calc_metric(self, s_plus: Set, s_minus: Set) -> Dict[Tuple, float]:
         if len(s_plus & s_minus) > 0:

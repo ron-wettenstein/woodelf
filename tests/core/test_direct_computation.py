@@ -5,11 +5,13 @@ import xgboost as xgb
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor
 
 from woodelf.core.cube_metric import (
-    BanzhafValues, BanzhafInteractionValues, ShapleyInteractionValues, ShapleyValues, CubeMetric
+    BanzhafValues, BanzhafInteractionValues, ShapleyInteractionValues, ShapleyValues, CubeMetric,
+    GeneralShapleyInteractionValues, GeneralBanzhafInteractionValues
 )
 from woodelf.core.direct_computation import (
     BanzhafDirectComputation, BanzhafIVDirectComputation, ShapleyIVDirectComputation,
-    ShapleyDirectComputation, DirectComputation, BackgroundModelCF, PathDependentModelCF
+    ShapleyDirectComputation, BanzhafCIIDirectComputation, ShapleyCIIDirectComputation,
+    DirectComputation, BackgroundModelCF, PathDependentModelCF
 )
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.simple_woodelf import calculate_background_metric, calculate_path_dependent_metric
@@ -17,7 +19,7 @@ from woodelf.simple_woodelf import calculate_background_metric, calculate_path_d
 
 class BackgroundXGBoostCF(BackgroundModelCF):
     def mean_model_prediction(self, data):
-        return np.mean(self.model.predict(xgb.DMatrix(data)))
+        return np.mean(self.model.predict(xgb.DMatrix(data, nthread=1)))
 
 TOLERANCE = 1e-5
 
@@ -72,6 +74,55 @@ def test_path_dependent_metric_computation_xgboost(metric: CubeMetric, direct_co
         values_using_direct_computation = direct_computation.compute(cf)
         for feature in woodelf_values:
             assert abs(woodelf_values[feature][i] - values_using_direct_computation[feature]) < TOLERANCE
+        i+=1
+
+
+# The order-range metrics report orders 1 to 3 at once, so each order is checked against the direct
+# computation of that order - which keys exactly the subsets of its own size.
+CII_RANGE_METRICS_AND_DIRECT_COMPUTATIONS = [
+    (GeneralShapleyInteractionValues(1, 3), ShapleyCIIDirectComputation),
+    (GeneralBanzhafInteractionValues(1, 3), BanzhafCIIDirectComputation),
+]
+CII_RANGE_METRICS_IDS = ["GeneralShapleyInteractionValues", "GeneralBanzhafInteractionValues"]
+
+
+@pytest.mark.parametrize("metric, cii_direct_computation_class", CII_RANGE_METRICS_AND_DIRECT_COMPUTATIONS,
+                         ids=CII_RANGE_METRICS_IDS)
+def test_background_cii_range_metric_computation_xgboost(metric, cii_direct_computation_class):
+    X_test, X_train, model = train_xgboost(n_cols=4)
+    consumer_data = X_test.head(2)
+    woodelf_values = calculate_background_metric(
+        model, consumer_data=consumer_data, background_data=X_train, metric=metric
+    )
+
+    i = 0
+    for index, df_row in consumer_data.iterrows():
+        row = {k: float(v) for k,v in dict(df_row).items()}
+        cf = BackgroundXGBoostCF(model, row, X_train)
+        for order in range(metric.min_order, metric.max_order + 1):
+            values_using_direct_computation = cii_direct_computation_class(order).compute(cf)
+            for subset in woodelf_values:
+                if len(subset) == order:
+                    assert abs(woodelf_values[subset][i] - values_using_direct_computation[subset]) < TOLERANCE
+        i+=1
+
+
+@pytest.mark.parametrize("metric, cii_direct_computation_class", CII_RANGE_METRICS_AND_DIRECT_COMPUTATIONS,
+                         ids=CII_RANGE_METRICS_IDS)
+def test_path_dependent_cii_range_metric_computation_xgboost(metric, cii_direct_computation_class):
+    X_test, X_train, model = train_xgboost(n_cols=5)
+    model_obj = load_decision_tree_ensemble_model(model, list(X_train.columns))
+    woodelf_values = calculate_path_dependent_metric(model, consumer_data=X_test,metric=metric)
+
+    i = 0
+    for index, df_row in X_test.iterrows():
+        row = {k: float(v) for k,v in dict(df_row).items()}
+        cf = PathDependentModelCF(model_obj, row)
+        for order in range(metric.min_order, metric.max_order + 1):
+            values_using_direct_computation = cii_direct_computation_class(order).compute(cf)
+            for subset in woodelf_values:
+                if len(subset) == order:
+                    assert abs(woodelf_values[subset][i] - values_using_direct_computation[subset]) < TOLERANCE
         i+=1
 
 
