@@ -1,11 +1,3 @@
-"""
-Parse tree ensemble models into woodelf's DecisionTreeNode representation using the treelite package.
-
-This is an alternative to parse_models_using_shap.py. treelite is a much lighter dependency (numpy,
-scipy and packaging only, no numba) and it keeps the comparison operator of every split, so unlike the
-shap based parser we don't need a model-class-to-node-class lookup table to know whether a split is
-"x < threshold" or "x <= threshold".
-"""
 import numpy as np
 
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
@@ -39,7 +31,6 @@ VECTOR_LEAF_CLASS_LABEL = 0
 
 
 # TODO models treelite cannot parse, they still need parse_models_using_shap:
-# sklearn.tree.DecisionTreeRegressor / sklearn.tree.DecisionTreeClassifier (a lone tree, not an ensemble)
 # catboost.core.CatBoost / CatBoostRegressor / CatBoostClassifier
 # skopt.learning.forest.ExtraTreesRegressor / RandomForestRegressor (untested, they subclass the sklearn ones)
 # pyspark, ngboost, imblearn, gpboost, pyod, econml, causalml
@@ -199,9 +190,6 @@ def load_decision_tree(tree_accessor, features, vector_length, leaf_scaling):
             nodes[index].right = nodes[child_right]
             nodes[child_right].parent = nodes[index]
 
-    # The root's depth is the depth of the whole tree. We take it off the structure we just built rather
-    # than from treelite's Model.get_tree_depth(), which counts nodes rather than edges and disagrees
-    # with the tree structure it returns for LightGBM models.
     nodes[0].depth = nodes[0].get_depth()
     return nodes[0]
 
@@ -209,9 +197,6 @@ def load_decision_tree(tree_accessor, features, vector_length, leaf_scaling):
 def load_treelite_model(model):
     """
     Hand the model to the treelite frontend that knows how to read it.
-
-    treelite takes XGBoost and LightGBM boosters directly, so the scikit-learn wrappers of those two are
-    unwrapped first. Everything else is offered to treelite's scikit-learn importer.
     """
     import treelite
 
@@ -244,9 +229,6 @@ def load_model_using_treelite(model, features) -> DecisionTreesEnsemble:
     leaf_vector_shape = get_field(header, "leaf_vector_shape")
     vector_length = int(leaf_vector_shape[-1]) if len(leaf_vector_shape) > 0 else 1
 
-    # Forests average their trees rather than summing them, and treelite keeps that as a flag instead of
-    # dividing the leaves. woodelf's DecisionTreesEnsemble.predict sums, so we fold the division in here.
-    # (Boosters need no scaling: treelite has already folded the learning rate into their leaves.)
     average_tree_output = get_field(header, "average_tree_output")
     averages_trees = len(average_tree_output) > 0 and bool(average_tree_output[0])
     leaf_scaling = 1.0 / treelite_model.num_tree if averages_trees else 1.0
@@ -255,5 +237,4 @@ def load_model_using_treelite(model, features) -> DecisionTreesEnsemble:
         load_decision_tree(treelite_model.get_tree_accessor(tree_index), features, vector_length, leaf_scaling)
         for tree_index in range(treelite_model.num_tree)
     ]
-    assert len(trees) > 0, "Did not load the model properly"
     return DecisionTreesEnsemble(trees)

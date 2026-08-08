@@ -1,11 +1,3 @@
-"""
-Parse models with nothing but numpy, for the models woodelf's other parsing engines cannot read.
-
-Right now that is scikit-learn's standalone DecisionTreeRegressor and DecisionTreeClassifier. They are a
-single tree rather than an ensemble, which is why treelite's scikit-learn importer refuses them (see
-parse_models_using_treelite.py). Their internal tree_ object already holds the structure as numpy arrays,
-so reading it needs no parsing engine at all.
-"""
 import numpy as np
 
 from woodelf.core.trees.decision_trees_ensemble import LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
@@ -106,5 +98,4 @@ def load_sklearn_single_decision_tree_model(model, features) -> DecisionTreesEns
             f"got a {type(model).__name__}"
         )
     trees = [load_decision_tree(model.tree_, features, is_classifier)]
-    assert len(trees) > 0, "Did not load the model properly"
     return DecisionTreesEnsemble(trees)
