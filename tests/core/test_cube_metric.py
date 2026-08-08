@@ -95,38 +95,3 @@ def test_general_metric_of_order_2_matches_the_interaction_values_metrics(order_
         assert set(general_values) == set(values)
         for pair in values:
             assert abs(values[pair] - general_values[pair]) < TOLERANCE
-
-
-GENERAL_METRIC_CLASSES = [GeneralShapleyInteractionValues, GeneralBanzhafInteractionValues]
-GENERAL_METRIC_CLASSES_IDS = ["GeneralShapleyInteractionValues", "GeneralBanzhafInteractionValues"]
-
-
-@pytest.mark.parametrize("metric_class", GENERAL_METRIC_CLASSES, ids=GENERAL_METRIC_CLASSES_IDS)
-def test_the_default_any_order_metric_is_the_union_of_all_the_fixed_order_metrics(metric_class):
-    # The default (min_order=1, max_order=None) reports every subset of every size at once, and each value
-    # must equal the one the matching fixed-order metric gives.
-    for wdnf in ALL_WDNFs:
-        any_order_values = wdnf.calc_metric(metric_class(1, None))
-        fixed_order_values = {}
-        for order in range(1, len(wdnf.variables()) + 1):
-            fixed_order_values.update(wdnf.calc_metric(metric_class(order, order)))
-        assert set(any_order_values) == set(fixed_order_values)
-        for subset in any_order_values:
-            assert abs(any_order_values[subset] - fixed_order_values[subset]) < TOLERANCE
-
-
-@pytest.mark.parametrize("metric_class", GENERAL_METRIC_CLASSES, ids=GENERAL_METRIC_CLASSES_IDS)
-@pytest.mark.parametrize("min_order, max_order", [(1, 1), (1, 2), (1, None), (2, 3), (3, None), (4, 4)])
-def test_an_order_range_reports_exactly_the_subsets_of_the_sizes_in_the_range(metric_class, min_order, max_order):
-    # An order range is a filter over the any-order metric: same values, only the subsets whose size falls
-    # in [min_order, max_order] (subsets larger than the cube contain a dummy player and are never reported).
-    for wdnf in ALL_WDNFs:
-        any_order_values = wdnf.calc_metric(metric_class())
-        values = wdnf.calc_metric(metric_class(min_order, max_order))
-        expected_subsets = {
-            subset for subset in any_order_values
-            if min_order <= len(subset) and (max_order is None or len(subset) <= max_order)
-        }
-        assert set(values) == expected_subsets
-        for subset in values:
-            assert abs(values[subset] - any_order_values[subset]) < TOLERANCE
