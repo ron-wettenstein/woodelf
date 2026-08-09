@@ -11,7 +11,7 @@ from woodelf.core.utils import bits_matrix
 class MNBackgroundCIIPathToSVectors(PathToSVectors):
     """
     Extends the MNBackgroundPathToSVectors O(nm) approach to interaction values of any order k, for metrics
-    expressible through cube cardinalities (CardinalitySymmetricInteractionMetric).
+    expressible through CardinalitySymmetricInteractionMetric.
 
     For each (consumer, background) pattern pair the cube literals are read off the bit patterns exactly like
     in MNBackgroundPathToSVectors. A k-subset S of the path features contributes only when all its bits are
@@ -21,15 +21,12 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
     The metric reports every order k in metric.orders(D), so the s-matrix holds one row per subset of every
     such size, ordered by order and then as self._subsets(D, order) (see self._all_subsets).
 
-    This base class is the default implementation: it loops over the subsets and reduces the
-    (batch, U_b) pair tensors per subset. See MNBackgroundCIIFasterPathToSVectors for the WIP BLAS variant.
-
     Requires numpy >= 2, as it uses np.bitwise_count (added in numpy 2.0).
     """
 
     BATCH_SIZE = 1_000_000
 
-    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
+    def __init__(self, metric: CardinalityInteractionIndicesMetric, max_depth: int, GPU: bool = False):
         assert isinstance(metric, CardinalityInteractionIndicesMetric), (
             f"{type(self).__name__} requires a CardinalitySymmetricInteractionMetric metric. Got {type(metric).__name__}."
         )
