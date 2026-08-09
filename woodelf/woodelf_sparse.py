@@ -4,14 +4,19 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues
+from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues, \
+    BanzhafInteractionValues, CardinalityInteractionIndicesMetric, GeneralShapleyInteractionValues, \
+    GeneralBanzhafInteractionValues
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
 from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterPathToSVectors, MNBackgroundPathToSVectors
+from woodelf.core.path_to_s_vectors.mn_background_cii_p2s import MNBackgroundCIIPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.utils import get_unique_features_in_path, get_covers_vector
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
+from woodelf.simple_woodelf import fill_mirror_pairs
 
 try:
     import cupy as cp
@@ -22,8 +27,27 @@ except ModuleNotFoundError:
 
 _MAX_DEPTH_FOR_HIGH_WOODELF = 12
 _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF = 10
-_SUPPORTED_SPARSE_BACKGROUND_METRICS = (ShapleyValues, BanzhafValues)
+_SUPPORTED_SPARSE_BACKGROUND_METRICS = (ShapleyValues, BanzhafValues, CardinalityInteractionIndicesMetric,
+                                        ShapleyInteractionValues, BanzhafInteractionValues)
 _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS = (ShapleyValues, BanzhafValues, ShapleyInteractionValues)
+
+# The pairwise interaction metrics have no sparse background algorithm of their own - each is computed in
+# background mode through the order 2 CII metric that yields the same values.
+_PAIRWISE_METRIC_TO_CII_EQUIVALENT = {
+    ShapleyInteractionValues: lambda: GeneralShapleyInteractionValues(2, 2, shap_convention=True),
+    BanzhafInteractionValues: lambda: GeneralBanzhafInteractionValues(2, 2),
+}
+
+
+def cii_equivalent_of_pairwise_metric(metric: CubeMetric) -> Optional[CardinalityInteractionIndicesMetric]:
+    """
+    The CII metric computing the same values as the given pairwise interaction metric, or None if the metric
+    is not one of the pairwise interaction metrics.
+    """
+    for pairwise_class, cii_equivalent in _PAIRWISE_METRIC_TO_CII_EQUIVALENT.items():
+        if isinstance(metric, pairwise_class):
+            return cii_equivalent()
+    return None
 
 
 def use_sparse_approach(depth, metric, is_background):
@@ -47,7 +71,7 @@ def sparse_background_single_tree(
     consumer_data: pd.DataFrame,
     background_data: pd.DataFrame,
     values: Dict[Any, float],
-    mn_p2s: Optional[MNBackgroundFasterPathToSVectors],
+    mn_p2s: Optional[PathToSVectors],
     GPU: bool,
     use_neighbor_leaf_trick: bool,
 ):
@@ -126,7 +150,10 @@ def woodelf_sparse(
     """
     Sparse WOODELF: uses pattern-factorized sparse algorithms for all leaves.
 
-    Background mode (background_data provided): MNBackgroundFasterPathToSVectors (default) or mn_p2s_class.
+    Background mode (background_data provided): MNBackgroundFasterPathToSVectors (default),
+    MNBackgroundCIIPathToSVectors (default for CardinalitySymmetricInteractionMetric metrics)
+    or mn_p2s_class. The pairwise interaction metrics (ShapleyInteractionValues, BanzhafInteractionValues)
+    are computed through their order 2 CII equivalent, followed by mirroring.
     Path-dependent mode (background_data is None): LTSRecursivePathToSVectors.
     """
     if not model_was_loaded:
@@ -135,8 +162,25 @@ def woodelf_sparse(
     effective_depth = min(model.max_depth, len(consumer_data.columns))
     is_background = background_data is not None
 
+    if isinstance(metric, CardinalityInteractionIndicesMetric):
+        assert is_background, (
+            "CardinalitySymmetricInteractionMetric metrics are supported only in background mode "
+            "(background_data must be provided)."
+        )
+
+    # In background mode the pairwise interaction metrics are computed through their order 2 CII equivalent.
+    # The CII metrics key every pair once by its sorted tuple, so the shap convention of reporting both
+    # (f1,f2) and (f2,f1) is restored by mirroring the keys at the end.
+    cii_equivalent = cii_equivalent_of_pairwise_metric(metric) if is_background else None
+    mirror_pairs = cii_equivalent is not None and metric.should_mirror()
+    if cii_equivalent is not None:
+        metric = cii_equivalent
+
     if mn_p2s_class is None:
-        mn_p2s_class = MNBackgroundFasterPathToSVectors
+        if isinstance(metric, CardinalityInteractionIndicesMetric):
+            mn_p2s_class = MNBackgroundCIIPathToSVectors
+        else:
+            mn_p2s_class = MNBackgroundFasterPathToSVectors
     mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth) if is_background else None
     lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU) if not is_background else None
 
@@ -155,6 +199,9 @@ def woodelf_sparse(
                 tree, consumer_data, values,
                 lts_p2s, GPU, use_neighbor_leaf_trick
             )
+
+    if mirror_pairs:
+        fill_mirror_pairs(values)
 
     if mn_p2s is not None:
         mn_p2s.present_statistics()

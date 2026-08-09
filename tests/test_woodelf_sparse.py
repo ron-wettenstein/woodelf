@@ -1,10 +1,13 @@
 import numpy as np
+import pytest
 import shap
 
 from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, \
     assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
-from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyInteractionValues
+from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyInteractionValues, \
+    GeneralShapleyInteractionValues, GeneralBanzhafInteractionValues
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
+from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.woodelf_sparse import woodelf_sparse
 from woodelf.simple_woodelf import calculate_path_dependent_metric, calculate_background_metric
 
@@ -12,35 +15,20 @@ FIXTURES = [trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22
 
 TOLERANCE = 0.00001
 
-def test_linear_tree_shap_on_a_model(testset, xgb_model):
+@pytest.mark.parametrize("metric", [ShapleyValues(), BanzhafValues()], ids=["shapley", "banzhaf"])
+def test_linear_tree_metric_on_a_model(testset, xgb_model, metric):
 
-    simple_woodelf_shap_values = calculate_path_dependent_metric(
-        xgb_model, testset, metric=ShapleyValues()
+    simple_woodelf_values = calculate_path_dependent_metric(
+        xgb_model, testset, metric=metric
     )
 
-    vectorized_linear_tree_shap_values = woodelf_sparse(
-        xgb_model, testset, None, ShapleyValues(), GPU=False
+    vectorized_linear_tree_values = woodelf_sparse(
+        xgb_model, testset, None, metric, GPU=False
     )
 
-    for feature in simple_woodelf_shap_values:
+    for feature in simple_woodelf_values:
         np.testing.assert_allclose(
-            simple_woodelf_shap_values[feature], vectorized_linear_tree_shap_values[feature], atol=0.00001
-        )
-
-
-def test_linear_tree_banzhaf_on_a_model(testset, xgb_model):
-
-    simple_woodelf_shap_values = calculate_path_dependent_metric(
-        xgb_model, testset, metric=BanzhafValues()
-    )
-
-    vectorized_linear_tree_shap_values = woodelf_sparse(
-        xgb_model, testset, None, BanzhafValues(), GPU=False
-    )
-
-    for feature in simple_woodelf_shap_values:
-        np.testing.assert_allclose(
-            simple_woodelf_shap_values[feature], vectorized_linear_tree_shap_values[feature], atol=TOLERANCE
+            simple_woodelf_values[feature], vectorized_linear_tree_values[feature], atol=TOLERANCE
         )
 
 def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):
@@ -60,30 +48,15 @@ def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_
         assert_shap_package_is_same_as_woodelf(linear_tree_shap_values_neighbor_leaf_trick, shap_package_values, testset, TOLERANCE)
 
 
-def test_mn_background_shap_on_a_model(trainset, testset, xgb_model):
+@pytest.mark.parametrize("metric", [ShapleyValues(), BanzhafValues()], ids=["shapley", "banzhaf"])
+def test_mn_background_metric_on_a_model(trainset, testset, xgb_model, metric):
 
     simple_woodelf_values = calculate_background_metric(
-        xgb_model, testset, trainset, metric=ShapleyValues()
+        xgb_model, testset, trainset, metric=metric
     )
 
     mn_values = woodelf_sparse(
-        xgb_model, testset, trainset, ShapleyValues(), GPU=False
-    )
-
-    for feature in simple_woodelf_values:
-        np.testing.assert_allclose(
-            simple_woodelf_values[feature], mn_values[feature], atol=TOLERANCE
-        )
-
-
-def test_mn_background_banzhaf_on_a_model(trainset, testset, xgb_model):
-
-    simple_woodelf_values = calculate_background_metric(
-        xgb_model, testset, trainset, metric=BanzhafValues()
-    )
-
-    mn_values = woodelf_sparse(
-        xgb_model, testset, trainset, BanzhafValues(), GPU=False
+        xgb_model, testset, trainset, metric, GPU=False
     )
 
     for feature in simple_woodelf_values:
@@ -103,6 +76,48 @@ def test_mn_background_shap_on_high_depth_models(trainset, testset, xgb_model_de
             model, testset, background, ShapleyValues(), GPU=False
         )
         assert_shap_package_is_same_as_woodelf(mn_values, shap_package_values, testset, TOLERANCE)
+
+
+@pytest.mark.parametrize("metric, dense_metric", [
+    (GeneralShapleyInteractionValues(3, 3), GeneralShapleyInteractionValues(3, 3)),
+    (GeneralShapleyInteractionValues(2, 2, shap_convention=True), ShapleyInteractionValues()),
+    (GeneralShapleyInteractionValues(1, 1), ShapleyValues())
+], ids=["order_3", "order_2_shap_convention", "order_1"])
+def test_mn_background_interaction_values_match_high_depth_woodelf(
+        trainset, testset, xgb_model, metric, dense_metric
+):
+    consumer_data = testset.head(10)
+
+    cii_values = woodelf_sparse(xgb_model, consumer_data, trainset, metric)
+    dense_values = woodelf_for_high_depth(xgb_model, consumer_data, trainset, dense_metric)
+    # The CII metrics key every subset by a tuple, while ShapleyValues keys by the feature itself.
+    dense_values = {
+        key if isinstance(key, tuple) else (key,): value for key, value in dense_values.items()
+    }
+
+    zeros = np.zeros(len(consumer_data))
+    # In ShapleyInteractionValues also (f2,f1) tuples, where f2 > f1 are populated, we ignore this for now.
+    for key in set(cii_values):
+        np.testing.assert_allclose(
+            cii_values.get(key, zeros), dense_values.get(key, zeros), atol=TOLERANCE
+        )
+
+
+def test_mn_background_neighbor_leaf_trick_consistency(trainset, testset, xgb_model_depth_16):
+    metric = GeneralBanzhafInteractionValues(1, 2)
+
+    values_with_trick = woodelf_sparse(
+        xgb_model_depth_16, testset, trainset, metric, use_neighbor_leaf_trick=True
+    )
+    values_without_trick = woodelf_sparse(
+        xgb_model_depth_16, testset, trainset, metric, use_neighbor_leaf_trick=False
+    )
+
+    zeros = np.zeros(len(testset))
+    for key in set(values_with_trick) | set(values_without_trick):
+        np.testing.assert_allclose(
+            values_with_trick.get(key, zeros), values_without_trick.get(key, zeros), atol=TOLERANCE
+        )
 
 
 def test_single_leaf_tree(testset):
