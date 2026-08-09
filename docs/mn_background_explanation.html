@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>MN Background SHAP — WOODELF</title>
+  <title>MN Background SHAP &amp; Interaction Values — WOODELF</title>
   <script>
     MathJax = {
       tex: { inlineMath: [['$','$'], ['\\(','\\)']], displayMath: [['$$','$$'], ['\\[','\\]']] },
@@ -276,7 +276,7 @@
 
 <header>
   <h1>MN Background SHAP — WOODELF</h1>
-  <p>A vectorized, symmetry-exploiting algorithm for background Shapley values in decision tree ensembles</p>
+  <p>A vectorized, symmetry-exploiting algorithm for background Shapley values in decision tree ensembles — and its extension to interaction values of any order</p>
 </header>
 
 <div class="container">
@@ -294,6 +294,9 @@
       <li><a href="#derivation">Full Derivation of the Factorization</a></li>
       <li><a href="#neighbor">Neighbor Leaf Trick</a></li>
       <li><a href="#complexity">Complexity Summary</a></li>
+      <li><a href="#iv-intuition">Any-Order Interaction Values — Intuition</a></li>
+      <li><a href="#iv-simple">Simple Approach — <code>MNBackgroundCIIPathToSVectors</code></a></li>
+      <li><a href="#iv-fast">Fast Approach — <code>MNBackgroundCIIFasterPathToSVectors</code> <span style="color:var(--orange); font-weight:700;">(WIP)</span></a></li>
     </ol>
   </div>
 
@@ -824,6 +827,620 @@ total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="
       This is why <code>hybrid_woodelf</code> switches to MN when $D > 12$
       (where $2^D$ becomes prohibitively large for the HighDepth backend).
     </p>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="iv-intuition">
+    <h2>10 · Any-Order Interaction Values — Intuition</h2>
+
+    <p>
+      So far each feature received its own value. An <strong>interaction value of order $k$</strong>
+      asks a different question: how much does the <em>joint presence</em> of a set
+      $S = \{d_1, \ldots, d_k\}$ of features explain, beyond what its individual members and its
+      smaller sub-coalitions already explain? Formally it is the Grabisch–Roubens index, built on the
+      <em>discrete derivative</em> — the alternating sum that isolates exactly the joint effect:
+    </p>
+
+    <div class="math-block">
+      $$I(S) = \sum_{T \subseteq M \setminus S} w(|T|)\, \underbrace{\sum_{L \subseteq S} (-1)^{k - |L|}\, v(T \cup L)}_{\Delta_S v(T)}$$
+    </div>
+
+    <p>
+      For $k = 1$ the derivative is $v(T \cup \{d\}) - v(T)$ and $I$ is the ordinary Shapley (or Banzhaf)
+      value — so everything below is a strict generalization of sections 1–9.
+      For $k = 2$ it is the familiar $v(T{+}i{+}j) - v(T{+}i) - v(T{+}j) + v(T)$.
+    </p>
+
+    <h3>Why this stays easy on a cube</h3>
+
+    <p>
+      WOODELF never applies this to the whole model — only to a single cube at a time, and a cube is an
+      extremely rigid game. Its characteristic function is
+      $v(T) = \bigl[s^+ \subseteq T\bigr]\bigl[s^- \cap T = \emptyset\bigr]$: it fires only when
+      <em>every</em> positive literal is present and <em>no</em> negative literal is. Two consequences
+      make the whole extension tractable:
+    </p>
+
+    <div class="card green">
+      <div class="card-title">The two facts that drive everything</div>
+      <p>
+        <strong>1 · Features outside the cube are dummies.</strong> A feature that appears in neither
+        $s^+$ nor $s^-$ cannot change $v$ at all, and the interaction index of any set containing a dummy
+        is $0$. So <strong>a subset $S$ contributes only when all $k$ of its features are literals of the
+        cube</strong> — this single containment test is what the algorithms spend their effort on.
+      </p>
+      <p style="margin-top:0.6rem;">
+        <strong>2 · Only counts matter.</strong> Given containment, the derivative $\Delta_S v(T)$ is
+        non-zero for exactly one coalition $T$, and the index collapses to a closed form that depends on
+        nothing but four integers: how many positive and negative literals the cube has, and how many of
+        $S$'s features sit on each side.
+      </p>
+    </div>
+
+    <p>
+      This is the exact generalization of the symmetry insight of section 3, where $\alpha(p,n)$ and
+      $\beta(p,n)$ depended only on the counts $(p, n)$. Section 3 is the $k = 1$ case of what follows.
+    </p>
+
+    <h3>The four numbers</h3>
+
+    <p>
+      A cube and a subset are therefore encoded by the tuple
+      $(n,\, p,\, a,\, k - a)$: the cube's negative and positive literal counts, and the split of $S$
+      across them.
+    </p>
+
+    <div class="card">
+      <div class="card-title">Worked example</div>
+      <p>
+        Cube $x_1 \wedge x_4 \wedge \neg x_2 \wedge \neg x_5$ with subset $S = \{x_1, x_2, x_5\}$
+        (so $k = 3$):
+      </p>
+      <table style="margin-top:0.6rem;">
+        <tr><th>Quantity</th><th>Value</th><th>Why</th></tr>
+        <tr><td>$n$ — cube negative literals</td><td>2</td><td>$\neg x_2, \neg x_5$</td></tr>
+        <tr><td>$p$ — cube positive literals</td><td>2</td><td>$x_1, x_4$</td></tr>
+        <tr><td>$a$ — subset ∩ positives</td><td>1</td><td>$x_1$</td></tr>
+        <tr><td>$k - a$ — subset ∩ negatives</td><td>2</td><td>$x_2, x_5$</td></tr>
+      </table>
+      <p style="margin-top:0.6rem;">
+        Encoded as $(2, 2, 1, 2)$. Every subset of every cube that shares these four numbers has the
+        identical value — which is precisely why a small lookup table can replace all metric evaluations.
+      </p>
+    </div>
+
+    <h3>The closed forms</h3>
+
+    <p>
+      Carrying out the collapse gives one line per metric. With $k$ the order, $a = |S \cap s^+|$ and
+      $k - a = |S \cap s^-|$:
+    </p>
+
+    <div class="math-block" style="border-color: #a5b4fc; background: #eef2ff;">
+      $$I_{\text{Shapley}}(S) = (-1)^{\,k-a}\ \frac{(p-a)!\ \bigl(n-(k-a)\bigr)!}{(p+n-k+1)!}
+        \qquad\qquad
+        I_{\text{Banzhaf}}(S) = \frac{(-1)^{\,k-a}}{2^{\,p+n-k}}$$
+    </div>
+
+    <p>
+      The sign $(-1)^{k-a}$ is the whole intuition in one factor: each of $S$'s features that must be
+      <em>absent</em> for the cube to fire flips the direction of the joint effect.
+      Setting $k = 1$ recovers section 3 exactly — $a = 1$ gives
+      $\frac{(p-1)!\,n!}{(p+n)!} = \alpha(p,n)$ and $a = 0$ gives $-\frac{p!\,(n-1)!}{(p+n)!} = \beta(p,n)$.
+      Setting $k = 2$ reproduces the pairwise interaction formulas of the paper.
+    </p>
+
+    <div class="card orange">
+      <div class="card-title">The generic interface</div>
+      <p>
+        Nothing above is specific to Shapley or Banzhaf, so the code takes the four numbers as the
+        contract. A metric subclasses <code>CardinalityInteractionIndicesMetric</code> and implements
+        a single method:
+      </p>
+      <pre style="margin-top:0.6rem;"><code><span class="kw">def</span> <span class="fn">cardinality_value</span>(<span class="kw">self</span>, num_neg_literals, num_pos_literals, num_subset_pos, num_subset_neg) -> <span class="kw">float</span>:
+    <span class="cm"># the value of one subset of one cube, given only the four counts</span></code></pre>
+      <p style="margin-top:0.6rem;">
+        <code>GeneralShapleyInteractionValues</code> and <code>GeneralBanzhafInteractionValues</code> are
+        the two built-in implementations, but any cardinality-expressible index (Shapley–Taylor and
+        friends) plugs in the same way and immediately gets both algorithms below.
+      </p>
+    </div>
+
+    <h3>One metric, a range of orders</h3>
+
+    <p>
+      An order is not baked into the metric class. A metric carries an interval
+      <code>min_order</code>…<code>max_order</code> and reports <em>every</em> subset whose size falls
+      inside it — so a single pass can produce orders 1, 2 and 3 together rather than requiring three
+      runs. The upper end is capped by the number of variables actually in the cube, since any larger
+      subset must contain a dummy player and is therefore $0$ anyway:
+    </p>
+
+    <div class="math-block">
+      $$\texttt{orders}(V) = \bigl[\,\texttt{min_order},\ \min(\texttt{max_order},\, V)\,\bigr]$$
+    </div>
+
+    <div class="card">
+      <div class="card-title">The useful configurations</div>
+      <table style="margin-top:0.4rem;">
+        <tr><th>Constructor</th><th>Reports</th></tr>
+        <tr><td><code>GeneralShapleyInteractionValues()</code></td><td>The default: every order at once — the full interaction hierarchy</td></tr>
+        <tr><td><code>GeneralShapleyInteractionValues(3, 3)</code></td><td>Order 3 only</td></tr>
+        <tr><td><code>GeneralShapleyInteractionValues(1, 2)</code></td><td>Ordinary values plus pairwise interactions</td></tr>
+        <tr><td><code>GeneralShapleyInteractionValues(2, 2, shap_convention=True)</code></td><td>Pairwise, matching the shap package scaling</td></tr>
+      </table>
+      <p style="margin-top:0.6rem;">
+        Because <code>max_order=None</code> means "no upper limit", the default constructor is the
+        any-order metric. Both algorithms below consume <code>metric.orders(D)</code> directly, so
+        widening the range costs one extra block of rows rather than another pass over the data.
+      </p>
+    </div>
+
+    <div class="card purple">
+      <div class="card-title">Key convention</div>
+      <p>
+        Every subset is keyed <strong>once</strong>, by its sorted tuple of feature names, holding the
+        full value. The shap package instead splits a pair's value across both of its orderings
+        $(f_1, f_2)$ and $(f_2, f_1)$; passing <code>shap_convention=True</code> to
+        <code>GeneralShapleyInteractionValues</code> divides by the subset's size factorial to reproduce
+        that. Mirroring the keys is a separate, downstream concern
+        (<code>CubeMetric.should_mirror</code>), which matters because at order $k$ full mirroring would
+        mean $k!$ copies of every value.
+      </p>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="iv-simple">
+    <h2>11 · The Simple Approach — <code>MNBackgroundCIIPathToSVectors</code></h2>
+
+    <p>
+      The simple class keeps the entire pipeline of section 5 — uniquify the background, build
+      <code>diff</code> / <code>positive</code> / <code>valid</code>, popcount to get $(p, n)$ — and
+      changes only what happens afterwards. Two things generalize.
+    </p>
+
+    <h3>Generalization 1: the tables gain a dimension</h3>
+
+    <p>
+      Section 4 precomputed two $(D{+}1) \times (D{+}1)$ tables, one for positive literals and one for
+      negative. At order $k$ a subset is no longer "positive" or "negative" — it is split $a$ against
+      $k - a$ — so the two tables become $k{+}1$ tables indexed by that split:
+    </p>
+
+    <div class="math-block">
+      $$V_a[p][n] \;=\; \texttt{cardinality_value}(n,\, p,\, a,\, k-a), \qquad a = 0, \ldots, k$$
+    </div>
+
+    <p>
+      Entries that cannot occur ($a > p$, $k - a > n$, or $p + n &lt; k$) stay $0$, which conveniently
+      makes unreachable splits contribute nothing without a branch. For $k = 1$ this is literally the old
+      pair: $V_1$ is <code>pos_matrix</code> and $V_0$ is <code>neg_matrix</code>.
+      Cost is $O(k \cdot D^2)$ metric calls, once per instance.
+    </p>
+
+    <h3>Generalization 2: loop over the subsets</h3>
+
+    <p>
+      Instead of routing a scalar to individual bits, we now ask the containment question of section 10
+      for each of the $\binom{D}{k}$ subsets of path features. Both parts of that question are single
+      bit-operations. Writing $\text{mask}_S$ for the integer with $S$'s bits set:
+    </p>
+
+    <div class="card highlight">
+      <div class="card-title">The two bit tests</div>
+      <p>
+        <strong>Containment</strong> — every feature of $S$ is a literal of this pair's cube exactly when
+        every bit of $S$ differs between consumer and background, since a bit lies in $s^+ \cup s^-$
+        precisely when it is set in <code>diff</code>:
+      </p>
+      <div class="math-block">
+        $$\text{covered}_{S,c,b} = \bigl[(\text{diff}_{c,b} \mathbin{\&} \text{mask}_S) = \text{mask}_S\bigr]$$
+      </div>
+      <p style="margin-top:0.6rem;">
+        <strong>The split</strong> — of those, the ones that are <em>positive</em> literals are the bits
+        also set in <code>positive</code>, so the count $a$ is one popcount:
+      </p>
+      <div class="math-block">
+        $$a_{S,c,b} = \text{popcount}(\text{positive}_{c,b} \mathbin{\&} \text{mask}_S)$$
+      </div>
+    </div>
+
+    <p>
+      With $(a, p, n)$ in hand the value is a table lookup, and summing over the background axis finishes
+      the row for subset $S$:
+    </p>
+
+    <div class="math-block">
+      $$s[S, c] \;=\; w_\ell \sum_b V_{a_{S,c,b}}\bigl[p_{c,b}\bigr]\bigl[n_{c,b}\bigr] \cdot \hat{b}_b \cdot \text{valid}_{c,b} \cdot \text{covered}_{S,c,b}$$
+    </div>
+
+    <pre><code><span class="kw">for</span> s_index, subset <span class="kw">in</span> enumerate(subsets):        <span class="cm"># all C(D, k) subsets of the path features</span>
+    subset_mask = <span class="nm">0</span>
+    <span class="kw">for</span> d <span class="kw">in</span> subset:
+        subset_mask |= <span class="nm">1</span> &lt;&lt; (D - <span class="nm">1</span> - d)
+
+    covered = (diff &amp; subset_mask) == subset_mask     <span class="cm"># S sits entirely inside the cube</span>
+    a       = np.<span class="fn">bitwise_count</span>(positive &amp; subset_mask)  <span class="cm"># how many of S are positive literals</span>
+    s[s_index] = (contribution_tables[a, p, n] * base * covered).<span class="fn">sum</span>(axis=<span class="nm">1</span>)</code></pre>
+
+    <p>
+      The loop above covers one order. Since a metric may report a range of them, the s-matrix stacks the
+      orders into <strong>blocks</strong>: rows $\binom{D}{k}$ for each reported $k$, laid out in order and
+      addressed by <code>_order_row_blocks</code>, for a total of
+      $\sum_{k \in \texttt{orders}(D)} \binom{D}{k}$ rows against $U_c$ columns — one row per subset
+      instead of one per feature. Each row is keyed by its sorted feature tuple.
+    </p>
+
+    <p>
+      Everything downstream is unchanged: the batching of section 5.5, the scatter through the factorize
+      inverse, and the neighbor trick of section 8 all operate on keys and never inspect them.
+    </p>
+
+    <div class="card green">
+      <div class="card-title">Why this is the class in use</div>
+      <p>
+        Exactly as in section 5, this is the readable reference implementation and the correctness
+        oracle for the fast class below. Its known weakness is that the per-subset reduction is an
+        elementwise multiply-and-sum over a $(U_c \times U_b)$ array, repeated $\binom{D}{k}$ times —
+        no BLAS, poor cache behaviour — which is precisely what section 12 sets out to fix. As measured
+        there, that fix currently pays off only for small $k$, so <code>woodelf_sparse</code> routes the
+        CII metrics through <strong>this</strong> class by default.
+      </p>
+    </div>
+
+    <h3>Complexity</h3>
+
+    <p>Per leaf, against the order-1 base algorithm of section 5:</p>
+
+    <table>
+      <tr><th>Step</th><th>Order 1 (section 5)</th><th>Order $k$</th></tr>
+      <tr><td>Pair-level setup ($p$, $n$, <code>valid</code>)</td><td>$O(U_c U_b)$</td><td>$O(U_c U_b)$ — built once, shared by every order</td></tr>
+      <tr><td>Per-subset reduction</td><td>$O(D \cdot U_c U_b)$</td><td>$O\bigl(\tbinom{D}{k} \cdot U_c U_b\bigr)$</td></tr>
+      <tr><td>Table construction (once)</td><td>$O(D^2)$</td><td>$O(k D^2)$</td></tr>
+    </table>
+
+    <p>
+      Substituting $k = 1$ gives $\binom{D}{1} = D$ — the $D$ per-feature reductions of section 5, as
+      expected. A metric reporting a range of orders pays the sum of its subset counts,
+      $\sum_{k \in \texttt{orders}(D)} \binom{D}{k}$, while reusing one set of pair-level arrays.
+    </p>
+
+    <h3>Total cost across the ensemble</h3>
+
+    <p>
+      Putting the leaf cost back into the loop over the model, with the notation of section 9
+      ($T$ trees, $L$ leaves per tree, $n$ consumer rows, $m$ background rows), the order-$k$ algorithm
+      costs:
+    </p>
+
+    <div class="math-block" style="border-color: #a5b4fc; background: #eef2ff;">
+      $$O\Bigl(\underbrace{mTL}_{\text{background patterns}}
+        \;+\; \underbrace{n\,T\,L\,\tbinom{D}{k}}_{\text{scatter to consumer rows}}
+        \;+\; \underbrace{\tbinom{D}{k}\,U_c\,U_b\,T\,L}_{\text{core reductions}}\Bigr)$$
+    </div>
+
+    <p>
+      Each term generalizes one term of section 9 in a different way, which is worth reading off
+      explicitly:
+    </p>
+
+    <div class="card">
+      <div class="card-title">Where the order enters — and where it does not</div>
+      <p>
+        <strong>Pattern construction is untouched.</strong> $mTL$ carries no $k$ at all: routing the
+        background through the trees and uniquifying the patterns happens once, no matter which orders
+        are being computed. The same holds for the consumer routing.
+      </p>
+      <p style="margin-top:0.5rem;">
+        <strong>The scatter grows with the number of answers.</strong> Section 9's $nTLD$ becomes
+        $nTL\binom{D}{k}$ — one length-$n$ write per subset per leaf rather than one per feature. This
+        term is pure bookkeeping, but at higher orders it stops being negligible.
+      </p>
+      <p style="margin-top:0.5rem;">
+        <strong>The core grows with the subset count.</strong> $U_c U_b TLD$ becomes
+        $\binom{D}{k} U_c U_b TL$ — one elementwise pass over the pair array per subset. For a range of
+        orders, replace $\binom{D}{k}$ by its sum over $\texttt{orders}(D)$: a range costs extra blocks,
+        not extra passes over the shared pair-level arrays.
+      </p>
+      <p style="margin-top:0.5rem;">
+        Setting $k = 1$ collapses all three back to $O(mTL + nTLD + U_c U_b TLD)$ — exactly the row for
+        <code>MNBackgroundPathToSVectors</code> in section 9.
+      </p>
+    </div>
+
+    <div class="complexity-row v1">
+      <div class="complexity-label">Direct computation (definition)</div>
+      <div>$O\bigl(\tbinom{F}{k} \cdot 2^{F} \cdot n\bigr)$ model evaluations — exponential in the feature count $F$</div>
+    </div>
+    <div class="complexity-row v2">
+      <div class="complexity-label"><code>MNBackgroundCIIPathToSVectors</code></div>
+      <div>$O\bigl(mTL + nTL\tbinom{D}{k} + \tbinom{D}{k}\,U_c U_b\,TL\bigr)$</div>
+    </div>
+
+    <div class="card purple">
+      <div class="card-title">Memory is the real ceiling, not time</div>
+      <p>
+        The returned dictionary holds one length-$n$ array per subset that co-occurs anywhere in the
+        model — up to $\binom{F}{k}$ of them over $F$ features, independent of $T$, $L$ and $D$. At
+        $k = 2$ this is the familiar quadratic interaction matrix; at $k \ge 3$ it grows faster than any
+        term in the runtime above. Where the algorithm scales fine but the output does not,
+        <code>global_importance</code>-style aggregation or a narrower order range is the answer.
+      </p>
+    </div>
+
+    <div class="card orange">
+      <div class="card-title">A note on the any-order default</div>
+      <p>
+        With <code>max_order=None</code> a depth-$D$ leaf reports every non-empty subset of its path
+        features: $\sum_{k \ge 1} \binom{D}{k} = 2^D - 1$ output rows, and the same count of elementwise
+        passes. Since the returned dictionary holds one array of length $n$ per subset, on deep trees the
+        <em>output itself</em> — not the algorithm — becomes the binding constraint. Pick an explicit
+        <code>max_order</code> when $D$ is large.
+      </p>
+    </div>
+
+    <div class="card green">
+      <div class="card-title">What this unlocks</div>
+      <p>
+        Background-mode interaction values are now available in the sparse/deep regime for the first
+        time, at any order, with the neighbor leaf trick of section 8 fully intact — an advantage over
+        the path-dependent Linear TreeSHAP route, where the trick has to be switched off for interaction
+        values.
+      </p>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <section id="iv-fast">
+    <h2>12 · The Fast Approach — <code>MNBackgroundCIIFasterPathToSVectors</code> <span style="color:var(--orange); font-size:0.7em; font-weight:700; letter-spacing:0.05em;">WIP</span></h2>
+
+    <div class="card orange">
+      <div class="card-title">Work in progress — not the default</div>
+      <p>
+        This class is <strong>not</strong> what <code>woodelf_sparse</code> uses for the CII metrics;
+        section 11's class is. The restructuring below is correct — it is verified against the simple
+        class — but as the measurements later in this section show, it is only faster for small $k$ and
+        becomes <em>dramatically slower</em> beyond the crossover, because the factorization it relies
+        on carries an extra $2^k$ in its row count. The fix is known and sketched at the end of this
+        section; until it lands, this class stays opt-in.
+      </p>
+    </div>
+
+    <p>
+      The fast class earns its speed the same way section 6 did — by finding a factorization that
+      <strong>separates the consumer index from the background index</strong>, so the sum over $b$ becomes
+      a matrix multiplication. The order-$k$ identity is the direct generalization of
+      $\text{pos_bits} = c_d(1 - b_d)$.
+    </p>
+
+    <div class="card purple">
+      <div class="card-title">The separation identity</div>
+      <p>
+        Fix a subset $S$ and a candidate split $A \subseteq S$ (the members of $S$ we suppose are the
+        positive literals). By the table of section 2, $d \in A$ requires $c_d = 1, b_d = 0$ and
+        $d \in S \setminus A$ requires $c_d = 0, b_d = 1$. Writing that out and grouping:
+      </p>
+      <div class="math-block">
+        $$\prod_{d \in A} c_d(1-b_d) \prod_{d \in S \setminus A} (1-c_d)b_d
+          \;=\;
+          \underbrace{\Bigl[\,p_c\big|_S = A\,\Bigr]}_{\text{consumer only}}
+          \cdot
+          \underbrace{\Bigl[\,p_b\big|_S = \overline{A}\,\Bigr]}_{\text{background only}}$$
+      </div>
+      <p style="margin-top:0.6rem;">
+        The pair contributes to $S$ under split $A$ iff the consumer pattern restricted to $S$ equals
+        $A$, <em>and</em> the background pattern restricted to $S$ equals its complement within $S$.
+        The two factors share no index — which is exactly the property a matmul needs.
+      </p>
+      <p style="margin-top:0.6rem;">
+        At $k = 1$ the two splits $A = \{d\}$ and $A = \emptyset$ give back
+        $c_d \cdot (1 - b_d)$ and $(1 - c_d) \cdot b_d$: sections 6 and 7 are this identity's $k=1$ case.
+      </p>
+    </div>
+
+    <h3>From identity to matmul</h3>
+
+    <p>
+      Group the work by split size $a = |A|$. Every pair-level scalar for that size is one array, and
+      every $(S, A)$ pair with $|A| = a$ is one row of a mask matrix:
+    </p>
+
+    <div class="math-block">
+      $$W_a[c, b] = V_a\bigl[p_{c,b}\bigr]\bigl[n_{c,b}\bigr] \cdot \hat{b}_b \cdot \text{valid}_{c,b}
+        \qquad (U_c \times U_b)$$
+      $$B_a[(S,A),\, b] = \Bigl[\,p_b\big|_S = \overline{A}\,\Bigr]
+        \qquad \Bigl(\tbinom{D}{k}\tbinom{k}{a} \times U_b\Bigr)$$
+    </div>
+
+    <p>The background reduction is then one dense matrix multiplication per split size:</p>
+
+    <div class="math-block">
+      $$\mathbf{BM}_a = B_a \cdot W_a^\top \qquad \Bigl(\tbinom{D}{k}\tbinom{k}{a} \times U_c\Bigr)$$
+    </div>
+
+    <p>
+      and the consumer side recombines them with its own masks
+      $C_a[(S,A), c] = \bigl[p_c|_S = A\bigr]$:
+    </p>
+
+    <div class="math-block" style="border-color: #a5b4fc; background: #eef2ff;">
+      $$\boxed{\;s[S, c] \;=\; w_\ell \sum_{a=0}^{k} \ \sum_{\substack{A \subseteq S \\ |A| = a}} C_a[(S,A),\, c] \cdot \mathbf{BM}_a[(S,A),\, c]\;}$$
+    </div>
+
+    <div class="card green">
+      <div class="card-title">That sum is really a selection</div>
+      <p>
+        For a given subset $S$ and consumer pattern $c$, the mask $C_a[(S,A), c]$ is $1$ for
+        <em>exactly one</em> split — namely $A = \{d \in S : c_d = 1\}$, which the consumer pattern
+        determines outright — and $0$ for all $2^k - 1$ others. So the double sum picks a single
+        $\mathbf{BM}$ entry per $(S, c)$; writing it as a masked sum simply lets NumPy do the picking
+        without a gather.
+      </p>
+    </div>
+
+    <h3>Operations in code</h3>
+
+    <pre><code>c_bits = <span class="fn">bits_matrix</span>(consumer_batch, D)          <span class="cm"># (D, U_c)</span>
+b_bits = <span class="fn">bits_matrix</span>(unique_b, D)                 <span class="cm"># (D, U_b)</span>
+
+<span class="kw">for</span> k, block_start, n_subsets <span class="kw">in</span> <span class="kw">self</span>.<span class="fn">_order_row_blocks</span>(D):   <span class="cm"># each reported order fills its own rows</span>
+    <span class="kw">for</span> a <span class="kw">in</span> range(k + <span class="nm">1</span>):                                    <span class="cm"># one split size at a time</span>
+        W = contribution_tables[k][a][p, n] * base              <span class="cm"># (U_c, U_b)</span>
+        positions, in_A = <span class="kw">self</span>.<span class="fn">_split_index_arrays</span>(D, k, a)
+
+        <span class="cm"># background mask is inverted vs A, consumer mask follows A</span>
+        b_mask = <span class="kw">self</span>.<span class="fn">_restriction_masks</span>(b_bits, positions, ~in_A)
+        BM     = b_mask.<span class="fn">astype</span>(np.float64) @ W.T               <span class="cm"># (rows, U_b) @ (U_b, U_c) → (rows, U_c)</span>
+        c_mask = <span class="kw">self</span>.<span class="fn">_restriction_masks</span>(c_bits, positions, in_A)
+
+        s[block_start:block_start + n_subsets] += (
+            (c_mask * BM).<span class="fn">reshape</span>(-<span class="nm">1</span>, splits_per_subset, batch).<span class="fn">sum</span>(axis=<span class="nm">1</span>)
+        )</code></pre>
+
+    <p>
+      Each reported order is an independent instance of the scheme, so the orders simply run one after
+      another, each filling its own block of $s$ rows. The expensive per-pair quantities
+      ($p$, $n$, <code>valid</code>, the frequencies) are built once and shared by all of them.
+    </p>
+
+    <h3>Keeping memory in check</h3>
+
+    <div class="card orange">
+      <div class="card-title">Three independent bounds</div>
+      <p>
+        <strong>1 · Consumer batching</strong> — inherited from section 5.5, bounding $U_c \times U_b$.
+      </p>
+      <p style="margin-top:0.5rem;">
+        <strong>2 · Streaming over $a$</strong> — only one $W_a$ exists at a time. The shared
+        $p$, $n$ and <code>valid</code> arrays are computed once, so peak pair-level memory stays at
+        roughly the order-1 level rather than $(k{+}1)\times$ it.
+      </p>
+      <p style="margin-top:0.5rem;">
+        <strong>3 · Chunking over subsets</strong> — the mask matrices grow as $\binom{D}{k}$, so rows
+        are processed in whole-subset groups bounded by <code>MASK_BATCH</code>, each chunk writing its
+        slice of the preallocated output. This is what keeps $D = 20, k = 3$ (9,120 rows) from
+        materializing a single enormous mask.
+      </p>
+    </div>
+
+    <p>
+      Following the analysis of point 3 in the design discussion, all arithmetic stays in
+      <code>float64</code>: the CPU-only gain from <code>float32</code> (~2×) was not judged worth
+      making $10^{-4}$-level deviations the silent default in a library whose selling point is exactness.
+      The masks are exact in either precision, so the option remains open — most relevantly for a future
+      GPU port, where <code>fp64</code> throughput is a small fraction of <code>fp32</code>.
+    </p>
+
+    <h3>Measured results</h3>
+
+    <p>
+      The restructuring above is correct, but correctness was never the question — speed was. Measured
+      on a single leaf at $D = 22$ (the depth of the deepest real model on hand), with 30 consumer and
+      20 background patterns, best-of-repeats wall time:
+    </p>
+
+    <table>
+      <tr><th>$k$</th><th>subsets $\binom{22}{k}$</th><th>simple (s)</th><th>fast (s)</th><th>speedup</th></tr>
+      <tr><td>1</td><td>22</td><td>0.00099</td><td>0.00037</td><td style="color:var(--green); font-weight:700;">2.67×</td></tr>
+      <tr><td>2</td><td>231</td><td>0.00903</td><td>0.00202</td><td style="color:var(--green); font-weight:700;">4.48×</td></tr>
+      <tr><td>3</td><td>1,540</td><td>0.06356</td><td>0.02511</td><td style="color:var(--green); font-weight:700;">2.53×</td></tr>
+      <tr><td>4</td><td>7,315</td><td>0.31686</td><td>0.21199</td><td style="color:var(--green); font-weight:700;">1.50×</td></tr>
+      <tr><td>5</td><td>26,334</td><td>1.15002</td><td>1.26751</td><td style="color:var(--red); font-weight:700;">0.91×</td></tr>
+      <tr><td>6</td><td>74,613</td><td>2.42056</td><td>8.23200</td><td style="color:var(--red); font-weight:700;">0.29×</td></tr>
+      <tr><td>7</td><td>170,544</td><td>5.62813</td><td>40.71835</td><td style="color:var(--red); font-weight:700;">0.14×</td></tr>
+      <tr><td>8</td><td>319,770</td><td>10.94</td><td style="color:var(--muted);">not run — ~4.9 GB</td><td style="color:var(--muted);">—</td></tr>
+      <tr><td>9</td><td>497,420</td><td>17.25</td><td style="color:var(--muted);">not run — ~17 GB</td><td style="color:var(--muted);">—</td></tr>
+      <tr><td>10</td><td>646,646</td><td>22.64</td><td style="color:var(--muted);">not run — ~49 GB</td><td style="color:var(--muted);">—</td></tr>
+    </table>
+
+    <div class="card orange">
+      <div class="card-title">Reading the table</div>
+      <p>
+        <strong>The win is real but narrow.</strong> Up to $k = 4$ the matmul form is the faster one,
+        peaking at $4.5\times$ around $k = 2$ — the pairwise case, which is also the one most people
+        actually ask for.
+      </p>
+      <p style="margin-top:0.5rem;">
+        <strong>Past the crossover it inverts hard.</strong> At $k = 7$ the "fast" class is
+        <em>seven times slower</em> than the class it was written to replace. This is not a constant-factor
+        wobble; it is the $2^k$ in the row count overtaking what <code>dgemm</code> buys back.
+      </p>
+      <p style="margin-top:0.5rem;">
+        <strong>$k \ge 8$ could not be measured at all.</strong> The cached split-index arrays alone
+        project to roughly 4.9 / 17 / 49 GB at $k = 8, 9, 10$ — the same $2^k$ blowup, surfacing as
+        memory rather than time. The simple class has no such cache and ran fine at every order.
+      </p>
+    </div>
+
+    <p>
+      Over full 100-tree IEEE-CIS ensembles the shape is the same, just milder: the fast class ran
+      $2\times$–$2.6\times$ ahead at $k = 2$ and $k = 3$ on depth-16 and depth-22 models, dropped
+      to $\approx 1.4\times$ at $k = 4$, and came out <em>behind</em> the simple class at $k = 4$ on a
+      depth-6 model ($0.78\times$–$0.85\times$). That last case is the same effect from the other
+      direction — what matters is $k$ <em>relative to</em> $D$, so a small tree reaches the crossover at a
+      much lower order.
+    </p>
+
+    <h3>Complexity — what the restructuring changes</h3>
+
+    <p>
+      Only the core term differs from section 11; the pattern construction and the scatter are shared
+      verbatim. The trade is $\binom{D}{k}$ elementwise passes over a $(U_c \times U_b)$ array, replaced
+      by $\binom{D}{k}2^{k}$ rows of BLAS work:
+    </p>
+
+    <div class="complexity-row v2">
+      <div class="complexity-label"><code>MNBackgroundCIIPathToSVectors</code></div>
+      <div>$O\bigl(mTL + nTL\tbinom{D}{k} + \tbinom{D}{k}\,U_c U_b\,TL\bigr)$ — elementwise</div>
+    </div>
+    <div class="complexity-row v1">
+      <div class="complexity-label"><code>MNBackgroundCIIFasterPathToSVectors</code></div>
+      <div>$O\bigl(mTL + nTL\tbinom{D}{k} + \tbinom{D}{k}2^{k}\,U_c U_b\,TL\bigr)$ — BLAS, but $2^k$ more of it</div>
+    </div>
+
+    <p>
+      At $k = 1$ this is $\binom{D}{1}2^1 = 2D$, the two matmuls of section 6, and the bet pays off
+      exactly as it did there. But the $2^k$ is a real asymptotic cost, not a constant: section 6 won
+      because BLAS beat elementwise at <em>identical</em> operation counts, whereas here BLAS has to win
+      by a factor of $2^k$ just to break even. The table above is where that stops happening — around
+      $k = 5$ at $D = 22$.
+    </p>
+
+    <div class="card highlight">
+      <div class="card-title">The fix — inclusion–exclusion on the background masks</div>
+      <p>
+        Expanding the $(1 - b_d)$ factors by inclusion–exclusion turns every background mask into a plain
+        AND-monomial shared across splits, shrinking the matmul rows from $\binom{D}{k}2^k$ to
+        $(k{+}1)\sum_{j \le k}\binom{D}{j}$. That swaps an exponential-in-$k$ factor for a polynomial one:
+        at $D = 16$ it is roughly break-even at $k = 1$, $2.3\times$ fewer rows at $k = 4$, and
+        $12.7\times$ fewer at $k = 10$ — and the gap keeps widening. The cost is replacing the
+        select-like masked sum with a signed multi-term recombination.
+      </p>
+      <p style="margin-top:0.5rem;">
+        This is what would move the crossover out far enough for the class to deserve its name at every
+        order. It is currently recorded as a comment in <code>_compute_s_batch</code> and left
+        unimplemented — which is exactly why this section is marked WIP.
+      </p>
+    </div>
+
+    <div class="comparison">
+      <div class="card">
+        <div class="card-title" style="color:var(--green);">Simple CII class</div>
+        <p><strong>Dominant op:</strong> $\binom{D}{k}$ elementwise reductions over $(U_c \times U_b)$</p>
+        <p><strong>Role:</strong> the default for background interaction values, and the correctness oracle</p>
+        <p><strong>Scaling in $k$:</strong> steady — no auxiliary structure grows with $2^k$</p>
+      </div>
+      <div class="card">
+        <div class="card-title" style="color:var(--orange);">Faster CII class <span style="font-size:0.8em;">(WIP)</span></div>
+        <p><strong>Dominant op:</strong> $k{+}1$ BLAS <code>dgemm</code> multiplications</p>
+        <p><strong>Role:</strong> opt-in; worth it for low $k$ on deep trees</p>
+        <p><strong>Scaling in $k$:</strong> $2^k$ rows in both time and cached memory — the open problem</p>
+      </div>
+    </div>
 
     <hr/>
 
