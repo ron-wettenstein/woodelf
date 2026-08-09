@@ -5,7 +5,7 @@ import shap
 from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, \
     assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyInteractionValues, \
-    GeneralShapleyInteractionValues, GeneralBanzhafInteractionValues
+    GeneralShapleyInteractionValues, GeneralBanzhafInteractionValues, BanzhafInteractionValues
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.woodelf_sparse import woodelf_sparse
@@ -101,6 +101,20 @@ def test_mn_background_interaction_values_match_high_depth_woodelf(
         np.testing.assert_allclose(
             cii_values.get(key, zeros), dense_values.get(key, zeros), atol=TOLERANCE
         )
+
+@pytest.mark.parametrize("metric", [
+    ShapleyInteractionValues(),
+    BanzhafInteractionValues(),
+    ShapleyValues(),
+    BanzhafValues()
+], ids=["shap_iv", "banzhaf_iv", "shap", "banzhaf"])
+def test_mn_background_vs_woodelf_hd(trainset, testset, xgb_model, metric):
+    cii_values = woodelf_sparse(xgb_model, testset, trainset, metric)
+    dense_values = woodelf_for_high_depth(xgb_model, testset, trainset, metric)
+
+    assert set(cii_values) == set(dense_values)
+    for key in set(cii_values):
+        np.testing.assert_allclose(cii_values[key], dense_values[key], atol=TOLERANCE)
 
 
 def test_mn_background_neighbor_leaf_trick_consistency(trainset, testset, xgb_model_depth_16):

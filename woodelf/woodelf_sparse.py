@@ -31,24 +31,6 @@ _SUPPORTED_SPARSE_BACKGROUND_METRICS = (ShapleyValues, BanzhafValues, Cardinalit
                                         ShapleyInteractionValues, BanzhafInteractionValues)
 _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS = (ShapleyValues, BanzhafValues, ShapleyInteractionValues)
 
-# The pairwise interaction metrics have no sparse background algorithm of their own - each is computed in
-# background mode through the order 2 CII metric that yields the same values.
-_PAIRWISE_METRIC_TO_CII_EQUIVALENT = {
-    ShapleyInteractionValues: lambda: GeneralShapleyInteractionValues(2, 2, shap_convention=True),
-    BanzhafInteractionValues: lambda: GeneralBanzhafInteractionValues(2, 2),
-}
-
-
-def cii_equivalent_of_pairwise_metric(metric: CubeMetric) -> Optional[CardinalityInteractionIndicesMetric]:
-    """
-    The CII metric computing the same values as the given pairwise interaction metric, or None if the metric
-    is not one of the pairwise interaction metrics.
-    """
-    for pairwise_class, cii_equivalent in _PAIRWISE_METRIC_TO_CII_EQUIVALENT.items():
-        if isinstance(metric, pairwise_class):
-            return cii_equivalent()
-    return None
-
 
 def use_sparse_approach(depth, metric, is_background):
     if is_background:
@@ -168,21 +150,25 @@ def woodelf_sparse(
             "(background_data must be provided)."
         )
 
-    # In background mode the pairwise interaction metrics are computed through their order 2 CII equivalent.
-    # The CII metrics key every pair once by its sorted tuple, so the shap convention of reporting both
-    # (f1,f2) and (f2,f1) is restored by mirroring the keys at the end.
-    cii_equivalent = cii_equivalent_of_pairwise_metric(metric) if is_background else None
-    mirror_pairs = cii_equivalent is not None and metric.should_mirror()
-    if cii_equivalent is not None:
-        metric = cii_equivalent
+    mirror_pairs = metric.should_mirror()
+    if is_background:
+        if isinstance(metric, ShapleyInteractionValues):
+            metric = GeneralShapleyInteractionValues(2,2, shap_convention=True)
+            mirror_pairs = True
+        elif isinstance(metric, BanzhafInteractionValues):
+            metric = GeneralBanzhafInteractionValues(2,2)
+            mirror_pairs = True
 
-    if mn_p2s_class is None:
-        if isinstance(metric, CardinalityInteractionIndicesMetric):
-            mn_p2s_class = MNBackgroundCIIPathToSVectors
-        else:
-            mn_p2s_class = MNBackgroundFasterPathToSVectors
-    mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth) if is_background else None
-    lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU) if not is_background else None
+    mn_p2s, lts_p2s = None, None
+    if is_background:
+        if mn_p2s_class is None:
+            if isinstance(metric, CardinalityInteractionIndicesMetric):
+                mn_p2s_class = MNBackgroundCIIPathToSVectors
+            else:
+                mn_p2s_class = MNBackgroundFasterPathToSVectors
+        mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth)
+    else:
+        lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU)
 
     if isinstance(metric, ShapleyInteractionValues) and not is_background:
         use_neighbor_leaf_trick = False # Linear TreeSHAP doesn't support the neighbor_leaf_trick for interaction values
