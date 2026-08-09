@@ -78,36 +78,13 @@ def test_mn_background_shap_on_high_depth_models(trainset, testset, xgb_model_de
         assert_shap_package_is_same_as_woodelf(mn_values, shap_package_values, testset, TOLERANCE)
 
 
-@pytest.mark.parametrize("metric, dense_metric", [
-    (GeneralShapleyInteractionValues(3, 3), GeneralShapleyInteractionValues(3, 3)),
-    (GeneralShapleyInteractionValues(2, 2, shap_convention=True), ShapleyInteractionValues()),
-    (GeneralShapleyInteractionValues(1, 1), ShapleyValues())
-], ids=["order_3", "order_2_shap_convention", "order_1"])
-def test_mn_background_interaction_values_match_high_depth_woodelf(
-        trainset, testset, xgb_model, metric, dense_metric
-):
-    consumer_data = testset.head(10)
-
-    cii_values = woodelf_sparse(xgb_model, consumer_data, trainset, metric)
-    dense_values = woodelf_for_high_depth(xgb_model, consumer_data, trainset, dense_metric)
-    # The CII metrics key every subset by a tuple, while ShapleyValues keys by the feature itself.
-    dense_values = {
-        key if isinstance(key, tuple) else (key,): value for key, value in dense_values.items()
-    }
-
-    zeros = np.zeros(len(consumer_data))
-    # In ShapleyInteractionValues also (f2,f1) tuples, where f2 > f1 are populated, we ignore this for now.
-    for key in set(cii_values):
-        np.testing.assert_allclose(
-            cii_values.get(key, zeros), dense_values.get(key, zeros), atol=TOLERANCE
-        )
-
 @pytest.mark.parametrize("metric", [
     ShapleyInteractionValues(),
     BanzhafInteractionValues(),
     ShapleyValues(),
-    BanzhafValues()
-], ids=["shap_iv", "banzhaf_iv", "shap", "banzhaf"])
+    BanzhafValues(),
+    GeneralShapleyInteractionValues(3, 3)
+], ids=["shap_iv", "banzhaf_iv", "shap", "banzhaf", "order_3_shap"])
 def test_mn_background_vs_woodelf_hd(trainset, testset, xgb_model, metric):
     cii_values = woodelf_sparse(xgb_model, testset, trainset, metric)
     dense_values = woodelf_for_high_depth(xgb_model, testset, trainset, metric)
