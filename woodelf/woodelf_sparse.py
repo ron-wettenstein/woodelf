@@ -150,7 +150,7 @@ def woodelf_sparse(
             "(background_data must be provided)."
         )
 
-    mirror_pairs = metric.should_mirror()
+    mirror_pairs = False
     if is_background:
         if isinstance(metric, ShapleyInteractionValues):
             metric = GeneralShapleyInteractionValues(2,2, shap_convention=True)

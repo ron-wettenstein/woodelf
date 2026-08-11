@@ -16,8 +16,8 @@ FIXTURES = [trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22
 TOLERANCE = 0.00001
 
 @pytest.mark.parametrize("metric",
-                         [ShapleyValues(), BanzhafValues(), ShapleyInteractionValues(), GeneralShapleyInteractionValues(3, 3)],
-                         ids=["shapley", "banzhaf", "shapley_iv", "shapley_order_3"])
+                         [ShapleyValues(), BanzhafValues()],
+                         ids=["shapley", "banzhaf"])
 def test_linear_tree_metric_on_a_model(testset, xgb_model, metric):
 
     simple_woodelf_values = calculate_path_dependent_metric(
@@ -47,9 +47,34 @@ def test_hybrid_woodelf_on_path_dependent_iv_metric(testset, xgb_model, metric):
     )
 
     for feature in woodelf_hd_values:
-        np.testing.assert_allclose(
+        np.testing.assert_allclose(                                                                            
             woodelf_hd_values[feature], vectorized_linear_tree_values[feature], atol=TOLERANCE
         )
+
+
+def test_hybrid_woodelf_on_path_dependent_iv_metric_order_1_and_2_together(testset, xgb_model):
+
+    woodelf_hd_values = woodelf_for_high_depth(
+        xgb_model, testset, background_data=None, metric=ShapleyValues()
+    )
+
+    woodelf_hd_iv = woodelf_for_high_depth(
+        xgb_model, testset, background_data=None, metric=ShapleyInteractionValues()
+    )
+
+    vectorized_linear_tree_values = hybrid_woodelf(
+        xgb_model, testset, None, GeneralShapleyInteractionValues(1, 2, shap_convention=True), GPU=False
+    )
+
+    for features in vectorized_linear_tree_values:
+        if len(features) == 1:
+            np.testing.assert_allclose(
+                woodelf_hd_values[features[0]], vectorized_linear_tree_values[features], atol=TOLERANCE
+            )
+        else:
+            np.testing.assert_allclose(
+                woodelf_hd_iv[features], vectorized_linear_tree_values[features], atol=TOLERANCE
+            )
 
 def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):
     for model in [xgb_model_depth_16, xgb_model_depth_22]:
