@@ -8,14 +8,16 @@ from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyIntera
     GeneralShapleyInteractionValues, GeneralBanzhafInteractionValues, BanzhafInteractionValues
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
-from woodelf.woodelf_sparse import woodelf_sparse
+from woodelf.woodelf_sparse import woodelf_sparse, hybrid_woodelf
 from woodelf.simple_woodelf import calculate_path_dependent_metric, calculate_background_metric
 
 FIXTURES = [trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
 
 TOLERANCE = 0.00001
 
-@pytest.mark.parametrize("metric", [ShapleyValues(), BanzhafValues()], ids=["shapley", "banzhaf"])
+@pytest.mark.parametrize("metric",
+                         [ShapleyValues(), BanzhafValues(), ShapleyInteractionValues(), GeneralShapleyInteractionValues(3, 3)],
+                         ids=["shapley", "banzhaf", "shapley_iv", "shapley_order_3"])
 def test_linear_tree_metric_on_a_model(testset, xgb_model, metric):
 
     simple_woodelf_values = calculate_path_dependent_metric(
@@ -29,6 +31,24 @@ def test_linear_tree_metric_on_a_model(testset, xgb_model, metric):
     for feature in simple_woodelf_values:
         np.testing.assert_allclose(
             simple_woodelf_values[feature], vectorized_linear_tree_values[feature], atol=TOLERANCE
+        )
+
+@pytest.mark.parametrize("metric",
+                         [ShapleyInteractionValues(), GeneralShapleyInteractionValues(3, 3)],
+                         ids=["shapley_iv", "shapley_order_3"])
+def test_hybrid_woodelf_on_path_dependent_iv_metric(testset, xgb_model, metric):
+
+    woodelf_hd_values = woodelf_for_high_depth(
+        xgb_model, testset, background_data=None, metric=metric
+    )
+
+    vectorized_linear_tree_values = hybrid_woodelf(
+        xgb_model, testset, None, metric, GPU=False
+    )
+
+    for feature in woodelf_hd_values:
+        np.testing.assert_allclose(
+            woodelf_hd_values[feature], vectorized_linear_tree_values[feature], atol=TOLERANCE
         )
 
 def test_linear_tree_shap_on_high_depth_models(testset, xgb_model_depth_16, xgb_model_depth_22):
