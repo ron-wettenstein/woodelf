@@ -1,7 +1,7 @@
 import numpy as np
 
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
-from woodelf.core.trees.parsing_utils import safe_isinstance
+from woodelf.core.trees.parsing_utils import DEFAULT_CLASS_INDEX, resolve_class_index, safe_isinstance
 
 # treelite's Operator enum. Split nodes carry one of these, leaves carry kNone (0).
 TREELITE_OPERATOR_LT = 2  # go left if x < threshold. Used by XGBoost.
@@ -24,11 +24,6 @@ LIGHTGBM_SKLEARN_CLASSES = [
     "lightgbm.sklearn.LGBMClassifier",
     "lightgbm.sklearn.LGBMRanker",
 ]
-
-# scikit-learn classifiers store one value per class in every leaf. We keep this class' probability.
-# The shap based parser keeps the same column (its SingleTree.values[:, 0]), so both parsers agree.
-VECTOR_LEAF_CLASS_LABEL = 0
-
 
 # TODO models treelite cannot parse, they still need parse_models_using_shap:
 # catboost.core.CatBoost / CatBoostRegressor / CatBoostClassifier
@@ -68,13 +63,15 @@ def read_node_sample_weight(tree_accessor, num_nodes):
     )
 
 
-def read_leaf_values(tree_accessor, leaf_mask, vector_length, leaf_scaling):
+def read_leaf_values(tree_accessor, leaf_mask, vector_length, leaf_scaling, class_index=DEFAULT_CLASS_INDEX):
     """
     Read the value of every leaf, returning a per-node array whose inner nodes hold 0.
 
     Leaves hold either a single number (boosters, and scikit-learn regressors) or one number per class
     (scikit-learn classifiers), in which case treelite packs all the vectors of a tree into one flat
-    leaf_vector array that leaf_vector_begin/leaf_vector_end index into.
+    leaf_vector array that leaf_vector_begin/leaf_vector_end index into. class_index picks which of those
+    per class numbers we keep - the same column the shap based parser keeps, so the two parsers agree -
+    and a leaf holding a single number has no class to pick, so it ignores class_index entirely.
     """
     if vector_length <= 1:
         return np.where(leaf_mask, get_field(tree_accessor, "leaf_value").astype(np.float64), 0.0) * leaf_scaling
@@ -96,7 +93,7 @@ def read_leaf_values(tree_accessor, leaf_mask, vector_length, leaf_scaling):
     totals = class_values.sum(axis=1)
     values = np.zeros(len(leaf_mask), dtype=np.float64)
     values[leaf_indexes] = np.divide(
-        class_values[:, VECTOR_LEAF_CLASS_LABEL], totals,
+        class_values[:, resolve_class_index(class_index, vector_length)], totals,
         out=np.zeros(len(leaf_indexes)), where=totals != 0,
     )
     return values * leaf_scaling
@@ -140,7 +137,7 @@ def read_thresholds(tree_accessor, comparison_operator):
     return thresholds.astype(np.float64)
 
 
-def load_decision_tree(tree_accessor, features, vector_length, leaf_scaling):
+def load_decision_tree(tree_accessor, features, vector_length, leaf_scaling, class_index=DEFAULT_CLASS_INDEX):
     """
     Given one tree of a parsed treelite model, parse it and build a DecisionTreeNode object with its structure.
     Use the accessor returned by the treelite model's get_tree_accessor method (given as the 'tree_accessor'
@@ -157,7 +154,7 @@ def load_decision_tree(tree_accessor, features, vector_length, leaf_scaling):
     # treelite marks the missing value direction with a boolean, where shap gives the default child's index
     nan_go_left_flags = get_field(tree_accessor, "default_left").astype(bool)
     covers = read_node_sample_weight(tree_accessor, len(children_left))
-    values = read_leaf_values(tree_accessor, children_left == -1, vector_length, leaf_scaling)
+    values = read_leaf_values(tree_accessor, children_left == -1, vector_length, leaf_scaling, class_index)
     decision_tree_class = TREELITE_OPERATOR_TO_DECISION_TREE_CLASS[comparison_operator]
 
     nodes = {}
@@ -218,7 +215,7 @@ def load_treelite_model(model):
         ) from error
 
 
-def load_model_using_treelite(model, features) -> DecisionTreesEnsemble:
+def load_model_using_treelite(model, features, class_index: int = DEFAULT_CLASS_INDEX) -> DecisionTreesEnsemble:
     """
     Load a decision tree ensemble model (utilizing the treelite python package parsing object)
     """
@@ -234,7 +231,9 @@ def load_model_using_treelite(model, features) -> DecisionTreesEnsemble:
     leaf_scaling = 1.0 / treelite_model.num_tree if averages_trees else 1.0
 
     trees = [
-        load_decision_tree(treelite_model.get_tree_accessor(tree_index), features, vector_length, leaf_scaling)
+        load_decision_tree(
+            treelite_model.get_tree_accessor(tree_index), features, vector_length, leaf_scaling, class_index
+        )
         for tree_index in range(treelite_model.num_tree)
     ]
     return DecisionTreesEnsemble(trees)
