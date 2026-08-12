@@ -1,7 +1,9 @@
 import numpy as np
 
 from woodelf.core.trees.decision_trees_ensemble import LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
-from woodelf.core.trees.parsing_utils import DEFAULT_CLASS_INDEX, resolve_class_index, safe_isinstance
+from woodelf.core.trees.parsing_utils import (
+    DEFAULT_CLASS_INDEX, DEFAULT_TARGET_INDEX, resolve_output_index, safe_isinstance,
+)
 
 SKLEARN_DECISION_TREE_REGRESSOR_CLASSES = [
     "sklearn.tree.DecisionTreeRegressor",
@@ -12,19 +14,22 @@ SKLEARN_DECISION_TREE_CLASSIFIER_CLASSES = [
     "sklearn.tree.tree.DecisionTreeClassifier",
 ]
 
-def read_values(sklearn_tree, is_classifier, class_index=DEFAULT_CLASS_INDEX):
+def read_values(sklearn_tree, is_classifier, class_index=DEFAULT_CLASS_INDEX, target_id=DEFAULT_TARGET_INDEX):
     """
     The value of every node, as a single number per node.
 
-    A regressor's node holds one number already. A classifier's node holds one number per class, which we
-    turn into that class' probability. Recent scikit-learn versions already store those normalised, and
-    dividing by the total again leaves them untouched.
+    A single target regressor's node holds one number already. A classifier's node holds one number per
+    class, which we turn into that class' probability, and a multi output regressor's node holds one mean
+    per target - one flat row of numbers either way, so class_index picks the column of a classifier and
+    target_id the column of a regressor. Recent scikit-learn versions already store the class values
+    normalised, and dividing by the total again leaves them untouched.
     """
     values = sklearn_tree.value.reshape(len(sklearn_tree.value), -1).astype(np.float64)
     if is_classifier:
         totals = values.sum(axis=1, keepdims=True)
         values = np.divide(values, totals, out=np.zeros_like(values), where=totals != 0)
-    return values[:, resolve_class_index(class_index, values.shape[1])]
+    asked_for = class_index if is_classifier else target_id
+    return values[:, resolve_output_index(asked_for, values.shape[1])]
 
 
 def read_nan_go_left(sklearn_tree):
@@ -39,12 +44,13 @@ def read_nan_go_left(sklearn_tree):
     return np.ones(sklearn_tree.node_count, dtype=bool)
 
 
-def load_decision_tree(sklearn_tree, features, is_classifier, class_index=DEFAULT_CLASS_INDEX):
+def load_decision_tree(sklearn_tree, features, is_classifier,
+                       class_index=DEFAULT_CLASS_INDEX, target_id=DEFAULT_TARGET_INDEX):
     """
     Given the tree_ object of a fitted scikit-learn decision tree, parse it and build a DecisionTreeNode
     object with its structure. The function also gets the training features.
     """
-    values = read_values(sklearn_tree, is_classifier, class_index)
+    values = read_values(sklearn_tree, is_classifier, class_index, target_id)
     nan_go_left_flags = read_nan_go_left(sklearn_tree)
 
     nodes = {}
@@ -83,7 +89,7 @@ def load_decision_tree(sklearn_tree, features, is_classifier, class_index=DEFAUL
 
 
 def load_sklearn_single_decision_tree_model(
-    model, features, class_index: int = DEFAULT_CLASS_INDEX
+    model, features, class_index: int = DEFAULT_CLASS_INDEX, target_id: int = DEFAULT_TARGET_INDEX
 ) -> DecisionTreesEnsemble:
     """
     Load a standalone scikit-learn decision tree as an ensemble holding that one tree.
@@ -94,5 +100,5 @@ def load_sklearn_single_decision_tree_model(
             f"custom_parsing only parses a scikit-learn DecisionTreeRegressor or DecisionTreeClassifier, "
             f"got a {type(model).__name__}"
         )
-    trees = [load_decision_tree(model.tree_, features, is_classifier, class_index)]
+    trees = [load_decision_tree(model.tree_, features, is_classifier, class_index, target_id)]
     return DecisionTreesEnsemble(trees)

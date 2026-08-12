@@ -1,7 +1,9 @@
 import numpy as np
 
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
-from woodelf.core.trees.parsing_utils import DEFAULT_CLASS_INDEX, resolve_class_index, safe_isinstance
+from woodelf.core.trees.parsing_utils import (
+    DEFAULT_CLASS_INDEX, DEFAULT_TARGET_INDEX, resolve_output_index, safe_isinstance,
+)
 
 # treelite's Operator enum. Split nodes carry one of these, leaves carry kNone (0).
 TREELITE_OPERATOR_LT = 2  # go left if x < threshold. Used by XGBoost.
@@ -63,17 +65,21 @@ def read_node_sample_weight(tree_accessor, num_nodes):
     )
 
 
-def read_leaf_values(tree_accessor, leaf_mask, vector_length, leaf_scaling, class_index=DEFAULT_CLASS_INDEX):
+def read_leaf_values(tree_accessor, leaf_mask, leaf_shape, leaf_scaling,
+                     class_index=DEFAULT_CLASS_INDEX, target_id=DEFAULT_TARGET_INDEX):
     """
     Read the value of every leaf, returning a per-node array whose inner nodes hold 0.
 
-    Leaves hold either a single number (boosters, and scikit-learn regressors) or one number per class
-    (scikit-learn classifiers), in which case treelite packs all the vectors of a tree into one flat
-    leaf_vector array that leaf_vector_begin/leaf_vector_end index into. class_index picks which of those
-    per class numbers we keep - the same column the shap based parser keeps, so the two parsers agree -
-    and a leaf holding a single number has no class to pick, so it ignores class_index entirely.
+    Leaves hold either a single number (boosters, and single target scikit-learn regressors) or one number
+    per (target, class) pair, in which case treelite packs all the vectors of a tree into one flat
+    leaf_vector array that leaf_vector_begin/leaf_vector_end index into. leaf_shape is that pair, treelite's
+    (num_target, num_class), laid out row major - so a scikit-learn classifier is one row of class votes and
+    a scikit-learn multi output regressor one column of target means. target_id and class_index pick the
+    value we keep, and a leaf holding a single number has neither to pick so it ignores both.
     """
-    if vector_length <= 1:
+    number_of_targets, number_of_classes = leaf_shape
+    leaf_width = number_of_targets * number_of_classes
+    if leaf_width <= 1:
         return np.where(leaf_mask, get_field(tree_accessor, "leaf_value").astype(np.float64), 0.0) * leaf_scaling
 
     leaf_vector = get_field(tree_accessor, "leaf_vector").astype(np.float64)
@@ -81,38 +87,47 @@ def read_leaf_values(tree_accessor, leaf_mask, vector_length, leaf_scaling, clas
     ends = get_field(tree_accessor, "leaf_vector_end").astype(np.int64)
     leaf_indexes = np.flatnonzero(leaf_mask)
 
-    # Every leaf holds one value per class, so its window is always vector_length wide and we can gather
-    # all of the windows in one go rather than slicing leaf_vector one leaf at a time.
-    if not np.all(ends[leaf_indexes] - begins[leaf_indexes] == vector_length):
-        raise ValueError("woodelf expects treelite to give every leaf exactly one value per class")
-    gather_indexes = begins[leaf_indexes][:, None] + np.arange(vector_length)[None, :]
-    class_values = leaf_vector[gather_indexes]  # (number of leaves, vector_length)
-
-    # treelite already normalises the scikit-learn class votes, we normalise again so that a loader
-    # that hands us raw counts still produces the probabilities the shap based parser produces.
-    totals = class_values.sum(axis=1)
-    values = np.zeros(len(leaf_mask), dtype=np.float64)
-    values[leaf_indexes] = np.divide(
-        class_values[:, resolve_class_index(class_index, vector_length)], totals,
-        out=np.zeros(len(leaf_indexes)), where=totals != 0,
+    # Every leaf holds one value per (target, class) pair, so its window is always leaf_width wide and we
+    # can gather the chosen target's row of every window in one go rather than slicing leaf_vector leaf by leaf.
+    if not np.all(ends[leaf_indexes] - begins[leaf_indexes] == leaf_width):
+        raise ValueError("woodelf expects treelite to give every leaf exactly one value per target and class")
+    target_row = resolve_output_index(target_id, number_of_targets) * number_of_classes
+    gather_indexes = (
+        begins[leaf_indexes][:, None] + target_row + np.arange(number_of_classes)[None, :]
     )
+    class_values = leaf_vector[gather_indexes]  # (number of leaves, number_of_classes) of the chosen target
+
+    values = np.zeros(len(leaf_mask), dtype=np.float64)
+    if number_of_classes == 1:
+        # One value per target and no classes to choose between, i.e. a multi output regressor's target mean
+        values[leaf_indexes] = class_values[:, 0]
+    else:
+        # treelite already normalises the scikit-learn class votes, we normalise again so that a loader
+        # that hands us raw counts still produces the probabilities the shap based parser produces.
+        totals = class_values.sum(axis=1)
+        values[leaf_indexes] = np.divide(
+            class_values[:, resolve_output_index(class_index, number_of_classes)], totals,
+            out=np.zeros(len(leaf_indexes)), where=totals != 0,
+        )
     return values * leaf_scaling
 
 
-def select_class_trees(header, num_tree, vector_length, class_index):
+def select_output_trees(header, num_tree, leaf_width, class_index, target_id):
     """
-    The indexes of the trees that carry the requested class, as the model happens to store its classes.
-    Will return all the models trees except in multi class XGboost and LightGBM
+    The indexes of the trees that carry the requested class and target, as the model happens to store them.
+    Will return all the models trees except in multi class XGboost and LightGBM, which grow a tree per
+    class, and multi target XGboost, which grows a tree per target
     """
-    class_ids = get_field(header, "class_id").astype(np.int64)
-    number_of_classes = int(class_ids.max()) + 1
-    grows_a_tree_per_class = (
-        vector_length <= 1 and len(class_ids) == num_tree and number_of_classes > 1
-    )
-    if not grows_a_tree_per_class:
-        return range(num_tree)
-    wanted_class = resolve_class_index(class_index, number_of_classes)
-    return [int(tree_index) for tree_index in np.flatnonzero(class_ids == wanted_class)]
+    kept = np.ones(num_tree, dtype=bool)
+    for field_name, asked_for in [("class_id", class_index), ("target_id", target_id)]:
+        ids = get_field(header, field_name).astype(np.int64)
+        number_of_outputs = int(ids.max()) + 1 if len(ids) > 0 else 1
+        grows_a_tree_per_output = (
+            leaf_width <= 1 and len(ids) == num_tree and number_of_outputs > 1
+        )
+        if grows_a_tree_per_output:
+            kept &= ids == resolve_output_index(asked_for, number_of_outputs)
+    return [int(tree_index) for tree_index in np.flatnonzero(kept)]
 
 
 def find_the_comparison_operator(comparison_operators):
@@ -153,7 +168,8 @@ def read_thresholds(tree_accessor, comparison_operator):
     return thresholds.astype(np.float64)
 
 
-def load_decision_tree(tree_accessor, features, vector_length, leaf_scaling, class_index=DEFAULT_CLASS_INDEX):
+def load_decision_tree(tree_accessor, features, leaf_shape, leaf_scaling,
+                       class_index=DEFAULT_CLASS_INDEX, target_id=DEFAULT_TARGET_INDEX):
     """
     Given one tree of a parsed treelite model, parse it and build a DecisionTreeNode object with its structure.
     Use the accessor returned by the treelite model's get_tree_accessor method (given as the 'tree_accessor'
@@ -170,7 +186,9 @@ def load_decision_tree(tree_accessor, features, vector_length, leaf_scaling, cla
     # treelite marks the missing value direction with a boolean, where shap gives the default child's index
     nan_go_left_flags = get_field(tree_accessor, "default_left").astype(bool)
     covers = read_node_sample_weight(tree_accessor, len(children_left))
-    values = read_leaf_values(tree_accessor, children_left == -1, vector_length, leaf_scaling, class_index)
+    values = read_leaf_values(
+        tree_accessor, children_left == -1, leaf_shape, leaf_scaling, class_index, target_id
+    )
     decision_tree_class = TREELITE_OPERATOR_TO_DECISION_TREE_CLASS[comparison_operator]
 
     nodes = {}
@@ -231,25 +249,32 @@ def load_treelite_model(model):
         ) from error
 
 
-def load_model_using_treelite(model, features, class_index: int = DEFAULT_CLASS_INDEX) -> DecisionTreesEnsemble:
+def load_model_using_treelite(
+    model, features, class_index: int = DEFAULT_CLASS_INDEX, target_id: int = DEFAULT_TARGET_INDEX
+) -> DecisionTreesEnsemble:
     """
     Load a decision tree ensemble model (utilizing the treelite python package parsing object)
     """
     treelite_model = load_treelite_model(model)
     header = treelite_model.get_header_accessor()
 
-    # Leaves hold one value per class for scikit-learn classifiers, and a single value otherwise.
+    # Leaves hold one value per (target, class) pair for the scikit-learn ensembles - one row of class
+    # votes for a classifier, one column of target means for a multi output regressor - and a single value
+    # otherwise. treelite gives the pair as (num_target, num_class).
     leaf_vector_shape = get_field(header, "leaf_vector_shape")
-    vector_length = int(leaf_vector_shape[-1]) if len(leaf_vector_shape) > 0 else 1
+    leaf_shape = tuple(int(size) for size in leaf_vector_shape) if len(leaf_vector_shape) == 2 else (1, 1)
 
     average_tree_output = get_field(header, "average_tree_output")
     averages_trees = len(average_tree_output) > 0 and bool(average_tree_output[0])
     leaf_scaling = 1.0 / treelite_model.num_tree if averages_trees else 1.0
 
-    tree_indexes = select_class_trees(header, treelite_model.num_tree, vector_length, class_index)
+    tree_indexes = select_output_trees(
+        header, treelite_model.num_tree, leaf_shape[0] * leaf_shape[1], class_index, target_id
+    )
     trees = [
         load_decision_tree(
-            treelite_model.get_tree_accessor(tree_index), features, vector_length, leaf_scaling, class_index
+            treelite_model.get_tree_accessor(tree_index), features, leaf_shape, leaf_scaling,
+            class_index, target_id,
         )
         for tree_index in tree_indexes
     ]

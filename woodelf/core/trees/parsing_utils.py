@@ -2,8 +2,9 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-# The class woodelf explains when the caller does not ask for another one.
+# The class and the target woodelf explains when the caller does not ask for another one.
 DEFAULT_CLASS_INDEX = 0
+DEFAULT_TARGET_INDEX = 0
 
 
 def safe_isinstance(obj: Any, class_path_str: str | list[str]) -> bool:
@@ -91,16 +92,16 @@ def safe_isinstance(obj: Any, class_path_str: str | list[str]) -> bool:
     return False
 
 
-def resolve_class_index(class_index: int, number_of_classes: int) -> int:
+def resolve_output_index(index: int, number_of_outputs: int) -> int:
     """
-    The column of a node's per class values that `class_index` asks for.
+    The one output - a class of a classifier, or a target of a multi output model - that `index` asks for.
 
-    Classifiers store one value per class in every node and woodelf explains one of them at a time, so
-    every parser resolves the caller's class_index through here to keep them picking the same column.
-    A model with no such class - a regressor, a booster whose leaves hold a single number, or an index
-    past the last class - falls back to DEFAULT_CLASS_INDEX silently, so asking for a class a model does
-    not have is harmless rather than an error.
+    A model can hold several values in every node, one per class and one per target, and woodelf explains
+    one of them at a time. Every parser resolves the caller's class_index and target_id through here so
+    that they all pick the same one. A model with no such output - a regressor asked for a class, a single
+    target model asked for a target, or an index past the last one - falls back to index 0 silently, so
+    asking for an output a model does not have is harmless rather than an error.
     """
-    if 0 <= class_index < number_of_classes:
-        return class_index
-    return DEFAULT_CLASS_INDEX
+    if 0 <= index < number_of_outputs:
+        return index
+    return 0

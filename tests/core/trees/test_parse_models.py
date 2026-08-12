@@ -7,7 +7,7 @@ import pytest
 import scipy
 import shap
 import xgboost as xgb
-from sklearn.datasets import make_classification
+from sklearn.datasets import make_classification, make_regression
 from sklearn.ensemble import (
     HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, ExtraTreesRegressor, HistGradientBoostingClassifier,
     GradientBoostingClassifier,
@@ -17,6 +17,7 @@ from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
 from woodelf.core.trees.custom_parsing import load_sklearn_single_decision_tree_model
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreesEnsemble
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.trees.parse_models_using_shap import load_model_using_shap
 from woodelf.core.trees.parse_models_using_treelite import load_model_using_treelite
 
@@ -264,6 +265,60 @@ def test_both_engines_keep_the_same_trees_of_a_multi_class_booster(model_type, p
 
     assert len(shap_ensemble.trees) == len(treelite_ensemble.trees) == model.n_estimators
     np.testing.assert_allclose(shap_ensemble.predict(X), treelite_ensemble.predict(X), atol=TOLERANCE)
+
+
+@pytest.mark.parametrize("model_type, params, base_score_func", [
+    (RandomForestRegressor, dict(n_estimators=5, max_depth=4, random_state=42), lambda m: 0),
+    (ExtraTreesRegressor, dict(n_estimators=5, max_depth=4, random_state=42), lambda m: 0),
+    (DecisionTreeRegressor, dict(max_depth=4, random_state=42), lambda m: 0),
+    # xgboost grows a tree per target instead of holding a value per target in a leaf, and keeps an
+    # intercept per target out of the trees
+    (xgb.sklearn.XGBRegressor, dict(n_estimators=5, max_depth=4, random_state=42),
+     lambda m: float(np.ravel(m.intercept_)[0])),
+], ids=["RandomForestRegressor", "ExtraTreesRegressor", "DecisionTreeRegressor", "xgb.sklearn.XGBRegressor"])
+@pytest.mark.parametrize("target_id", [0, 1, 2], ids=["target_0", "target_1", "target_2"])
+def test_load_and_predict_multi_target_regressor(model_type, params, base_score_func, target_id):
+    """
+    A multi output regressor predicts one number per target, and target_id says which of them the loaded
+    trees carry - so the loaded ensemble has to predict that column of the model's own predictions.
+    """
+    X, y_single = make_regression(n_samples=200, n_features=10, random_state=0)
+    features = [f"x{i}" for i in range(X.shape[1])]
+    X = pd.DataFrame(X, columns=features)
+    y = np.column_stack([y_single, y_single * 2 + 1, -y_single / 3 + 7])
+
+    model = model_type(**params)
+    model.fit(X, y)
+    tree_ensemble = load_decision_tree_ensemble_model(model, features, target_id=target_id)
+
+    assert_predictions_equal(
+        original_pred=model.predict(X)[:, target_id],
+        loaded_model_pred=tree_ensemble.predict(X),
+        base_score=base_score_func(model),
+    )
+
+
+@pytest.mark.parametrize("model_type, params", [
+    (RandomForestRegressor, dict(n_estimators=5, max_depth=4, random_state=42)),
+    (xgb.sklearn.XGBRegressor, dict(n_estimators=5, max_depth=4, random_state=42)),
+], ids=["RandomForestRegressor", "xgb.sklearn.XGBRegressor"])
+@pytest.mark.parametrize("target_id", [0, 1, 5, -2], ids=["target_0", "target_1", "target_5", "target_minus_2"])
+def test_a_single_target_regressor_ignores_target_id(model_type, params, target_id):
+    """
+    A model with only one target has no target to choose, so asking for one falls back to it silently.
+    """
+    X, y = make_regression(n_samples=200, n_features=10, random_state=0)
+    features = [f"x{i}" for i in range(X.shape[1])]
+    X = pd.DataFrame(X, columns=features)
+
+    model = model_type(**params)
+    model.fit(X, y)
+
+    np.testing.assert_allclose(
+        load_decision_tree_ensemble_model(model, features, target_id=target_id).predict(X),
+        load_decision_tree_ensemble_model(model, features).predict(X),
+        atol=TOLERANCE,
+    )
 
 
 def test_load_and_predict_sklearn_single_decision_tree():

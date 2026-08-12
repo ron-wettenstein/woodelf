@@ -1,5 +1,7 @@
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
-from woodelf.core.trees.parsing_utils import DEFAULT_CLASS_INDEX, resolve_class_index, safe_isinstance
+from woodelf.core.trees.parsing_utils import (
+    DEFAULT_CLASS_INDEX, DEFAULT_TARGET_INDEX, resolve_output_index, safe_isinstance,
+)
 
 MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     # sklearn regressors
@@ -84,13 +86,26 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
 
 
 
-def load_decision_tree(tree, features, decision_tree_class, class_index: int = DEFAULT_CLASS_INDEX):
+def requested_output(class_index, target_id):
+    """
+    The one output index shap's flat layout can act on, out of the class and the target the caller asked for.
+
+    shap keeps a single output axis per tree - one column per class for a classifier, one per target for a
+    multi output regressor - rather than treelite's separate (num_target, num_class) pair, and none of the
+    models it reads has more than one of the two, so whichever index was asked for is the one to use.
+    class_index wins if both were given, which only a model this parser cannot read could ever want.
+    """
+    return class_index or target_id
+
+
+def load_decision_tree(tree, features, decision_tree_class, class_index: int = DEFAULT_CLASS_INDEX,
+                       target_id: int = DEFAULT_TARGET_INDEX):
     """
     Given an XGBoost Regressor tree, parse it and build a DecisionTreeNode object with it structure.
     Use the Tree object returned by the shap package's XGBTreeModelLoader class (given as the 'tree' parameter).
     The function also gets the training features.
     """
-    class_column = resolve_class_index(class_index, tree.values.shape[1])
+    class_column = resolve_output_index(requested_output(class_index, target_id), tree.values.shape[1])
     nodes = {}
     for index in range(len(tree.thresholds)):
         threshold = tree.thresholds[index]
@@ -130,19 +145,22 @@ def find_the_right_decision_tree_class(model):
             return MODEL_CLASS_TO_DECISION_TREE_CLASS[class_name]
     return DecisionTreeNode
 
-def select_class_trees(tree_ensemble, class_index):
+def select_output_trees(tree_ensemble, class_index, target_id):
     """
-    The trees of a shap TreeEnsemble that carry the requested class.
+    The trees of a shap TreeEnsemble that carry the requested class or target.
     Will return all the model's trees except in multi class XGBoost and LightGBM, which grow a separate
-    tree per class instead of holding one value per class in a leaf. shap stacks those round by round, so
-    tree i belongs to class i % number_of_stacks.
+    tree per class, and multi target XGBoost, which grows one per target, instead of holding one value per
+    class in a leaf. shap stacks those round by round, so tree i belongs to output i % number_of_stacks.
     """
     number_of_stacks = tree_ensemble.num_outputs if tree_ensemble.model_type == "xgboost" else tree_ensemble.num_stacked_models
     if number_of_stacks <= 1:
         return tree_ensemble.trees
-    return tree_ensemble.trees[resolve_class_index(class_index, number_of_stacks)::number_of_stacks]
+    wanted = resolve_output_index(requested_output(class_index, target_id), number_of_stacks)
+    return tree_ensemble.trees[wanted::number_of_stacks]
 
-def load_model_using_shap(model, features, class_index: int = DEFAULT_CLASS_INDEX) -> DecisionTreesEnsemble:
+def load_model_using_shap(
+    model, features, class_index: int = DEFAULT_CLASS_INDEX, target_id: int = DEFAULT_TARGET_INDEX
+) -> DecisionTreesEnsemble:
     """
     Load an XGBoost regressor tree (utilizing the shap python package parsing object)
     """
@@ -150,8 +168,8 @@ def load_model_using_shap(model, features, class_index: int = DEFAULT_CLASS_INDE
     from shap.explainers._tree import TreeEnsemble
     decision_tree_cls = find_the_right_decision_tree_class(model)
     trees = [
-        load_decision_tree(t, features, decision_tree_cls, class_index)
-        for t in select_class_trees(TreeEnsemble(model), class_index)
+        load_decision_tree(t, features, decision_tree_cls, class_index, target_id)
+        for t in select_output_trees(TreeEnsemble(model), class_index, target_id)
     ]
     assert len(trees) > 0, "Did not load the model properly"
     return DecisionTreesEnsemble(trees)
