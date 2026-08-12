@@ -238,9 +238,37 @@ class TestParseModelsUsingTreelite(ParseModelsTestsBase):
     load_decision_tree_ensemble_model = staticmethod(load_model_using_treelite)
 
 
+@pytest.mark.parametrize("model_type, params", [
+    (xgb.sklearn.XGBClassifier, dict(n_estimators=10, max_depth=6, random_state=42, learning_rate=0.1,
+                                     eval_metric="mlogloss")),
+    (lgb.LGBMClassifier, dict(n_estimators=10, max_depth=6, random_state=42, verbose=-1)),
+], ids=["xgb.sklearn.XGBClassifier", "lgb.LGBMClassifier"])
+@pytest.mark.parametrize("class_index", [0, 1, 2, 3],
+                         ids=["class_0", "class_1", "class_2", "class_3"])
+def test_both_engines_keep_the_same_trees_of_a_multi_class_booster(model_type, params, class_index):
+    """
+    xgboost and lightgbm grow a separate tree per class rather than holding one value per class in a leaf,
+    so both parsers have to drop the other classes' trees for a class_index to mean the same thing
+    whichever engine reads the model.
+    """
+    X, y = make_classification(
+        n_samples=1000, n_features=12, n_informative=6, n_redundant=2, n_classes=4, class_sep=1.0, random_state=42,
+    )
+    features = [f"x{i}" for i in range(X.shape[1])]
+    X = pd.DataFrame(X, columns=features)
+    model = model_type(**params)
+    model.fit(X, y)
+
+    shap_ensemble = load_model_using_shap(model, features, class_index=class_index)
+    treelite_ensemble = load_model_using_treelite(model, features, class_index=class_index)
+
+    assert len(shap_ensemble.trees) == len(treelite_ensemble.trees) == model.n_estimators
+    np.testing.assert_allclose(shap_ensemble.predict(X), treelite_ensemble.predict(X), atol=TOLERANCE)
+
+
 def test_load_and_predict_sklearn_single_decision_tree():
     """
-    Test loading and predicting with a single scikit-learn decision tree 
+    Test loading and predicting with a single scikit-learn decision tree
     using our custom parsing.
     """
     X, y = shap.datasets.california(n_points=10000)
