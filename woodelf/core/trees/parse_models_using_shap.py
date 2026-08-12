@@ -137,10 +137,7 @@ def select_class_trees(tree_ensemble, class_index):
     tree per class instead of holding one value per class in a leaf. shap stacks those round by round, so
     tree i belongs to class i % number_of_stacks.
     """
-    number_of_stacks = (
-        tree_ensemble.num_outputs if tree_ensemble.model_type == "xgboost"
-        else tree_ensemble.num_stacked_models
-    )
+    number_of_stacks = tree_ensemble.num_outputs if tree_ensemble.model_type == "xgboost" else tree_ensemble.num_stacked_models
     if number_of_stacks <= 1:
         return tree_ensemble.trees
     return tree_ensemble.trees[resolve_class_index(class_index, number_of_stacks)::number_of_stacks]
