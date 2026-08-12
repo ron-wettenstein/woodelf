@@ -5,7 +5,7 @@ import shap
 from sklearn.datasets import make_classification
 from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegressor, RandomForestRegressor, \
     ExtraTreesRegressor, ExtraTreesClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier, \
-    IsolationForest
+    IsolationForest, RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues, GeneralShapleyInteractionValues
@@ -321,6 +321,7 @@ def test_woodelf_high_depths_against_shap_on_sklearn_regressor_model(model_type,
     (HistGradientBoostingClassifier,dict(max_iter=10,max_depth=6,max_leaf_nodes=None,random_state=42)),
     (GradientBoostingClassifier,dict(n_estimators=10, max_depth=6, random_state=42)),
     (ExtraTreesClassifier,dict(n_estimators=10, max_depth=6, random_state=42)),
+    (RandomForestClassifier, dict(n_estimators=10,max_depth=6, random_state=42)),
     (xgb.sklearn.XGBClassifier, dict(n_estimators=10,max_depth=6,random_state=42,learning_rate=0.01,
         base_score=0.5,eval_metric="logloss",use_label_encoder=False)),
     (IsolationForest, dict(n_estimators=10,contamination=0.2,random_state=42)),
@@ -329,6 +330,7 @@ def test_woodelf_high_depths_against_shap_on_sklearn_regressor_model(model_type,
 ], ids=["HistGradientBoostingClassifier",
         "GradientBoostingClassifier",
         "ExtraTreesClassifier",
+        "RandomForestClassifier",
         "xgb.sklearn.XGBClassifier",
         "IsolationForest",
         "DecisionTreeClassifier",
@@ -349,7 +351,7 @@ def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type
     woodelf_values = woodelf_for_high_depth(model, X, X, metric=ShapleyValues())
 
     # these models are treated a mutli target classifiers and get Shapley value for their 0 class and 1 class. I choose the values of the 0 class
-    if isinstance(model, ExtraTreesClassifier) or isinstance(model, DecisionTreeClassifier):
+    if isinstance(model, (ExtraTreesClassifier, DecisionTreeClassifier, RandomForestClassifier)):
         shap_package_values = shap_package_values[:, :, 0]
     assert_shap_package_is_same_as_woodelf(
         woodelf_values, shap_package_values, X, TOLERANCE
@@ -359,7 +361,7 @@ def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type
     explainer = shap.TreeExplainer(model)
     shap_package_values = explainer.shap_values(X)
     woodelf_values = woodelf_for_high_depth(model, X, None, metric=ShapleyValues())
-    if isinstance(model, ExtraTreesClassifier) or isinstance(model, DecisionTreeClassifier):
+    if isinstance(model, (ExtraTreesClassifier, DecisionTreeClassifier, RandomForestClassifier)):
         shap_package_values = shap_package_values[:, :, 0]
     assert_shap_package_is_same_as_woodelf(
         woodelf_values, shap_package_values, X, TOLERANCE
@@ -370,11 +372,43 @@ def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type
     shap_package_values = explainer.shap_interaction_values(X)
     woodelf_values = woodelf_for_high_depth(model, X, None, metric=ShapleyInteractionValues())
 
-    if isinstance(model, ExtraTreesClassifier) or isinstance(model, DecisionTreeClassifier):
+    if isinstance(model, (ExtraTreesClassifier, DecisionTreeClassifier, RandomForestClassifier)):
         shap_package_values = shap_package_values[:, :, :, 0]
     assert_shap_package_is_same_as_woodelf_on_interaction_values(
         woodelf_values, shap_package_values, X, TOLERANCE
     )
+
+
+@pytest.mark.parametrize("model_type, params", [
+    (ExtraTreesClassifier, dict(n_estimators=10, max_depth=6, random_state=42)),
+    (RandomForestClassifier, dict(n_estimators=10, max_depth=6, random_state=42)),
+    (DecisionTreeClassifier, dict(max_depth=6, random_state=42)),
+], ids=["ExtraTreesClassifier", "RandomForestClassifier", "DecisionTreeClassifier"])
+@pytest.mark.parametrize("class_index", [0, 1, 2, 3],
+                         ids=["class_0", "class_1", "class_2", "class_3"])
+def test_woodelf_high_depths_against_shap_on_multi_class_sklearn_classifier_model(model_type, params, class_index):
+    # Toy multi class classification task
+    X, y = make_classification(n_samples=100, n_features=12, n_informative=6, n_redundant=2, n_classes=4, class_sep=1.0, random_state=42)
+
+    model = model_type(**params)
+    model.fit(X, y)
+
+    features = [f"x{i}" for i in range(X.shape[1])]
+    X = pd.DataFrame(X, columns=features)
+
+    explainer = shap.TreeExplainer(model, X, model_output="raw")
+    shap_package_values = explainer.shap_values(X)
+
+    loaded_model = load_decision_tree_ensemble_model(model, features, class_index=class_index)
+    woodelf_values = woodelf_for_high_depth(loaded_model, X, X, metric=ShapleyValues(), model_was_loaded=True)
+
+    # these models are treated a mutli target classifiers and get a Shapley value per class, and
+    # class_index is the class whose leaf probabilities the parsed model carries
+    shap_package_values = shap_package_values[:, :, class_index]
+    assert_shap_package_is_same_as_woodelf(
+        woodelf_values, shap_package_values, X, TOLERANCE
+    )
+
 
 @pytest.mark.parametrize("path_dependent", [True, False],
                          ids=["Path Dependent SHAP", "Background SHAP"])

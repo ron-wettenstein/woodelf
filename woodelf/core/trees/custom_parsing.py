@@ -1,7 +1,7 @@
 import numpy as np
 
 from woodelf.core.trees.decision_trees_ensemble import LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
-from woodelf.core.trees.parsing_utils import safe_isinstance
+from woodelf.core.trees.parsing_utils import DEFAULT_CLASS_INDEX, resolve_class_index, safe_isinstance
 
 SKLEARN_DECISION_TREE_REGRESSOR_CLASSES = [
     "sklearn.tree.DecisionTreeRegressor",
@@ -12,12 +12,7 @@ SKLEARN_DECISION_TREE_CLASSIFIER_CLASSES = [
     "sklearn.tree.tree.DecisionTreeClassifier",
 ]
 
-# scikit-learn classifiers store one value per class in every node. We keep this class' probability, which
-# is the column the shap and the treelite based parsers keep too.
-VECTOR_LEAF_CLASS_LABEL = 0
-
-
-def read_values(sklearn_tree, is_classifier):
+def read_values(sklearn_tree, is_classifier, class_index=DEFAULT_CLASS_INDEX):
     """
     The value of every node, as a single number per node.
 
@@ -29,7 +24,7 @@ def read_values(sklearn_tree, is_classifier):
     if is_classifier:
         totals = values.sum(axis=1, keepdims=True)
         values = np.divide(values, totals, out=np.zeros_like(values), where=totals != 0)
-    return values[:, VECTOR_LEAF_CLASS_LABEL]
+    return values[:, resolve_class_index(class_index, values.shape[1])]
 
 
 def read_nan_go_left(sklearn_tree):
@@ -44,12 +39,12 @@ def read_nan_go_left(sklearn_tree):
     return np.ones(sklearn_tree.node_count, dtype=bool)
 
 
-def load_decision_tree(sklearn_tree, features, is_classifier):
+def load_decision_tree(sklearn_tree, features, is_classifier, class_index=DEFAULT_CLASS_INDEX):
     """
     Given the tree_ object of a fitted scikit-learn decision tree, parse it and build a DecisionTreeNode
     object with its structure. The function also gets the training features.
     """
-    values = read_values(sklearn_tree, is_classifier)
+    values = read_values(sklearn_tree, is_classifier, class_index)
     nan_go_left_flags = read_nan_go_left(sklearn_tree)
 
     nodes = {}
@@ -87,7 +82,9 @@ def load_decision_tree(sklearn_tree, features, is_classifier):
     return nodes[0]
 
 
-def load_sklearn_single_decision_tree_model(model, features) -> DecisionTreesEnsemble:
+def load_sklearn_single_decision_tree_model(
+    model, features, class_index: int = DEFAULT_CLASS_INDEX
+) -> DecisionTreesEnsemble:
     """
     Load a standalone scikit-learn decision tree as an ensemble holding that one tree.
     """
@@ -97,5 +94,5 @@ def load_sklearn_single_decision_tree_model(model, features) -> DecisionTreesEns
             f"custom_parsing only parses a scikit-learn DecisionTreeRegressor or DecisionTreeClassifier, "
             f"got a {type(model).__name__}"
         )
-    trees = [load_decision_tree(model.tree_, features, is_classifier)]
+    trees = [load_decision_tree(model.tree_, features, is_classifier, class_index)]
     return DecisionTreesEnsemble(trees)

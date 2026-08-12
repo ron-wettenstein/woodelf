@@ -1,5 +1,5 @@
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, LeftIsSmallerEqualDecisionTreeNode, DecisionTreesEnsemble
-from woodelf.core.trees.parsing_utils import safe_isinstance
+from woodelf.core.trees.parsing_utils import DEFAULT_CLASS_INDEX, resolve_class_index, safe_isinstance
 
 MODEL_CLASS_TO_DECISION_TREE_CLASS = {
     # sklearn regressors
@@ -84,16 +84,17 @@ MODEL_CLASS_TO_DECISION_TREE_CLASS = {
 
 
 
-def load_decision_tree(tree, features, decision_tree_class):
+def load_decision_tree(tree, features, decision_tree_class, class_index: int = DEFAULT_CLASS_INDEX):
     """
     Given an XGBoost Regressor tree, parse it and build a DecisionTreeNode object with it structure.
     Use the Tree object returned by the shap package's XGBTreeModelLoader class (given as the 'tree' parameter).
     The function also gets the training features.
     """
+    class_column = resolve_class_index(class_index, tree.values.shape[1])
     nodes = {}
     for index in range(len(tree.thresholds)):
         threshold = tree.thresholds[index]
-        leaf_value = tree.values[index][0]
+        leaf_value = tree.values[index][class_column]
         child_left = tree.children_left[index]
         child_right = tree.children_right[index]
         if child_left == -1 and child_right == -1:
@@ -129,13 +130,13 @@ def find_the_right_decision_tree_class(model):
             return MODEL_CLASS_TO_DECISION_TREE_CLASS[class_name]
     return DecisionTreeNode
 
-def load_model_using_shap(model, features) -> DecisionTreesEnsemble:
+def load_model_using_shap(model, features, class_index: int = DEFAULT_CLASS_INDEX) -> DecisionTreesEnsemble:
     """
     Load an XGBoost regressor tree (utilizing the shap python package parsing object)
     """
     # Use the shap package's Decision Tree loading. this is cheating, I know...
     from shap.explainers._tree import TreeEnsemble
     decision_tree_cls = find_the_right_decision_tree_class(model)
-    trees = [load_decision_tree(t, features, decision_tree_cls) for t in TreeEnsemble(model).trees]
+    trees = [load_decision_tree(t, features, decision_tree_cls, class_index) for t in TreeEnsemble(model).trees]
     assert len(trees) > 0, "Did not load the model properly"
     return DecisionTreesEnsemble(trees)
