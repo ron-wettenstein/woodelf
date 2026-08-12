@@ -130,6 +130,21 @@ def find_the_right_decision_tree_class(model):
             return MODEL_CLASS_TO_DECISION_TREE_CLASS[class_name]
     return DecisionTreeNode
 
+def select_class_trees(tree_ensemble, class_index):
+    """
+    The trees of a shap TreeEnsemble that carry the requested class.
+    Will return all the model's trees except in multi class XGBoost and LightGBM, which grow a separate
+    tree per class instead of holding one value per class in a leaf. shap stacks those round by round, so
+    tree i belongs to class i % number_of_stacks.
+    """
+    number_of_stacks = (
+        tree_ensemble.num_outputs if tree_ensemble.model_type == "xgboost"
+        else tree_ensemble.num_stacked_models
+    )
+    if number_of_stacks <= 1:
+        return tree_ensemble.trees
+    return tree_ensemble.trees[resolve_class_index(class_index, number_of_stacks)::number_of_stacks]
+
 def load_model_using_shap(model, features, class_index: int = DEFAULT_CLASS_INDEX) -> DecisionTreesEnsemble:
     """
     Load an XGBoost regressor tree (utilizing the shap python package parsing object)
@@ -137,6 +152,9 @@ def load_model_using_shap(model, features, class_index: int = DEFAULT_CLASS_INDE
     # Use the shap package's Decision Tree loading. this is cheating, I know...
     from shap.explainers._tree import TreeEnsemble
     decision_tree_cls = find_the_right_decision_tree_class(model)
-    trees = [load_decision_tree(t, features, decision_tree_cls, class_index) for t in TreeEnsemble(model).trees]
+    trees = [
+        load_decision_tree(t, features, decision_tree_cls, class_index)
+        for t in select_class_trees(TreeEnsemble(model), class_index)
+    ]
     assert len(trees) > 0, "Did not load the model properly"
     return DecisionTreesEnsemble(trees)

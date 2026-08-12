@@ -99,6 +99,22 @@ def read_leaf_values(tree_accessor, leaf_mask, vector_length, leaf_scaling, clas
     return values * leaf_scaling
 
 
+def select_class_trees(header, num_tree, vector_length, class_index):
+    """
+    The indexes of the trees that carry the requested class, as the model happens to store its classes.
+    Will return all the models trees except in multi class XGboost and LightGBM
+    """
+    class_ids = get_field(header, "class_id").astype(np.int64)
+    number_of_classes = int(class_ids.max()) + 1
+    grows_a_tree_per_class = (
+        vector_length <= 1 and len(class_ids) == num_tree and number_of_classes > 1
+    )
+    if not grows_a_tree_per_class:
+        return range(num_tree)
+    wanted_class = resolve_class_index(class_index, number_of_classes)
+    return [int(tree_index) for tree_index in np.flatnonzero(class_ids == wanted_class)]
+
+
 def find_the_comparison_operator(comparison_operators):
     """
     The one comparison operator the tree's splits use, given its per node 'cmp' field.
@@ -230,10 +246,11 @@ def load_model_using_treelite(model, features, class_index: int = DEFAULT_CLASS_
     averages_trees = len(average_tree_output) > 0 and bool(average_tree_output[0])
     leaf_scaling = 1.0 / treelite_model.num_tree if averages_trees else 1.0
 
+    tree_indexes = select_class_trees(header, treelite_model.num_tree, vector_length, class_index)
     trees = [
         load_decision_tree(
             treelite_model.get_tree_accessor(tree_index), features, vector_length, leaf_scaling, class_index
         )
-        for tree_index in range(treelite_model.num_tree)
+        for tree_index in tree_indexes
     ]
     return DecisionTreesEnsemble(trees)

@@ -383,7 +383,11 @@ def test_woodelf_high_depths_against_shap_on_sklearn_classifier_model(model_type
     (ExtraTreesClassifier, dict(n_estimators=10, max_depth=6, random_state=42)),
     (RandomForestClassifier, dict(n_estimators=10, max_depth=6, random_state=42)),
     (DecisionTreeClassifier, dict(max_depth=6, random_state=42)),
-], ids=["ExtraTreesClassifier", "RandomForestClassifier", "DecisionTreeClassifier"])
+    (xgb.sklearn.XGBClassifier, dict(n_estimators=10, max_depth=6, random_state=42, learning_rate=0.1,
+                                     eval_metric="mlogloss")),
+    (lgb.LGBMClassifier, dict(n_estimators=10, max_depth=6, random_state=42, verbose=-1)),
+], ids=["ExtraTreesClassifier", "RandomForestClassifier", "DecisionTreeClassifier",
+        "xgb.sklearn.XGBClassifier", "lgb.LGBMClassifier"])
 @pytest.mark.parametrize("class_index", [0, 1, 2, 3],
                          ids=["class_0", "class_1", "class_2", "class_3"])
 def test_woodelf_high_depths_against_shap_on_multi_class_sklearn_classifier_model(model_type, params, class_index):
@@ -403,7 +407,10 @@ def test_woodelf_high_depths_against_shap_on_multi_class_sklearn_classifier_mode
     woodelf_values = woodelf_for_high_depth(loaded_model, X, X, metric=ShapleyValues(), model_was_loaded=True)
 
     # these models are treated a mutli target classifiers and get a Shapley value per class, and
-    # class_index is the class whose leaf probabilities the parsed model carries
+    # class_index is the class the parsed model carries - the scikit-learn ones hold one leaf value per
+    # class so every tree is kept, while xgboost and lightgbm grow a separate tree per class so only this
+    # class' trees are, which leaves both families with one tree per round either way
+    assert len(loaded_model.trees) == getattr(model, "n_estimators", 1)
     shap_package_values = shap_package_values[:, :, class_index]
     assert_shap_package_is_same_as_woodelf(
         woodelf_values, shap_package_values, X, TOLERANCE
