@@ -279,6 +279,24 @@ class GeneralBanzhafInteractionValues(CardinalityInteractionIndicesMetric):
         return ((-1) ** num_subset_neg) / (2 ** (num_pos_literals + num_neg_literals - order))
 
 
+class MobiusCoefficients(CardinalityInteractionIndicesMetric):
+    """
+    Mobius coefficients of order k. Also referred to as Partial Dependence interaction values. 
+    On a cube with p positive and q negative literals, a subset
+    with a positive-literal variables and b negative-literal variables simply gets:
+        I = (-1)^b / 2^(p+q-k)
+    For k=1 this reduces to PDV. Equivalent to the class PDIVMetric.
+    """
+
+    def cardinality_value(self, num_neg_literals, num_pos_literals, num_subset_pos, num_subset_neg):
+        if num_pos_literals != num_subset_pos:
+            return 0
+        return (-1) ** num_subset_neg
+
+class ArbitraryOrderPDIV(MobiusCoefficients):
+    """ These are the same as mathematically as the MobiusCoefficients."""
+
+
 ############################################################################################################################################################
 #
 #   PDPs matrices
@@ -299,11 +317,10 @@ class CPDVMetric(CubeMetric):
                 pdp_values[f] = -1
         return pdp_values
 
-
-def all_subsets_of_size_0_1_2(s):
-    subsets = [set()]
-    for k in [1,2]:
-        for subset in combinations(s, k):
+def all_subsets_up_to_k(s, k):
+    subsets = []
+    for i in range(min(k, len(s)) + 1):
+        for subset in combinations(s, i):
             subsets.append(set(subset))
     return subsets
 
@@ -316,9 +333,22 @@ class PDIVOrder1Or2(CubeMetric):
             return {}
 
         pdivs = {}
-        for sm in all_subsets_of_size_0_1_2(s_minus):
+        for sm in all_subsets_up_to_k(s_minus, 2):
             s = tuple(s_plus | sm)
             if len(s) in [1,2]:
                 pdivs[s] = (-1) ** (len(sm))
         return pdivs
 
+class PDIVMetric(CubeMetric):
+    INTERACTION_VALUE = True
+    INTERACTION_VALUES_RETURN_ALL_SUBSET_PERMUTATIONS = False
+
+    def calc_metric(self, s_plus: Set, s_minus: Set) -> Dict[Tuple, float]:
+        if len(s_plus & s_minus) > 0:
+            return {}
+
+        pdivs = {}
+        for sm in all_subsets_up_to_k(s_minus, len(s_minus)):
+            s = tuple(s_plus | sm)
+            pdivs[s] = (-1) ** (len(sm))
+        return pdivs
