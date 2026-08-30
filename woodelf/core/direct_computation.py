@@ -250,3 +250,7 @@ class ShapleyCIIDirectComputation(CIIDirectComputation):
         n = len(variables)
         s_size = sum(assignment.values())
         return (factorial(s_size) * factorial(n - s_size - self.order)) / factorial(n - self.order + 1)
+
+class MobiusCIIDirectComputation(CIIDirectComputation):
+    def assignment_weight(self, assignment, variables) -> float:
+        return 1 if sum(assignment.values()) == 0 else 0
