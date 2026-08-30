@@ -75,36 +75,30 @@ def test_general_metric_of_order_2_matches_the_interaction_values_metrics(order_
         assert_same_values(wdnf.calc_metric(general_metric), wdnf.calc_metric(order_2_metric))
 
 
-def order_k_values(metric, wdnf, order):
+def order_k_values(metric_results, order):
     """
-    The non zero order k values a metric gives a wdnf, keyed by a sorted tuple. The canonicalization is
-    what makes CPDVMetric, PDIVMetric and MobiusCoefficients comparable: CPDVMetric keys a feature by
-    itself rather than by a 1-tuple, PDIVMetric keys a subset by the set iteration order rather than by a
-    sorted tuple and reports all the orders at once, and MobiusCoefficients reports every subset of the
-    cube's variables while CPDVMetric and PDIVMetric report only the subsets they give a non zero value.
+    Order the subsets in the provided metric_results and keep onlt order 'order' subsets
     """
     values = {}
-    for key, value in wdnf.calc_metric(metric).items():
+    for key, value in metric_results.items():
         key = tuple(sorted(key)) if isinstance(key, tuple) else (key,)
         if len(key) == order:
-            values[key] = values.get(key, 0) + value
+            values[key] = value
     return {key: value for key, value in values.items() if abs(value) > TOLERANCE}
 
 
 def test_cpdv_pdiv_and_the_mobius_coefficients_are_the_same_metric_at_order_1():
     for wdnf in ALL_WDNFs:
-        cpdv_values = order_k_values(CPDVMetric(), wdnf, 1)
-        assert_same_values(cpdv_values, order_k_values(PDIVMetric(), wdnf, 1))
-        assert_same_values(cpdv_values, order_k_values(MobiusCoefficients(1, 1), wdnf, 1))
+        cpdv_values = order_k_values(wdnf.calc_metric(CPDVMetric()), 1)
+        assert_same_values(cpdv_values, order_k_values(wdnf.calc_metric(PDIVMetric()), 1))
+        assert_same_values(cpdv_values, order_k_values(wdnf.calc_metric(MobiusCoefficients(1, 1)), 1))
 
 
 @pytest.mark.parametrize("order", [2, 3, 4])
 def test_pdiv_and_the_mobius_coefficients_are_the_same_metric_at_higher_orders(order):
-    # PDIVMetric sums (-1)^|S-| over the subsets of the cube's negative literals, which is exactly the
-    # Mobius coefficient of a subset holding all the cube's positive literals (any other subset holds a
-    # variable that is a dummy player of the cube and therefore gets 0).
+    # PDIVMetric and Mobius coefficients are mathematically equivalent
     for wdnf in ALL_WDNFs:
         assert_same_values(
-            order_k_values(PDIVMetric(), wdnf, order),
-            order_k_values(MobiusCoefficients(order, order), wdnf, order)
+            order_k_values(wdnf.calc_metric(PDIVMetric()), order),
+            order_k_values(wdnf.calc_metric(MobiusCoefficients(order, order)), order)
         )
