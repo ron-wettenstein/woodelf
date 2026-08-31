@@ -1,16 +1,22 @@
 from itertools import combinations
 from math import comb
 
-import numpy as np
-import pytest
-import shap
+import os
 
-from shared_fixtures_and_utils import trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, \
+import numpy as np
+import pandas as pd
+import pytest
+import xgboost as xgb
+import shap
+from sklearn.datasets import make_classification
+
+from shared_fixtures_and_utils import RESOURCES_PATH, trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22, \
     assert_shap_package_is_same_as_woodelf, assert_shap_package_is_same_as_woodelf_on_interaction_values
 from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyInteractionValues, \
     GeneralShapleyInteractionValues, GeneralBanzhafInteractionValues, BanzhafInteractionValues
 from woodelf.core.cube_metric import (
-    MobiusCoefficients, FaithfulShapleyInteractionValues, FaithfulBanzhafInteractionValues
+    MobiusCoefficients, FaithfulShapleyInteractionValues, FaithfulBanzhafInteractionValues,
+    ShapleyTaylorInteractionValues
 )
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
@@ -213,15 +219,29 @@ def fbii_mobius_weight(t, order, max_order):
     )
 
 
-def faithful_index_from_mobius_coefficients(mobius_values, max_order, mobius_weight):
+def stii_mobius_weight(t, order, max_order):
     """
-    Rebuild a faithful interaction index out of the Mobius coefficients of the same game.
+    The weight the STII Mobius representation gives m_T, for |T| = t > max_order and a subset of size
+    order: a coefficient above the top order is split uniformly over the C(t, max_order) top order
+    subsets of T, and the subsets below the top order get none of it (they keep their m_S alone, which
+    is their discrete derivative at the empty coalition).
+    """
+    if order < max_order:
+        return 0.0
+    return 1.0 / comb(t, max_order)
 
-    A game is the sum of the unanimity games of its Mobius coefficients, v = sum_T m(T) u_T, and the
-    faithful indices are linear in the game, so index(S) = sum over T containing S of m(T) u_T's index.
-    A max_order-additive surrogate reproduces u_T exactly whenever |T| <= max_order, so those T give the
-    Mobius coefficient itself to S = T and 0 to any other subset - which is the m(S) each subset starts
-    from below. The |T| > max_order ones contribute their closed form unanimity weight.
+
+def interaction_index_from_mobius_coefficients(mobius_values, max_order, mobius_weight):
+    """
+    Rebuild FSII, FBII or STII out of the Mobius coefficients of the same game - mobius_weight is what
+    picks the index.
+
+    A game is the sum of the unanimity games of its Mobius coefficients, v = sum_T m(T) u_T, and all
+    three indices are linear in the game, so index(S) = sum over T containing S of m(T) times u_T's
+    index. All three also hand every m(T) with |T| <= max_order untouched to S = T and to no other
+    subset - for FSII and FBII because a max_order-additive surrogate reproduces such a u_T exactly, for
+    STII by definition - which is the m(S) that each subset starts from below. The coefficients with
+    |T| > max_order are the ones the index specific mobius_weight spreads.
     """
     values = {
         subset: mobius_vector.astype(np.float64)
@@ -239,28 +259,39 @@ def faithful_index_from_mobius_coefficients(mobius_values, max_order, mobius_wei
     return values
 
 
+@pytest.mark.parametrize("metric_class, mobius_weight", [
+    (FaithfulShapleyInteractionValues, fsii_mobius_weight),
+    (FaithfulBanzhafInteractionValues, fbii_mobius_weight),
+    (ShapleyTaylorInteractionValues, stii_mobius_weight),
+], ids=["FSII", "FBII", "STII"])
 @pytest.mark.parametrize("max_order", [1, 2], ids=["order_1", "order_2"])
-def test_faithful_indices_match_the_ones_rebuilt_from_the_mobius_coefficients(
-        trainset, testset, xgb_model, max_order
+def test_fsii_fbii_and_stii_match_the_ones_rebuilt_from_the_mobius_coefficients(
+         metric_class, mobius_weight, max_order
 ):
-    # The faithful metrics collapse the Mobius sum analytically on every cube, inside the contribution
+    # The three metrics collapse the Mobius sum analytically on every cube, inside the contribution
     # tables of the path-to-s-vectors. This test takes the other route: it computes the Mobius
-    # coefficients of the whole ensemble and rebuilds the indices from them subset by subset.
-    consumer_data, background_data = testset.head(5), trainset.head(100)
+    # coefficients of the whole ensemble once and rebuilds each index from them subset by subset.
+    X, y = make_classification(n_samples=100, n_features=12, n_informative=6, n_redundant=2, n_classes=2, class_sep=1.0, random_state=42)
+
+    model = xgb.sklearn.XGBClassifier(n_estimators=10, max_depth=6, random_state=42, learning_rate=0.01,
+        base_score=0.5, eval_metric="logloss", use_label_encoder=False)
+    model.fit(X, y)
+
+    features = [f"x{i}" for i in range(X.shape[1])]
+    background_data = pd.DataFrame(X, columns=features)
+    consumer_data = background_data.head(5)
     mobius_values = woodelf_sparse(
-        xgb_model, consumer_data, background_data, MobiusCoefficients(1, None)
+        model, consumer_data, background_data, MobiusCoefficients(1, None)
     )
 
-    for metric, mobius_weight in [
-        (FaithfulShapleyInteractionValues(1, max_order), fsii_mobius_weight),
-        (FaithfulBanzhafInteractionValues(1, max_order), fbii_mobius_weight),
-    ]:
-        woodelf_values = woodelf_sparse(xgb_model, consumer_data, background_data, metric)
-        rebuilt_values = faithful_index_from_mobius_coefficients(
-            mobius_values, max_order, mobius_weight
+    woodelf_values = woodelf_sparse(
+        model, consumer_data, background_data, metric_class(1, max_order)
+    )
+    rebuilt_values = interaction_index_from_mobius_coefficients(
+        mobius_values, max_order, mobius_weight
+    )
+    assert set(woodelf_values) == set(rebuilt_values)
+    for subset in woodelf_values:
+        np.testing.assert_allclose(
+            woodelf_values[subset], rebuilt_values[subset], atol=TOLERANCE
         )
-        assert set(woodelf_values) == set(rebuilt_values)
-        for subset in woodelf_values:
-            np.testing.assert_allclose(
-                woodelf_values[subset], rebuilt_values[subset], atol=TOLERANCE
-            )
