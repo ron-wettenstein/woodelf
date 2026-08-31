@@ -367,6 +367,26 @@ class FaithfulBanzhafInteractionValues(FaithfulInteractionIndicesMetric):
         return (0.5 ** (t - s)) * nCk(t - s - 1, self.max_order - s)
 
 
+class ShapleyTaylorInteractionValues(FaithfulInteractionIndicesMetric):
+    """
+    Shapley-Taylor Interaction Index (STII, Sundararajan et al. 2020), the game theoretic analogue of a
+    Taylor expansion truncated at max_order. It is not a least squares fit like the two indices above, but
+    it has the same Mobius term plus faithful tail term shape, so it reuses their closed form.
+
+    On the Mobius transform of the game, STII passes every coefficient m_T with |T| <= max_order untouched
+    to S = T, and splits every m_T with |T| > max_order uniformly across the C(|T|, max_order) subsets of T
+    of the top order. So a subset below the top order keeps the Mobius term alone - which is exactly its
+    discrete derivative at the empty coalition - while a top order subset also collects a share
+    1 / C(t, max_order) of every higher order coefficient, which is what makes STII efficient:
+    its values over the orders 1..max_order sum to v(N) - v(empty set).
+    """
+
+    def tail_weight(self, t: int, s: int) -> float:
+        if s < self.max_order:
+            return 0.0
+        return 1.0 / nCk(t, self.max_order)
+
+
 ############################################################################################################################################################
 #
 #   PDPs matrices
