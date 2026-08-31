@@ -297,6 +297,76 @@ class ArbitraryOrderPDIV(MobiusCoefficients):
     """ These are the same as mathematically as the MobiusCoefficients."""
 
 
+class FaithfulInteractionIndicesMetric(CardinalityInteractionIndicesMetric):
+    """
+    Faithful interaction indices (Tsai et al.): unlike the discrete-derivative indices above, these are the
+    weighted least-squares fit of a max_order-additive surrogate of the game, under the Shapley kernel
+    (FSII) or the Banzhaf kernel (FBII). max_order is therefore the surrogate's order and must be set.
+
+    We use the formulation derived at appendices A.3.4 and A.3.5 in the
+    "Proxy-Based Approximation of Shapley and Banzhaf Interactions" paper: https://arxiv.org/pdf/2605.22738
+
+    Propositions A.12 (FBII) and A.13 (FSII) give both indices the same shape on a leaf's interval game,
+    the cube here, whose positive literals are the paper's R and whose negative literals are its L:
+        lambda(l, r, u, s) = (-1)^u 1[R subset of S]
+                             + sum_{i=max(0, k-r-u+1)}^{l-u} (-1)^(u+i+k-s) C(l-u, i) tail_weight(t, s)
+    written with
+        l = |L|,   r = |R|,   u = |S cap L|,   s = |S|,   k = max_order,   t = r + u + i
+    The leading term is the paper's Mobius term and the sum is its faithful tail term, the two parts its
+    proofs derive separately. Implement tail_weight to pick the index.
+    """
+
+    def __init__(self, min_order: int = 1, max_order: Optional[int] = None):
+        assert max_order is not None, (
+            f"{type(self).__name__} fits a max_order-additive surrogate of the game, so max_order must be "
+            f"set (it is the order of the surrogate, not only a bound on the reported subsets)."
+        )
+        super().__init__(min_order, max_order)
+
+    def tail_weight(self, t: int, s: int) -> float:
+        """
+        The index specific factor of the faithful tail term, for a subset of size s and t = r + u + i.
+        The (-1)^(u+i+k-s) sign and the C(l-u, i) multiplicity are shared by both indices, so
+        cardinality_value applies them and only this factor is left to the subclasses.
+        """
+        raise NotImplemented()
+
+    def cardinality_value(self, num_neg_literals, num_pos_literals, num_subset_pos, num_subset_neg):
+        # The symbols of Propositions A.12 and A.13, see the class docstring
+        l, r, u, s, k = num_neg_literals, num_pos_literals, num_subset_neg, num_subset_pos + num_subset_neg, self.max_order
+
+        # The Mobius term. R is a subset of S exactly when the subset holds every positive literal.
+        value = float((-1) ** u) if num_subset_pos == r else 0.0
+
+        # The faithful tail term.
+        for i in range(max(0, k - r - u + 1), l - u + 1):
+            value += ((-1) ** (u + i + k - s)) * nCk(l - u, i) * self.tail_weight(r + u + i, s)
+        return value
+
+
+class FaithfulShapleyInteractionValues(FaithfulInteractionIndicesMetric):
+    """
+    Faithful Shapley Interaction Index (FSII), the closed form of Proposition A.13. Its factor of the
+    faithful tail term is
+        s / (k + s) * C(k, s) * C(t - 1, k) / C(t + k - 1, k + s)
+    """
+
+    def tail_weight(self, t: int, s: int) -> float:
+        k = self.max_order
+        return (s / (k + s)) * nCk(k, s) * nCk(t - 1, k) / nCk(t + k - 1, k + s)
+
+
+class FaithfulBanzhafInteractionValues(FaithfulInteractionIndicesMetric):
+    """
+    Faithful Banzhaf Interaction Index (FBII), the closed form of Proposition A.12. Its factor of the
+    faithful tail term is
+        (1/2)^(t - s) * C(t - s - 1, k - s)
+    """
+
+    def tail_weight(self, t: int, s: int) -> float:
+        return (0.5 ** (t - s)) * nCk(t - s - 1, self.max_order - s)
+
+
 ############################################################################################################################################################
 #
 #   PDPs matrices
