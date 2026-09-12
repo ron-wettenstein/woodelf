@@ -83,7 +83,8 @@ def ignore_right_neighbor(left_leaf, path, use_neighbor_leaf_trick):
     ignored_neighbor = (
             use_neighbor_leaf_trick and  # 1. We allow this trick.
             left_leaf.parent is not None and left_leaf == left_leaf.parent.left and left_leaf.parent.right.is_leaf() and  # 2. This is left leaf with a right neighbor leaf
-            left_leaf.parent.feature_name not in path_features[:-1]  # 3. The feature of the current leaf does not repeat in the path
+            left_leaf.parent.parent is not None and  # 3. The parent is not the tree root (see tree.depth <= 1 in decision_patterns_generator)
+            left_leaf.parent.feature_name not in path_features[:-1]  # 4. The feature of the current leaf does not repeat in the path
     )
     return ignored_neighbor
 
