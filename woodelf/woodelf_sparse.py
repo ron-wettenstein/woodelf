@@ -108,6 +108,7 @@ def linear_tree_shap_meets_woodelf(
     GPU: bool = False,
     use_neighbor_leaf_trick: bool = True,
     model_was_loaded: bool = False,
+    verbose: bool = True,
 ):
     assert isinstance(metric, _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS), (
         f"linear_tree_shap_meets_woodelf supports only {[m.__name__ for m in _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS]}. Got {type(metric).__name__}."
@@ -115,7 +116,7 @@ def linear_tree_shap_meets_woodelf(
     return woodelf_sparse(
         model, consumer_data, None, metric,
         GPU=GPU, use_neighbor_leaf_trick=use_neighbor_leaf_trick,
-        model_was_loaded=model_was_loaded
+        model_was_loaded=model_was_loaded, verbose=verbose
     )
 
 
@@ -128,6 +129,7 @@ def woodelf_sparse(
     use_neighbor_leaf_trick: bool = True,
     model_was_loaded: bool = False,
     mn_p2s_class=None,
+    verbose: bool = True,
 ):
     """
     Sparse WOODELF: uses pattern-factorized sparse algorithms for all leaves.
@@ -174,7 +176,8 @@ def woodelf_sparse(
         use_neighbor_leaf_trick = False # Linear TreeSHAP doesn't support the neighbor_leaf_trick for interaction values
 
     values = {}
-    for tree in tqdm(model.trees, desc=f"Computing {metric.__class__.__name__} using WOODELF"):
+    for tree in tqdm(model.trees, desc=f"Computing {metric.__class__.__name__} using WOODELF",
+                     disable=not verbose):
         if is_background:
             sparse_background_single_tree(
                 tree, consumer_data, background_data, values,
@@ -189,10 +192,11 @@ def woodelf_sparse(
     if mirror_pairs:
         fill_mirror_pairs(values)
 
-    if mn_p2s is not None:
-        mn_p2s.present_statistics()
-    if lts_p2s is not None:
-        lts_p2s.present_statistics()
+    if verbose:
+        if mn_p2s is not None:
+            mn_p2s.present_statistics()
+        if lts_p2s is not None:
+            lts_p2s.present_statistics()
 
     return values
 
@@ -206,6 +210,7 @@ def hybrid_woodelf(
         use_neighbor_leaf_trick: bool = True,
         model_was_loaded: bool = False,
         mn_p2s_class=None,
+        verbose: bool = True,
 ):
     """
     Hybrid WOODELF: selects the best computation strategy (sparse woodelf or woodelf_for_high_depths) considering the tree depth and metric.
@@ -219,10 +224,12 @@ def hybrid_woodelf(
     if use_sparse_approach(effective_depth, metric, is_background):
         return woodelf_sparse(
             model, consumer_data, background_data, metric, GPU=GPU,
-            use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True, mn_p2s_class=mn_p2s_class
+            use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True,
+            mn_p2s_class=mn_p2s_class, verbose=verbose
         )
     else:
         return woodelf_for_high_depth(
             model, consumer_data, background_data, metric, GPU=GPU,
             use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True,
+            verbose=verbose,
         )

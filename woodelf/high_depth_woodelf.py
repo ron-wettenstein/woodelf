@@ -71,7 +71,8 @@ def woodelf_for_high_depth(
         model, consumer_data: pd.DataFrame, background_data: Optional[pd.DataFrame], metric: CubeMetric,
         GPU: bool=False, use_neighbor_leaf_trick: bool=True,
         path_to_matrices_calculator: PathToSVectors = None,
-        global_importance: bool = False, model_was_loaded: bool = False
+        global_importance: bool = False, model_was_loaded: bool = False,
+        verbose: bool = True
 ):
     """
     WOODELF designed for higher depths decision trees.
@@ -93,6 +94,7 @@ def woodelf_for_high_depth(
     on large/medium size datasets)
     @param global_importance: If true return the average value across all consumer data rows. Used to
     save RAM.
+    @param verbose: If True show the progress bar and print the timing statistics.
     @return The computed values as a dictionary that maps between features/features pairs to np.arrays with
     the values.
     """
@@ -119,7 +121,9 @@ def woodelf_for_high_depth(
 
 
     values = {}
-    for tree_index, tree in tqdm(list(enumerate(model_obj.trees)), desc="Preprocessing the trees and computing SHAP"):
+    for tree_index, tree in tqdm(list(enumerate(model_obj.trees)),
+                                 desc="Preprocessing the trees and computing SHAP",
+                                 disable=not verbose):
         woodelf_for_high_depth_single_tree(
             tree, consumer_data, background_data, values, path_to_matrices_calculator, GPU,
             use_neighbor_leaf_trick, global_importance,
@@ -128,6 +132,7 @@ def woodelf_for_high_depth(
     if metric.should_mirror():
         fill_mirror_pairs(values)
 
-    path_to_matrices_calculator.present_statistics()
+    if verbose:
+        path_to_matrices_calculator.present_statistics()
 
     return values
