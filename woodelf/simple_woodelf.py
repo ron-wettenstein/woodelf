@@ -96,7 +96,7 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
     visited_leaves_parents = {}
     data_length = len(background_data) if not GPU else len(background_data[list(background_data.keys())[0]])
     for leaf, features_in_path in tree.get_all_leaves_with_paths():
-        use_neighbor_trick = (leaf.parent.index in visited_leaves_parents) and (
+        use_neighbor_trick = leaf.parent is not None and (leaf.parent.index in visited_leaves_parents) and (
                 (not unique_features_decision_pattern) or (features_in_path[-1] not in features_in_path[:-1])
         )
         if not use_neighbor_trick:
@@ -110,7 +110,8 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
                 Frq_b[leaf.index] = np.bincount(background_patterns_matrix[leaf.index],
                                                 minlength=2 ** len(features_in_path))
                 Frq_b[leaf.index] = Frq_b[leaf.index] / data_length
-            visited_leaves_parents[leaf.parent.index] = Frq_b[leaf.index]
+            if leaf.parent is not None:
+                visited_leaves_parents[leaf.parent.index] = Frq_b[leaf.index]
         else:
             # neighbor leaves have similar patterns (only the last bit is different)
             # For efficiency we reuse the frequencies computed for the neighboor.
