@@ -21,6 +21,8 @@ class PDPPathToSVectors(PathToSVectors):
     get_background_s_matrix  — exact PDP using background data patterns.
     get_path_dependent_s_matrix — estimated PDP using tree cover ratios
                                   (was EstimatedPDPPathToMatrices).
+
+    Requires numpy >= 2, as it uses np.bitwise_count (added in numpy 2.0).
     """
 
     def __init__(self, max_depth: int, GPU: bool = False):
@@ -188,7 +190,7 @@ class PDPIVPathToSVectors(PDPPathToSVectors):
                     continue
                 idx = triu_pair_to_index(index1, index2, D)
                 if (feature1, feature2) not in results:
-                    results[(feature1, feature2)] = s_matrix[:, idx]
+                    results[(feature1, feature2)] = s_matrix[:, idx].copy()
                 else:
                     results[(feature1, feature2)] += s_matrix[:, idx]
         return results

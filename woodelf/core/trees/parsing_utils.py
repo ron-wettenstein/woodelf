@@ -2,6 +2,9 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+# The class woodelf explains when the caller does not ask for another one.
+DEFAULT_CLASS_INDEX = 0
+
 
 def safe_isinstance(obj: Any, class_path_str: str | list[str]) -> bool:
     """
@@ -86,3 +89,18 @@ def safe_isinstance(obj: Any, class_path_str: str | list[str]) -> bool:
             return True
 
     return False
+
+
+def resolve_class_index(class_index: int, number_of_classes: int) -> int:
+    """
+    The column of a node's per class values that `class_index` asks for.
+
+    Classifiers store one value per class in every node and woodelf explains one of them at a time, so
+    every parser resolves the caller's class_index through here to keep them picking the same column.
+    A model with no such class - a regressor, a booster whose leaves hold a single number, or an index
+    past the last class - falls back to DEFAULT_CLASS_INDEX silently, so asking for a class a model does
+    not have is harmless rather than an error.
+    """
+    if 0 <= class_index < number_of_classes:
+        return class_index
+    return DEFAULT_CLASS_INDEX

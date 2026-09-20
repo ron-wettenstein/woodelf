@@ -67,18 +67,29 @@ def test_pdp_iv_vs_naive_algorithm(trainset, hist_gradient_boosting_model):
         hist_gradient_boosting_model, data=trainset, k=5, accurate=True, GPU=False, seed=42, use_woodelfhd=True
     )
 
-    pairs_indexes_10 = [(98, 2),
+    # 15 pairs including 5 randomly selected ones and 10 pairs whose two features actually 
+    # co-occur on a root-to-leaf path, so the joint PDV really carries an interaction term.
+    pairs_indexes_15 = [
+     # 5 random pairs
+     (98, 2),
      (364, 185),
      (187, 139),
      (372, 161),
      (67, 253),
-     (4, 146),
-     (363, 12),
-     (280, 278),
-     (307, 369),
-     (215, 20)]
+     # 10 pairs whose two features actually co-occur on a root-to-leaf path
+     (14, 19),
+     (234, 9),
+     (1, 14),
+     (232, 197),
+     (17, 19),
+     (14, 21),
+     (197, 0),
+     (25, 14),
+     (0, 34),
+     (232, 190)
+    ]
 
-    for f1, f2 in pairs_indexes_10:
+    for f1, f2 in pairs_indexes_15:
         feature_1 = list(trainset.columns)[f1]
         feature_2 = list(trainset.columns)[f2]
 

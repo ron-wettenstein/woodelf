@@ -4,18 +4,23 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues
+from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues, \
+    BanzhafInteractionValues, CardinalityInteractionIndicesMetric, GeneralShapleyInteractionValues, \
+    GeneralBanzhafInteractionValues
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors, AbsLeavesLTSPathToSVectors
 from woodelf.core.path_to_s_vectors.archive.quadrature_shap_p2s import QuadratureSHAPPathToSVectors
 from woodelf.core.path_to_s_vectors.archive.lts_polynomial_multiplication import (
     ABS_STRATEGY_NORMAL, ABS_STRATEGY_LEAVES, ABS_STRATEGY_BANZHAF_CURVE_ENSEMBLE, ABS_STRATEGIES,
 )
 from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterPathToSVectors, MNBackgroundPathToSVectors
+from woodelf.core.path_to_s_vectors.mn_background_cii_p2s import MNBackgroundCIIPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.utils import get_unique_features_in_path, get_covers_vector
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
+from woodelf.simple_woodelf import fill_mirror_pairs
 
 try:
     import cupy as cp
@@ -26,7 +31,8 @@ except ModuleNotFoundError:
 
 _MAX_DEPTH_FOR_HIGH_WOODELF = 12
 _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF = 10
-_SUPPORTED_SPARSE_BACKGROUND_METRICS = (ShapleyValues, BanzhafValues)
+_SUPPORTED_SPARSE_BACKGROUND_METRICS = (ShapleyValues, BanzhafValues, CardinalityInteractionIndicesMetric,
+                                        ShapleyInteractionValues, BanzhafInteractionValues)
 _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS = (ShapleyValues, BanzhafValues, ShapleyInteractionValues)
 
 
@@ -51,7 +57,7 @@ def sparse_background_single_tree(
     consumer_data: pd.DataFrame,
     background_data: pd.DataFrame,
     values: Dict[Any, float],
-    mn_p2s: Optional[MNBackgroundFasterPathToSVectors],
+    mn_p2s: Optional[PathToSVectors],
     GPU: bool,
     use_neighbor_leaf_trick: bool,
 ):
@@ -106,6 +112,7 @@ def linear_tree_shap_meets_woodelf(
     GPU: bool = False,
     use_neighbor_leaf_trick: bool = True,
     model_was_loaded: bool = False,
+    verbose: bool = True,
 ):
     assert isinstance(metric, _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS), (
         f"linear_tree_shap_meets_woodelf supports only {[m.__name__ for m in _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS]}. Got {type(metric).__name__}."
@@ -113,7 +120,7 @@ def linear_tree_shap_meets_woodelf(
     return woodelf_sparse(
         model, consumer_data, None, metric,
         GPU=GPU, use_neighbor_leaf_trick=use_neighbor_leaf_trick,
-        model_was_loaded=model_was_loaded
+        model_was_loaded=model_was_loaded, verbose=verbose
     )
 
 
@@ -127,11 +134,15 @@ def woodelf_sparse(
     model_was_loaded: bool = False,
     mn_p2s_class=None,
     abs_strategy: str = ABS_STRATEGY_NORMAL,
+    verbose: bool = True,
 ):
     """
     Sparse WOODELF: uses pattern-factorized sparse algorithms for all leaves.
 
-    Background mode (background_data provided): MNBackgroundFasterPathToSVectors (default) or mn_p2s_class.
+    Background mode (background_data provided): MNBackgroundFasterPathToSVectors (default),
+    MNBackgroundCIIPathToSVectors (default for CardinalitySymmetricInteractionMetric metrics)
+    or mn_p2s_class. The pairwise interaction metrics (ShapleyInteractionValues, BanzhafInteractionValues)
+    are computed through their order 2 CII equivalent, followed by mirroring.
     Path-dependent mode (background_data is None): LTSRecursivePathToSVectors.
 
     @param abs_strategy: Controls absolute-value handling of contributions (path-dependent mode only):
@@ -154,10 +165,30 @@ def woodelf_sparse(
     assert abs_strategy in ABS_STRATEGIES, f"abs_strategy must be one of {ABS_STRATEGIES}, got {abs_strategy!r}"
     assert abs_strategy == ABS_STRATEGY_NORMAL or not is_background, "abs strategies are only supported in path-dependent mode (background_data must be None)"
 
-    if mn_p2s_class is None:
-        mn_p2s_class = MNBackgroundFasterPathToSVectors
-    mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth) if is_background else None
-    if not is_background:
+    if isinstance(metric, CardinalityInteractionIndicesMetric):
+        assert is_background, (
+            "CardinalitySymmetricInteractionMetric metrics are supported only in background mode "
+            "(background_data must be provided)."
+        )
+
+    mirror_pairs = False
+    if is_background:
+        if isinstance(metric, ShapleyInteractionValues):
+            metric = GeneralShapleyInteractionValues(2,2, shap_convention=True)
+            mirror_pairs = True
+        elif isinstance(metric, BanzhafInteractionValues):
+            metric = GeneralBanzhafInteractionValues(2,2)
+            mirror_pairs = True
+
+    mn_p2s, lts_p2s = None, None
+    if is_background:
+        if mn_p2s_class is None:
+            if isinstance(metric, CardinalityInteractionIndicesMetric):
+                mn_p2s_class = MNBackgroundCIIPathToSVectors
+            else:
+                mn_p2s_class = MNBackgroundFasterPathToSVectors
+        mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth)
+    else:
         if abs_strategy == ABS_STRATEGY_LEAVES:
             # |metric_i| per leaf on the exact path (e.g. abs of the Banzhaf value in each leaf).
             lts_p2s = AbsLeavesLTSPathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU)
@@ -165,8 +196,6 @@ def woodelf_sparse(
             lts_p2s = QuadratureSHAPPathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU, abs_strategy=abs_strategy)
         else:
             lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU)
-    else:
-        lts_p2s = None
 
     if abs_strategy == ABS_STRATEGY_LEAVES:
         use_neighbor_leaf_trick = False  # abs each physical leaf separately; the neighbor trick combines siblings
@@ -175,7 +204,8 @@ def woodelf_sparse(
         use_neighbor_leaf_trick = False # Linear TreeSHAP doesn't support the neighbor_leaf_trick for interaction values
 
     values = {}
-    for tree in tqdm(model.trees, desc=f"Computing {metric.__class__.__name__} using WOODELF"):
+    for tree in tqdm(model.trees, desc=f"Computing {metric.__class__.__name__} using WOODELF",
+                     disable=not verbose):
         if is_background:
             sparse_background_single_tree(
                 tree, consumer_data, background_data, values,
@@ -187,10 +217,14 @@ def woodelf_sparse(
                 lts_p2s, GPU, use_neighbor_leaf_trick
             )
 
-    if mn_p2s is not None:
-        mn_p2s.present_statistics()
-    if lts_p2s is not None:
-        lts_p2s.present_statistics()
+    if mirror_pairs:
+        fill_mirror_pairs(values)
+
+    if verbose:
+        if mn_p2s is not None:
+            mn_p2s.present_statistics()
+        if lts_p2s is not None:
+            lts_p2s.present_statistics()
 
     if abs_strategy == ABS_STRATEGY_BANZHAF_CURVE_ENSEMBLE:
         # Each values[feature] holds the accumulated per-node whole-ensemble banzhaf curve (n_consumers, n_quad).
@@ -212,6 +246,7 @@ def hybrid_woodelf(
         use_neighbor_leaf_trick: bool = True,
         model_was_loaded: bool = False,
         mn_p2s_class=None,
+        verbose: bool = True,
 ):
     """
     Hybrid WOODELF: selects the best computation strategy (sparse woodelf or woodelf_for_high_depths) considering the tree depth and metric.
@@ -225,10 +260,12 @@ def hybrid_woodelf(
     if use_sparse_approach(effective_depth, metric, is_background):
         return woodelf_sparse(
             model, consumer_data, background_data, metric, GPU=GPU,
-            use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True, mn_p2s_class=mn_p2s_class
+            use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True,
+            mn_p2s_class=mn_p2s_class, verbose=verbose
         )
     else:
         return woodelf_for_high_depth(
             model, consumer_data, background_data, metric, GPU=GPU,
             use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True,
+            verbose=verbose,
         )

@@ -219,6 +219,7 @@ class WoodelfPartialDependenceDisplay:
                 full_pdp=full_pdp,
                 use_woodelfhd=use_woodelfhd,
                 accurate=accurate,
+                verbose=(verbose > 0),
             )
             one_way_grid = {
                 f: np.trim_zeros(grid_df[f].values, trim="b")

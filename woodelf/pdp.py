@@ -166,7 +166,7 @@ def fast_pdp_for_a_single_tree(
 def woodelf_fast_pdp(
         model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
         GPU: bool = False, model_was_loaded: bool = False, centered: bool = True, accurate: bool = True, 
-        use_woodelfhd: bool = False, avg_prediction: float=None
+        use_woodelfhd: bool = False, avg_prediction: float=None, verbose: bool = True
 ):
     if not model_was_loaded:
         model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
@@ -176,14 +176,17 @@ def woodelf_fast_pdp(
     if use_woodelfhd:
         pdvs = woodelf_for_high_depth(
             model, consumer_data=consumer_data, background_data=background_data if accurate else None,
-            metric=CPDVMetric(), GPU=GPU, use_neighbor_leaf_trick=True, global_importance=False, model_was_loaded=model_was_loaded
+            metric=CPDVMetric(), GPU=GPU, use_neighbor_leaf_trick=True, global_importance=False, model_was_loaded=model_was_loaded,
+            verbose=verbose
         )
     else:
         p2s = PDPPathToSVectors(model_obj.max_depth, GPU)
         pdvs = {}
-        for tree in tqdm(model_obj.trees, desc="Preprocessing the trees and computing PDP"):
+        for tree in tqdm(model_obj.trees, desc="Preprocessing the trees and computing PDP",
+                         disable=not verbose):
             fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2s, GPU, accurate=accurate)
-        p2s.present_statistics()
+        if verbose:
+            p2s.present_statistics()
 
     if centered:
         return pdvs
@@ -200,17 +203,19 @@ def woodelf_fast_pdp(
 
 def woodelf_fast_pdp_iv(
         model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
-        GPU: bool = False,
+        GPU: bool = False, verbose: bool = True,
 ):
     p2s = PDPPathToSVectors(model.max_depth, GPU)
     p2s_iv = PDPIVPathToSVectors(model.max_depth, GPU)
     pdvs = {}
     pdivs = {}
-    for tree in tqdm(model.trees, desc="Preprocessing the trees and computing PDP"):
+    for tree in tqdm(model.trees, desc="Preprocessing the trees and computing PDP",
+                     disable=not verbose):
         fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2s, GPU, accurate=True)
         fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdivs, p2s_iv, GPU, accurate=True)
-    p2s.present_statistics()
-    p2s_iv.present_statistics()
+    if verbose:
+        p2s.present_statistics()
+        p2s_iv.present_statistics()
 
     for feature in pdvs:
         pdivs[(feature,)] = pdvs[feature]
@@ -218,7 +223,8 @@ def woodelf_fast_pdp_iv(
 
 def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, centered: bool = True, accurate: bool = True,
                 percentiles: Tuple[float] = (0.05, 0.95), sampled: bool = False, seed: int = 42, full_pdp: bool = False,
-                use_woodelfhd: Optional[bool] = None) -> Tuple[Dict[str, np.array], pd.DataFrame]:
+                use_woodelfhd: Optional[bool] = None,
+                verbose: bool = True) -> Tuple[Dict[str, np.array], pd.DataFrame]:
     """
     Compute all the PDVs needed in order to plot the PDP values of all features.
 
@@ -252,7 +258,7 @@ def woodelf_pdp(model, data: pd.DataFrame, k: int = 100, GPU: bool = False, cent
     points_df = build_points_for_pdp(model_obj, data, k, percentiles, sampled, seed, full_pdp, model_was_loaded=True)
     return woodelf_fast_pdp(
         model_obj, points_df, data, GPU, model_was_loaded=True, centered=centered, accurate=accurate, 
-        use_woodelfhd=use_woodelfhd, avg_prediction=avg_prediction
+        use_woodelfhd=use_woodelfhd, avg_prediction=avg_prediction, verbose=verbose
     ), points_df
 
 def woodelf_pdp_joint(
@@ -282,12 +288,13 @@ def woodelf_pdp_joint(
         use_woodelfhd = (model_obj.max_depth <= 10)
 
     if not use_woodelfhd and accurate:
-        pdivs = woodelf_fast_pdp_iv(model_obj, consumer_data=points_df, background_data=data, GPU=GPU)
+        pdivs = woodelf_fast_pdp_iv(model_obj, consumer_data=points_df, background_data=data, GPU=GPU,
+                                    verbose=verbose)
     else:
         metric = PDIVOrder1Or2()
         pdivs = woodelf_for_high_depth(
             model_obj, consumer_data=points_df, background_data=data if accurate else None,
-            metric=metric, GPU=GPU, model_was_loaded=True
+            metric=metric, GPU=GPU, model_was_loaded=True, verbose=verbose
         )
     avg_prediction = float(model.predict(data).mean()) if accurate else 0
     base_pdv = np.array([avg_prediction] * len(points_df))

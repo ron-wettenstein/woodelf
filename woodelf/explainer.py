@@ -20,10 +20,9 @@ class WoodelfExplainer:
             self, model, data: pd.DataFrame = None,
             model_output : str="raw", feature_perturbation: str="auto",
             # Additional options exists only in Woodelf:
-            use_cache: bool = False, GPU: bool = False
+            GPU: bool = False
     ):
         self.raw_model = model
-        self.use_cache = use_cache and data is not None
         self.background_data = data
 
         self.verify_init_input(model_output, feature_perturbation)
@@ -42,8 +41,6 @@ class WoodelfExplainer:
             else:
                 self.model: DecisionTreesEnsemble = load_decision_tree_ensemble_model(model, list(data.columns))
             self.model_was_loaded = True
-            self.cache = [{} for i in range(len(self.model.trees))] if self.use_cache else None
-            self.cache_filled = False
         else:
             self.model_was_loaded = False
 
@@ -58,7 +55,7 @@ class WoodelfExplainer:
             # Additional options exists only in Woodelf:
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: WoodelfPathToSVectors = None,
-            verbose: bool = False
+            verbose: bool = True
     ):
         return self.calc_metric(
             X, ShapleyValues(), tree_limit, as_df, exclude_zero_contribution_features,
@@ -69,7 +66,7 @@ class WoodelfExplainer:
             self, X, tree_limit: int = None, include_interaction_with_itself: bool = True,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: WoodelfPathToSVectors = None,
-            verbose: bool = False
+            verbose: bool = True
     ):
         shapley_ivs = self.calc_metric(
             X, ShapleyInteractionValues(), tree_limit, as_df=True,
@@ -77,8 +74,9 @@ class WoodelfExplainer:
             path_to_matrices_calculator=path_to_matrices_calculator, verbose=verbose
         )
         if include_interaction_with_itself:
-            print("""Compute also shapley values in order to find the interactions of features with themselves. 
-            The interaction of a feature with itself is its shapley value minus all the shapley 
+            if verbose:
+                print("""Compute also shapley values in order to find the interactions of features with themselves.
+            The interaction of a feature with itself is its shapley value minus all the shapley
             interaction values it has with other features (when it is the first feature in the pair).
             a.k.a:
             shap_(i,i) = shap_i - \\sum_(j!=i) shap_(i,j) """)
@@ -104,7 +102,7 @@ class WoodelfExplainer:
             self, X, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: WoodelfPathToSVectors = None,
-            verbose: bool = False
+            verbose: bool = True
     ):
         return self.calc_metric(
             X, BanzhafValues(), tree_limit, as_df, exclude_zero_contribution_features,
@@ -115,7 +113,7 @@ class WoodelfExplainer:
             self, X, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: WoodelfPathToSVectors = None,
-            verbose: bool = False
+            verbose: bool = True
     ):
         return self.calc_metric(
             X, BanzhafInteractionValues(), tree_limit, as_df,
@@ -127,30 +125,24 @@ class WoodelfExplainer:
             self, consumer_data, metric: CubeMetric, tree_limit: int = None,
             as_df: bool = False, exclude_zero_contribution_features: bool = False,
             path_to_matrices_calculator: WoodelfPathToSVectors = None,
-            verbose: bool = False):
+            verbose: bool = True
+        ):
         if not self.model_was_loaded:
             self.model = load_decision_tree_ensemble_model(self.raw_model, list(consumer_data.columns))
             self.model_was_loaded = True
-            self.cache = [{} for i in range(len(self.model.trees))] if self.use_cache else None
-            self.cache_filled = False
 
         model = self.model if tree_limit is None else DecisionTreesEnsemble(self.model.trees[:tree_limit])
-        cache_kwargs = {}
-        if self.cache is not None:
-            if self.cache_filled:
-                # use the cache
-                cache_kwargs["cache_to_use"] = self.cache
-            else:
-                # fill the cache
-                cache_kwargs["cache_to_fill"] = self.cache
-                self.cache_filled = True # will fill the cache now
 
-        if self.cache is None and path_to_matrices_calculator is None and not self.GPU:
-            woodelf_values = hybrid_woodelf(model, consumer_data, self.background_data, metric, GPU=self.GPU, model_was_loaded=True)
+        if path_to_matrices_calculator is None and not self.GPU:
+            woodelf_values = hybrid_woodelf(
+                model, consumer_data, self.background_data, metric, GPU=self.GPU, model_was_loaded=True,
+                verbose=verbose,
+            )
         else:
             woodelf_values = woodelf_for_high_depth(
                 model, consumer_data, self.background_data, metric, GPU=self.GPU,
-                path_to_matrices_calculator=path_to_matrices_calculator, model_was_loaded=True, **cache_kwargs
+                path_to_matrices_calculator=path_to_matrices_calculator, model_was_loaded=True,
+                verbose=verbose,
             )
 
         return self._output_formatting(

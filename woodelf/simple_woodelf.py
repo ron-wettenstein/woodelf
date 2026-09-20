@@ -96,7 +96,7 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
     visited_leaves_parents = {}
     data_length = len(background_data) if not GPU else len(background_data[list(background_data.keys())[0]])
     for leaf, features_in_path in tree.get_all_leaves_with_paths():
-        use_neighbor_trick = (leaf.parent.index in visited_leaves_parents) and (
+        use_neighbor_trick = leaf.parent is not None and (leaf.parent.index in visited_leaves_parents) and (
                 (not unique_features_decision_pattern) or (features_in_path[-1] not in features_in_path[:-1])
         )
         if not use_neighbor_trick:
@@ -110,7 +110,8 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
                 Frq_b[leaf.index] = np.bincount(background_patterns_matrix[leaf.index],
                                                 minlength=2 ** len(features_in_path))
                 Frq_b[leaf.index] = Frq_b[leaf.index] / data_length
-            visited_leaves_parents[leaf.parent.index] = Frq_b[leaf.index]
+            if leaf.parent is not None:
+                visited_leaves_parents[leaf.parent.index] = Frq_b[leaf.index]
         else:
             # neighbor leaves have similar patterns (only the last bit is different)
             # For efficiency we reuse the frequencies computed for the neighboor.
@@ -217,7 +218,7 @@ def calculation_given_preprocessed_tree(tree: DecisionTreeNode, data: pd.DataFra
 
 def calculation_given_preprocessed_tree_ensemble(
         preprocess_trees: List[DecisionTreeNode], consumer_data: pd.DataFrame, global_importance: bool = False,
-        iv_one_sized: bool = False, GPU=False):
+        iv_one_sized: bool = False, GPU=False, verbose: bool = True):
     """
     Run desired metric calculation on a decision tree ensemble.
 
@@ -226,7 +227,7 @@ def calculation_given_preprocessed_tree_ensemble(
     While it makes the result not useful it let us run WOODELF on large datasets and test its running time.
     """
     values = {}
-    for tree in tqdm(preprocess_trees, desc="Computing the values"):
+    for tree in tqdm(preprocess_trees, desc="Computing the values", disable=not verbose):
         if global_importance:
             current_values = {}
             calculation_given_preprocessed_tree(tree, consumer_data, values=current_values, GPU=GPU)
@@ -256,7 +257,8 @@ def fill_mirror_pairs(values):
 def calculate_background_metric(model, consumer_data: pd.DataFrame, background_data: pd.DataFrame,
                                 metric: CubeMetric,
                                 global_importance: bool = False, GPU=False,
-                                path_to_matrixes_calculator: WoodelfPathToSVectors = None):
+                                path_to_matrixes_calculator: WoodelfPathToSVectors = None,
+                                verbose: bool = True):
     """
     The WOODELF algorithm!!!
 
@@ -271,15 +273,16 @@ def calculate_background_metric(model, consumer_data: pd.DataFrame, background_d
         consumer_data = get_cupy_data(model_obj, consumer_data)
         background_data = get_cupy_data(model_obj, background_data)
     preprocessed_trees = []
-    for tree in tqdm(model_obj.trees, desc="Preprocessing the trees"):
+    for tree in tqdm(model_obj.trees, desc="Preprocessing the trees", disable=not verbose):
         preprocessed_trees.append(preprocess_tree_background(tree, background_data, depth=tree.depth,
                                                              path_to_matrixes_calculator=path_to_matrixes_calculator,
                                                              GPU=GPU))
 
-    path_to_matrixes_calculator.present_statistics()
+    if verbose:
+        path_to_matrixes_calculator.present_statistics()
     values = calculation_given_preprocessed_tree_ensemble(
         preprocessed_trees, consumer_data, global_importance,
-        iv_one_sized=not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE, GPU=GPU
+        iv_one_sized=metric.should_mirror(), GPU=GPU, verbose=verbose
     )
     return values
 
@@ -329,7 +332,8 @@ def fast_preprocess_path_dependent(tree: DecisionTreeNode, path_to_matrixes_calc
 
 
 def calculate_path_dependent_metric(model, consumer_data, metric: CubeMetric, global_importance: bool = False,
-                                    GPU=False, path_to_matrixes_calculator: WoodelfPathToSVectors = None):
+                                    GPU=False, path_to_matrixes_calculator: WoodelfPathToSVectors = None,
+                                    verbose: bool = True):
     """
     Path-Dependent WOODELF algorithm!!
 
@@ -342,13 +346,14 @@ def calculate_path_dependent_metric(model, consumer_data, metric: CubeMetric, gl
         consumer_data = get_cupy_data(model_obj, consumer_data)
 
     preprocessed_trees = []
-    for tree in tqdm(model_obj.trees, desc="Preprocessing the trees"):
+    for tree in tqdm(model_obj.trees, desc="Preprocessing the trees", disable=not verbose):
         preprocessed_trees.append(
             fast_preprocess_path_dependent(tree, path_to_matrixes_calculator=path_to_matrixes_calculator))
 
-    print(
-        f"cache misses: {path_to_matrixes_calculator.cache_miss}, cache used: {path_to_matrixes_calculator.cached_used}")
+    if verbose:
+        print(
+            f"cache misses: {path_to_matrixes_calculator.cache_miss}, cache used: {path_to_matrixes_calculator.cached_used}")
     return calculation_given_preprocessed_tree_ensemble(
         preprocessed_trees, consumer_data, global_importance,
-        iv_one_sized=not metric.INTERACTION_VALUES_ORDER_MATTERS and metric.INTERACTION_VALUE, GPU=GPU
+        iv_one_sized=metric.should_mirror(), GPU=GPU, verbose=verbose
     )
