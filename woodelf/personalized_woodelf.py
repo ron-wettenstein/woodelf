@@ -5,7 +5,9 @@ import pandas as pd
 from tqdm import tqdm
 
 from woodelf.core.cube_metric import CubeMetric
-from woodelf.core.decision_patterns import decision_patterns_generator, decision_patterns_generator_for_feature_subset, ignore_right_neighbor
+from woodelf.core.decision_patterns import (
+    decision_patterns_generator, decision_patterns_generator_for_feature_subset, ignore_right_neighbor, _build_subtree_features,
+)
 from woodelf.core.path_to_s_vectors.mn_background_p2s import PersonalizedBaselinePathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
@@ -21,8 +23,8 @@ except ModuleNotFoundError:
 
 def _personalized_single_tree(
     tree: DecisionTreeNode,
-    consumer_data: pd.DataFrame,
-    background_data: pd.DataFrame,
+    combined_data: pd.DataFrame,
+    N: int,
     values: Dict[Any, np.ndarray],
     p2s: PersonalizedBaselinePathToSVectors,
     GPU: bool,
@@ -30,9 +32,7 @@ def _personalized_single_tree(
     features_subset: Optional[set] = None,
     compute_effect_on_other_features: bool = False,
 ):
-    N = len(consumer_data)
-    combined_data = pd.concat([consumer_data, background_data], ignore_index=True)
-
+    """combined_data holds the N consumer rows followed by the N paired background rows."""
     leaves_to_path = tree.get_nodes_to_path_dict()
     if features_subset is not None:
         pattern_gen = decision_patterns_generator_for_feature_subset(
@@ -112,10 +112,16 @@ def personalized_baseline_woodelf(
 
     features_set = set(features_subset) if features_subset is not None else None
 
+    # Concatenate once (not once per tree): this used to dominate the run time, especially for delta updates
+    N = len(consumer_data)
+    combined_data = pd.concat([consumer_data, background_data], ignore_index=True)
+
     values = {}
     for tree in tqdm(model.trees, desc=f"Computing {metric.__class__.__name__} using personalized baseline WOODELF", disable=not verbose):
+        if features_set is not None and not (_build_subtree_features(tree)[tree.index] & features_set):
+            continue  # no leaf of this tree has a subset feature on its path
         _personalized_single_tree(
-            tree, consumer_data, background_data, values, p2s, GPU, use_neighbor_leaf_trick,
+            tree, combined_data, N, values, p2s, GPU, use_neighbor_leaf_trick,
             features_set, compute_effect_on_other_features,
         )
 
