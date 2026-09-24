@@ -5,7 +5,10 @@ import pandas as pd
 import pytest
 import xgboost as xgb
 
-from woodelf.feature_selection import feature_selection_ranking, _monotone_xgboost_impute, _init_background
+from woodelf.core.cube_metric import BanzhafValues
+from woodelf.feature_selection import (
+    feature_selection_ranking, iterative_assignment_ranking, _monotone_xgboost_impute, _init_background,
+)
 
 N = 10
 N_TOTAL = 60
@@ -185,6 +188,17 @@ def test_monoton_xgboost_neutralizes_nonlinear_redundancy_better_than_pearson():
     assert monotone < pearson, f"monoton_xgboost residual {monotone} should be < pearson residual {pearson}"
 
 
+def test_monotone_xgboost_impute_handles_missing_target():
+    # NaN targets are left out of the fit (XGBoost rejects NaN labels) but every row still gets an imputation.
+    rng = np.random.default_rng(3)
+    x = pd.Series(rng.standard_normal(300))
+    y = pd.Series(2 * x + 0.1 * rng.standard_normal(300))
+    y[::7] = np.nan
+    out = _monotone_xgboost_impute(x, y, n=300)
+    assert len(out) == 300 and np.all(np.isfinite(out))
+    assert np.corrcoef(out, x)[0, 1] > 0.9
+
+
 def test_monotone_xgboost_impute_falls_back_on_degenerate():
     # Constant anchor -> undefined correlation -> constant (mean) baseline, mirroring _linreg_coeffs.
     x = pd.Series(np.ones(100))
@@ -238,3 +252,67 @@ def test_min_corr_runs_end_to_end(consumer, sim_model):
 def test_min_corr_out_of_range_raises(consumer, sim_model):
     with pytest.raises(ValueError):
         feature_selection_ranking(sim_model, consumer, min_corr=1.5)
+
+
+# --- iterative_assignment_ranking ---
+
+@pytest.mark.parametrize("kwargs", [
+    dict(),
+    dict(n_background_samples=1, lookahead=1, min_corr=None),
+    dict(residual_sampling="local", lookahead_mode="partners", imputation_scheme="pearson_correlation"),
+    dict(lookahead_mode="total", metric=BanzhafValues()),
+    dict(max_selected=2),
+    dict(lookahead_until=1),
+    dict(lookahead_until=None),
+    dict(anchored_noise="residuals"),
+])
+def test_iterative_assignment_ranking_structure(consumer, sim_model, kwargs):
+    ranking, scores = iterative_assignment_ranking(sim_model, consumer, verbose=False, **kwargs)
+    assert set(ranking) == set(consumer.columns)
+    assert len(ranking) == len(set(ranking)) == len(consumer.columns)
+    assert set(scores) == set(consumer.columns)
+
+
+def _split_credit_data_and_model() -> Tuple[pd.DataFrame, xgb.Booster]:
+    # z is observed three times (Z1-Z3, near copies) and the model spreads its splits across the copies, so each
+    # copy gets ~1/3 of z's credit and mean|SHAP| ranks the weaker, single-copy W first.
+    rng = np.random.default_rng(0)
+    n = 1500
+    z, w = rng.standard_normal(n), rng.standard_normal(n)
+    X = pd.DataFrame({
+        'Z1': z + 0.05 * rng.standard_normal(n),
+        'Z2': z + 0.05 * rng.standard_normal(n),
+        'Z3': z + 0.05 * rng.standard_normal(n),
+        'W': w,
+        'N1': rng.standard_normal(n),
+        'N2': rng.standard_normal(n),
+    })
+    y = z + 0.6 * w + 0.3 * rng.standard_normal(n)
+    model = xgb.train({'max_depth': 3, 'nthread': 1, 'seed': 0, 'colsample_bynode': 0.34},
+                      xgb.DMatrix(X, label=y), num_boost_round=60)
+    return X.iloc[:300].reset_index(drop=True), model
+
+
+def test_iterative_assignment_lookahead_fixes_split_credit():
+    consumer, model = _split_credit_data_and_model()
+    z_group = {'Z1', 'Z2', 'Z3'}
+
+    ranking, _ = iterative_assignment_ranking(model, consumer, n_background_samples=4, verbose=False)
+    # Look-ahead credits a Z copy with the attribution of all three copies -> it comes first, then W
+    # (the other copies are explained away by the selected one).
+    assert ranking[0] in z_group, ranking
+    assert ranking[1] == 'W', ranking
+
+    ranking_greedy, _ = iterative_assignment_ranking(model, consumer, n_background_samples=4, lookahead=1, verbose=False)
+    # Without look-ahead the split credit puts W first, but a second Z copy still never beats W.
+    assert ranking_greedy[0] == 'W', ranking_greedy
+    assert ranking_greedy[1] in z_group, ranking_greedy
+
+
+@pytest.mark.parametrize("kwargs", [
+    dict(min_corr=1.5), dict(n_background_samples=0), dict(lookahead=0), dict(lookahead_until=-1), dict(anchored_noise="gaussian"),
+    dict(residual_sampling="bad"), dict(lookahead_mode="bad"), dict(imputation_scheme="mean"),
+])
+def test_iterative_assignment_invalid_args_raise(consumer, sim_model, kwargs):
+    with pytest.raises(ValueError):
+        iterative_assignment_ranking(sim_model, consumer, verbose=False, **kwargs)
