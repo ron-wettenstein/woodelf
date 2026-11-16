@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
+from woodelf.core.utils import data_to_dict
 from woodelf.simple_woodelf import (
     GPU_get_int_dtype_from_depth, get_int_dtype_from_depth
 )
@@ -15,15 +16,6 @@ try:
 except ModuleNotFoundError as e:
     cp = None
     IMPORTED_CP = False
-
-
-def get_numpy_data(df: pd.DataFrame):
-    """
-    Cast the dataframe to a dict mapping between columns and NumPy arrays, the CPU version of get_cupy_data.
-    Splitting NumPy arrays instead of the dataframe saves building a pandas Series in every node, which made computing
-    the decision patterns slow. The arrays are views of the dataframe data (not copies), so all the columns are kept.
-    """
-    return {feature: df[feature].to_numpy() for feature in df.columns}
 
 
 def init_patterns_dict(tree: DecisionTreeNode, data: Dict[Any, np.ndarray], GPU: bool, int_dtype):
@@ -128,12 +120,11 @@ def decision_patterns_generator(
     trees are saved in the RAM (its O(L2^D) RAM). In this implementation only the patterns of the nodes
     of the current path (and their imminent children) as same, achieving an O(D2^D) memory complexity.
 
-    The data is a dict mapping between columns and NumPy arrays (see get_numpy_data), or CuPy arrays when GPU is True
-    (see get_cupy_data). On CPU a DataFrame is also accepted and converted here, on every call, so callers that run
-    many trees convert it once beforehand.
+    The data is a dict mapping between columns and NumPy arrays, or CuPy arrays when GPU is True. A DataFrame is also
+    accepted and converted here (see data_to_dict), on every call, so callers that run many trees convert it once
+    beforehand.
     """
-    if not GPU and isinstance(data, pd.DataFrame):
-        data = get_numpy_data(data)
+    data = data_to_dict(data, GPU)
     nodes_to_visit_left = [tree]
     nodes_to_visit_right = []
 

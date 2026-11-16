@@ -8,13 +8,13 @@ import scipy
 from tqdm import tqdm
 
 from woodelf.core.cube_metric import PDIVOrder1Or2, CPDVMetric
-from woodelf.core.decision_patterns import decision_patterns_generator, get_numpy_data
+from woodelf.core.decision_patterns import decision_patterns_generator
 from woodelf.core.path_to_s_vectors.pdp_p2s import PDPPathToSVectors, PDPIVPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.utils import get_unique_features_in_path
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
-from woodelf.core.utils import get_covers_vector
+from woodelf.core.utils import get_covers_vector, consumer_and_background_to_dict
 
 
 def build_sampled_points_df(data: pd.DataFrame, k: int, seed: int = None):
@@ -169,9 +169,9 @@ def woodelf_fast_pdp(
         use_woodelfhd: bool = False, avg_prediction: float=None, verbose: bool = True
 ):
     if not model_was_loaded:
-        model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+        model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.keys()))
     else:
-        model_obj = model    
+        model_obj = model
 
     if use_woodelfhd:
         pdvs = woodelf_for_high_depth(
@@ -182,10 +182,7 @@ def woodelf_fast_pdp(
     else:
         p2s = PDPPathToSVectors(model_obj.max_depth, GPU)
         pdvs = {}
-        consumer_columns, background_columns = consumer_data, background_data
-        if not GPU:
-            consumer_columns = get_numpy_data(consumer_data)
-            background_columns = None if background_data is None else get_numpy_data(background_data)
+        consumer_columns, background_columns = consumer_and_background_to_dict(consumer_data, background_data, GPU, model_obj)
         for tree in tqdm(model_obj.trees, desc="Preprocessing the trees and computing PDP",
                          disable=not verbose):
             fast_pdp_for_a_single_tree(tree, consumer_columns, background_columns, pdvs, p2s, GPU, accurate=accurate)
@@ -213,9 +210,7 @@ def woodelf_fast_pdp_iv(
     p2s_iv = PDPIVPathToSVectors(model.max_depth, GPU)
     pdvs = {}
     pdivs = {}
-    if not GPU:
-        consumer_data = get_numpy_data(consumer_data)
-        background_data = get_numpy_data(background_data)
+    consumer_data, background_data = consumer_and_background_to_dict(consumer_data, background_data, GPU, model)
     for tree in tqdm(model.trees, desc="Preprocessing the trees and computing PDP",
                      disable=not verbose):
         fast_pdp_for_a_single_tree(tree, consumer_data, background_data, pdvs, p2s, GPU, accurate=True)

@@ -3,8 +3,9 @@ from typing import List
 from tqdm import tqdm
 
 from woodelf.core.cube_metric import CubeMetric
-from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
+from woodelf.core.utils import get_cupy_data
 from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
 
@@ -141,19 +142,6 @@ def preprocess_tree_background(tree: DecisionTreeNode, background_data: pd.DataF
         )
         leaf.feature_contribution_replacement_values = features_to_values
     return tree
-
-
-def get_cupy_data(model: DecisionTreesEnsemble, df: pd.DataFrame):
-    """
-    Cast the dataframe to cupy dict mapping between columns of CuPy arrays.
-    We only do this for feature partisipating in the trees.
-    """
-    data = {}
-    for tree in model.trees:
-        for feature in tree.get_all_features():
-            if feature not in data:
-                data[feature] = cp.asarray(df[feature].to_numpy())
-    return data
 
 
 def calculation_given_preprocessed_tree(tree: DecisionTreeNode, data: pd.DataFrame, values=None, depth: int = 6,
