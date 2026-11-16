@@ -248,24 +248,52 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
         values += first_values
         return values
 
+    def _uses_full_s_vectors(self, num_consumers: int, depth: int) -> bool:
+        """
+        True when there are enough consumers to build every s vector over all the 2^D patterns and index it by the
+        consumer patterns, see FULL_S_VECTOR_CONSUMERS_RATIO.
+        """
+        return num_consumers > self.full_s_vector_consumers_ratio * 2 ** depth
+
     def _add_consumer_values(
-            self, features_in_path: List, consumer_patterns: np.ndarray, f: np.ndarray, w: float, values: Dict
+            self, features_in_path: List, consumer_patterns: np.ndarray, f: np.ndarray, w: float, values: Dict,
+            w_neighbor: Optional[float] = None
     ):
+        """
+        Add the leaf's values of the consumers to values. With w_neighbor, also add the values of the right neighbor
+        leaf, folded into the s vectors over all the 2^D patterns. Only with many consumers (see _consumer_values_given_f).
+        """
         depth = len(features_in_path)
         combined_s_vectors = self._combine_shared_s_vectors(self._get_shared_s_vectors(depth, f, w))
+        neighbor_combined_s_vectors = None
+        if w_neighbor is not None:
+            # The right neighbor leaf: its f is the neighbor vector of f
+            neighbor_combined_s_vectors = self._combine_shared_s_vectors(
+                self._get_shared_s_vectors(depth, self.neighbor_vector(f, self.GPU), w_neighbor)
+            )
         start_time = time.time()
 
-        if len(consumer_patterns) > self.full_s_vector_consumers_ratio * 2 ** depth:
+        if self._uses_full_s_vectors(len(consumer_patterns), depth):
             # Many consumers: build every s vector over all the 2^D patterns (reusing one array) and index it once
             s_vector = self.xp.empty(2 ** depth, dtype=combined_s_vectors[0].dtype)
+            neighbor_s_vector = None if neighbor_combined_s_vectors is None else self.xp.empty_like(s_vector)
             for key, bits in get_value_keys_and_decision_pattern_bits(features_in_path, self.metric.INTERACTION_VALUE):
                 self._build_s_vector(combined_s_vectors, bits, s_vector)
+                if neighbor_s_vector is not None:
+                    self._build_s_vector(neighbor_combined_s_vectors, bits, neighbor_s_vector)
+                    # The neighbor's decision patterns flip the last bit, so the consumer with pattern p gets its s vector
+                    # at p^1: add it with the two elements of every pair (2k, 2k+1) swapped. The consumer patterns are
+                    # then indexed once for both leaves, not once per leaf
+                    s_vector_pairs = s_vector.reshape(-1, 2) # view only
+                    s_vector_pairs += neighbor_s_vector.reshape(-1, 2)[:, ::-1]
                 feature_values = s_vector[consumer_patterns] # a new array (not the reused s_vector), so it can be stored as is
                 if key in values:
                     values[key] += feature_values
                 else:
                     values[key] = feature_values
         else:
+            assert neighbor_combined_s_vectors is None, \
+                "with few consumers, _consumer_values_given_f adds the neighbor leaf at its own decision patterns"
             # Few consumers: compute every s vector only at the consumer patterns
             first_values = combined_s_vectors[0][consumer_patterns]
             indices = self.xp.empty_like(consumer_patterns)
@@ -286,12 +314,16 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
         if return_values:
             values = {}
         consumer_patterns = consumer_patterns.astype(np.intp, copy=False) # indexing converts other index dtypes to intp on every call, do it once per leaf
-        self._add_consumer_values(features_in_path, consumer_patterns, f, w, values)
-        if w_neighbor is not None:
-            # The right neighbor leaf: its f is the neighbor vector of f and its decision patterns flip the last bit
-            self._add_consumer_values(
-                features_in_path, consumer_patterns ^ 1, self.neighbor_vector(f, self.GPU), w_neighbor, values
-            )
+        if w_neighbor is not None and self._uses_full_s_vectors(len(consumer_patterns), len(features_in_path)):
+            # Many consumers: the right neighbor leaf is folded into the s vectors, so its consumers are not indexed again
+            self._add_consumer_values(features_in_path, consumer_patterns, f, w, values, w_neighbor)
+        else:
+            self._add_consumer_values(features_in_path, consumer_patterns, f, w, values)
+            if w_neighbor is not None:
+                # The right neighbor leaf: its f is the neighbor vector of f and its decision patterns flip the last bit
+                self._add_consumer_values(
+                    features_in_path, consumer_patterns ^ 1, self.neighbor_vector(f, self.GPU), w_neighbor, values
+                )
         return values if return_values else None
 
     def get_background_consumer_values(
