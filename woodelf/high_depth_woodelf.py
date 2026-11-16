@@ -11,8 +11,8 @@ from woodelf.core.path_to_s_vectors.woodelfhd_v1_p2s import HighDepthWoodelfV1Pa
 from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2PathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.utils import get_unique_features_in_path, get_covers_vector
-from woodelf.simple_woodelf import get_cupy_data, fill_mirror_pairs
+from woodelf.core.utils import get_unique_features_in_path, get_covers_vector, consumer_and_background_to_dict
+from woodelf.simple_woodelf import fill_mirror_pairs
 
 try:
     import cupy as cp
@@ -137,18 +137,15 @@ def woodelf_for_high_depth(
     if model_was_loaded:
         model_obj = model
     else:
-        model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+        model_obj = load_decision_tree_ensemble_model(model, list(consumer_data.keys()))
 
     # As we use unique feature decision patterns the length of each pattern can not be longer by the max_depth or the number of unique feature in the dataset
-    effective_max_decision_pattern_length = min(model_obj.max_depth, len(consumer_data.columns))
+    effective_max_decision_pattern_length = min(model_obj.max_depth, len(consumer_data.keys()))
     if path_to_matrices_calculator is None:
         path_to_matrices_calculator = create_high_depth_woodelf_p2s(metric=metric, max_depth=effective_max_decision_pattern_length, GPU=GPU)
-    if GPU:
-        consumer_data = get_cupy_data(model_obj, consumer_data)
-        if background_data is not None:
-            background_data = get_cupy_data(model_obj, background_data)
+    consumer_data, background_data = consumer_and_background_to_dict(consumer_data, background_data, GPU, model_obj)
 
-    data_len = len(consumer_data) + (0 if background_data is None else len(background_data))
+    data_len = len(next(iter(consumer_data.values()))) + (0 if background_data is None else len(next(iter(background_data.values()))))
     if model_obj.max_depth > 12 or data_len < 10 * (2 ** model_obj.max_depth):
         # If the max depth is too large or the data size is smaller than (or within the same order of magnitude as)
         # the number of patterns - skip the neighbor leaf trick. It will be slower to apply it than to return the

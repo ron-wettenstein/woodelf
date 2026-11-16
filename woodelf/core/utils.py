@@ -1,8 +1,16 @@
-from typing import List, Any
+from typing import List, Any, Dict, Optional, Tuple, Union
 
 import numpy as np
+import pandas as pd
 
-from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
+from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
+
+try:
+    import cupy as cp
+    IMPORTED_CP = True
+except ModuleNotFoundError as e:
+    cp = None
+    IMPORTED_CP = False
 
 
 def bits_matrix(x: np.ndarray, k: int) -> np.ndarray:
@@ -67,3 +75,54 @@ def get_covers_vector(path: List[DecisionTreeNode], unique_features_in_path: Lis
     for i in range(len(path)-1):
         proceed_covers[ feature_index[path[i].feature_name] ] *= (path[i+1].cover / path[i].cover)
     return proceed_covers
+
+
+def get_cupy_data(model: DecisionTreesEnsemble, df: pd.DataFrame):
+    """
+    Cast the dataframe to cupy dict mapping between columns of CuPy arrays.
+    We only do this for feature participating in the trees.
+    """
+    data = {}
+    for tree in model.trees:
+        for feature in tree.get_all_features():
+            if feature not in data:
+                data[feature] = cp.asarray(df[feature].to_numpy())
+    return data
+
+
+def get_numpy_data(df: pd.DataFrame):
+    """
+    Cast the dataframe to a dict mapping between columns and NumPy arrays, the CPU version of get_cupy_data.
+    Splitting NumPy arrays instead of the dataframe saves building a pandas Series in every node, which made computing
+    the decision patterns slow. The arrays are views of the dataframe data (not copies), so all the columns are kept.
+    """
+    return {feature: df[feature].to_numpy() for feature in df.columns}
+
+
+def data_to_dict(
+        data: Optional[Union[pd.DataFrame, Dict[Any, np.ndarray]]], GPU: bool,
+        model: Optional[DecisionTreesEnsemble] = None
+) -> Optional[Dict[Any, np.ndarray]]:
+    """
+    Cast a dataframe to the dict of columns the decision patterns are computed on: NumPy arrays (get_numpy_data), or
+    CuPy arrays when GPU is True (get_cupy_data, which casts only the features of the model, or all the columns when
+    no model is given). Data that is already a dict (or None) is returned as is.
+    """
+    if not isinstance(data, pd.DataFrame):
+        return data
+    if not GPU:
+        return get_numpy_data(data)
+    if model is not None:
+        return get_cupy_data(model, data)
+    return {feature: cp.asarray(data[feature].to_numpy()) for feature in data.columns}
+
+
+def consumer_and_background_to_dict(
+        consumer_data: Union[pd.DataFrame, Dict[Any, np.ndarray]],
+        background_data: Optional[Union[pd.DataFrame, Dict[Any, np.ndarray]]], GPU: bool,
+        model: Optional[DecisionTreesEnsemble] = None
+) -> Tuple[Dict[Any, np.ndarray], Optional[Dict[Any, np.ndarray]]]:
+    """
+    data_to_dict of the consumer and background data, a None background stays None.
+    """
+    return data_to_dict(consumer_data, GPU, model), data_to_dict(background_data, GPU, model)

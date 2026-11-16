@@ -14,7 +14,7 @@ from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterP
 from woodelf.core.path_to_s_vectors.mn_background_cii_p2s import MNBackgroundCIIPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.utils import get_unique_features_in_path, get_covers_vector
+from woodelf.core.utils import get_unique_features_in_path, get_covers_vector, consumer_and_background_to_dict
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.simple_woodelf import fill_mirror_pairs
 
@@ -141,9 +141,9 @@ def woodelf_sparse(
     Path-dependent mode (background_data is None): LTSRecursivePathToSVectors.
     """
     if not model_was_loaded:
-        model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+        model = load_decision_tree_ensemble_model(model, list(consumer_data.keys()))
 
-    effective_depth = min(model.max_depth, len(consumer_data.columns))
+    effective_depth = min(model.max_depth, len(consumer_data.keys()))
     is_background = background_data is not None
 
     if isinstance(metric, CardinalityInteractionIndicesMetric):
@@ -174,6 +174,8 @@ def woodelf_sparse(
 
     if isinstance(metric, ShapleyInteractionValues) and not is_background:
         use_neighbor_leaf_trick = False # Linear TreeSHAP doesn't support the neighbor_leaf_trick for interaction values
+
+    consumer_data, background_data = consumer_and_background_to_dict(consumer_data, background_data, GPU, model)
 
     values = {}
     for tree in tqdm(model.trees, desc=f"Computing {metric.__class__.__name__} using WOODELF",
@@ -216,9 +218,9 @@ def hybrid_woodelf(
     Hybrid WOODELF: selects the best computation strategy (sparse woodelf or woodelf_for_high_depths) considering the tree depth and metric.
     """
     if not model_was_loaded:
-        model = load_decision_tree_ensemble_model(model, list(consumer_data.columns))
+        model = load_decision_tree_ensemble_model(model, list(consumer_data.keys()))
 
-    effective_depth = min(model.max_depth, len(consumer_data.columns))
+    effective_depth = min(model.max_depth, len(consumer_data.keys()))
     is_background = background_data is not None
 
     if use_sparse_approach(effective_depth, metric, is_background):
