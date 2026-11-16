@@ -13,6 +13,20 @@ from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToS
 
 TOLERANCE = 0.00001
 
+
+class HighDepthWoodelfV2FullSVectorsPathToSVectors(HighDepthWoodelfV2PathToSVectors):
+    """V2 that always builds every s vector over all the 2^D patterns and indexes it by the consumer patterns."""
+    FULL_S_VECTOR_CONSUMERS_RATIO = 0
+    FULL_PAIR_S_VECTOR_CONSUMERS_RATIO = 0
+
+
+class HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors(HighDepthWoodelfV2PathToSVectors):
+    """V2 that always computes every s vector only at the consumer patterns."""
+    FULL_S_VECTOR_CONSUMERS_RATIO = np.inf
+    FULL_PAIR_S_VECTOR_CONSUMERS_RATIO = np.inf
+
+
+
 # Shared test fixtures for the p2s equivalence tests.
 # Depth 6 gives 64 unique patterns — small enough to enumerate all of them,
 # which is required so the sparse methods (MN, LTS) and the dense HighDepth method
@@ -30,7 +44,7 @@ _CONSUMER_PATTERNS = {
 
 _ALL_METRICS = [ShapleyValues, BanzhafValues, ShapleyInteractionValues, BanzhafInteractionValues]
 _BOTH_MODES = ["background", "path_dependent"]
-# p2s class -> (supported metrics, supported modes)
+# p2s class -> (supported metrics, supported modes). A subclass supports what its base class supports
 _P2S_SUPPORT = {
     HighDepthWoodelfV1PathToSVectors: (_ALL_METRICS, _BOTH_MODES),
     HighDepthWoodelfV2PathToSVectors: (_ALL_METRICS, _BOTH_MODES),
@@ -43,9 +57,12 @@ _P2S_SUPPORT = {
 }
 # These return the values of the given consumer patterns (by position), the rest return s vectors indexed by pattern value
 _POSITIONAL_P2S = (MNBackgroundPathToSVectors, MNBackgroundFasterPathToSVectors, LTSRecursivePathToSVectors)
-# (reference, candidate)
+# (reference, candidate). V2 has two ways to get the consumers values (see FULL_S_VECTOR_CONSUMERS_RATIO), its two
+# variants above force each of them
 _P2S_PAIRS = [
     (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2PathToSVectors),
+    (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2FullSVectorsPathToSVectors),
+    (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors),
     (HighDepthWoodelfV2PathToSVectors, MNBackgroundPathToSVectors),
     (MNBackgroundPathToSVectors, MNBackgroundFasterPathToSVectors),
     (HighDepthWoodelfV2PathToSVectors, LTSRecursivePathToSVectors),
@@ -56,41 +73,25 @@ _P2S_PAIRS = [
 
 
 def _is_supported(p2s_cls, metric_cls, mode, w_neighbor, consumers):
-    metrics, modes = _P2S_SUPPORT[p2s_cls]
+    metrics, modes = next(_P2S_SUPPORT[cls] for cls in p2s_cls.__mro__ if cls in _P2S_SUPPORT)
     if metric_cls not in metrics or mode not in modes:
         return False
-    if p2s_cls is LTSRecursivePathToSVectors:
+    if issubclass(p2s_cls, LTSRecursivePathToSVectors):
         # LTS needs unique consumer patterns and has no neighbor leaf trick for interaction values
         return consumers != "many_repeated" and (w_neighbor is None or metric_cls is not ShapleyInteractionValues)
     return True
 
 
-def _equivalence_cases():
+def _equivalence_cases(reference_cls, candidate_cls):
+    """The (metric, mode, w_neighbor, consumers) cases that both p2s classes support."""
     cases = []
-    for reference_cls, candidate_cls in _P2S_PAIRS:
-        # V2 has two ways to get the consumers values (see FULL_S_VECTOR_CONSUMERS_RATIO), test both
-        v2_branches = ["full_s_vector", "consumer_patterns_only"] \
-            if HighDepthWoodelfV2PathToSVectors in (reference_cls, candidate_cls) else [None]
-        for metric_cls in _ALL_METRICS:
-            for mode in _BOTH_MODES:
-                for w_neighbor in [None, 0.5]:
-                    for consumers in _CONSUMER_PATTERNS:
-                        if not all(_is_supported(cls, metric_cls, mode, w_neighbor, consumers) for cls in (reference_cls, candidate_cls)):
-                            continue
-                        for v2_branch in v2_branches:
-                            cases.append(pytest.param(
-                                reference_cls, candidate_cls, metric_cls, mode, w_neighbor, consumers, v2_branch,
-                                id=f"{reference_cls.__name__}-vs-{candidate_cls.__name__}-{metric_cls.__name__}-{mode}"
-                                   f"-neighbor={w_neighbor}-{consumers}" + (f"-{v2_branch}" if v2_branch else "")
-                            ))
+    for metric_cls in _ALL_METRICS:
+        for mode in _BOTH_MODES:
+            for w_neighbor in [None, 0.5]:
+                for consumers in _CONSUMER_PATTERNS:
+                    if all(_is_supported(cls, metric_cls, mode, w_neighbor, consumers) for cls in (reference_cls, candidate_cls)):
+                        cases.append((metric_cls, mode, w_neighbor, consumers))
     return cases
-
-
-def _create_p2s(p2s_cls, metric_cls, v2_branch):
-    p2s = p2s_cls(metric=metric_cls(), max_depth=_DEPTH, GPU=False)
-    if v2_branch is not None and isinstance(p2s, HighDepthWoodelfV2PathToSVectors):
-        p2s.full_s_vector_consumers_ratio = 0 if v2_branch == "full_s_vector" else np.inf
-    return p2s
 
 
 def _leaf_consumer_values(p2s, mode, consumer_patterns, w, w_neighbor):
@@ -113,19 +114,26 @@ def _leaf_consumer_values(p2s, mode, consumer_patterns, w, w_neighbor):
 
 
 @pytest.mark.parametrize(
-    "reference_cls, candidate_cls, metric_cls, mode, w_neighbor, consumers, v2_branch", _equivalence_cases()
+    "reference_cls, candidate_cls", _P2S_PAIRS,
+    ids=[f"{reference_cls.__name__}-vs-{candidate_cls.__name__}" for reference_cls, candidate_cls in _P2S_PAIRS]
 )
-def test_p2s_classes_are_equivalent(reference_cls, candidate_cls, metric_cls, mode, w_neighbor, consumers, v2_branch):
-    reference_p2s = _create_p2s(reference_cls, metric_cls, v2_branch)
-    candidate_p2s = _create_p2s(candidate_cls, metric_cls, v2_branch)
-    consumer_patterns = _CONSUMER_PATTERNS[consumers]
+def test_p2s_classes_are_equivalent(reference_cls, candidate_cls):
+    cases = _equivalence_cases(reference_cls, candidate_cls)
+    assert len(cases) > 0
+    for metric_cls, mode, w_neighbor, consumers in cases:
+        case = f"{metric_cls.__name__}, {mode}, w_neighbor={w_neighbor}, {consumers}"
+        reference_p2s = reference_cls(metric=metric_cls(), max_depth=_DEPTH, GPU=False)
+        candidate_p2s = candidate_cls(metric=metric_cls(), max_depth=_DEPTH, GPU=False)
+        consumer_patterns = _CONSUMER_PATTERNS[consumers]
 
-    for w in [1.0, 3.0]:
-        reference = _leaf_consumer_values(reference_p2s, mode, consumer_patterns, w, w_neighbor)
-        actual = _leaf_consumer_values(candidate_p2s, mode, consumer_patterns, w, w_neighbor)
-        assert actual.keys() == reference.keys(), f"Feature key mismatch: {actual.keys()} vs {reference.keys()}"
-        for feature in reference:
-            np.testing.assert_allclose(actual[feature], reference[feature], atol=TOLERANCE)
+        for w in [1.0, 3.0]:
+            reference = _leaf_consumer_values(reference_p2s, mode, consumer_patterns, w, w_neighbor)
+            actual = _leaf_consumer_values(candidate_p2s, mode, consumer_patterns, w, w_neighbor)
+            assert actual.keys() == reference.keys(), f"{case}: feature key mismatch: {actual.keys()} vs {reference.keys()}"
+            for feature in reference:
+                np.testing.assert_allclose(
+                    actual[feature], reference[feature], atol=TOLERANCE, err_msg=f"{case}, w={w}, feature {feature}"
+                )
 
 
 @pytest.mark.parametrize("p2s_cls", [HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2PathToSVectors])

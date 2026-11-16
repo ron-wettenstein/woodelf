@@ -4,10 +4,13 @@ import pytest
 from sklearn.datasets import make_regression
 from sklearn.tree import DecisionTreeRegressor
 
-from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues,     BanzhafInteractionValues, GeneralShapleyInteractionValues, PDIVOrder1Or2, PDIVMetric, CPDVMetric, nCk
+from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues, \
+    BanzhafInteractionValues, GeneralShapleyInteractionValues, PDIVOrder1Or2, PDIVMetric, CPDVMetric, nCk
 from woodelf.core.path_to_s_vectors.woodelfhd_v1_p2s import HighDepthWoodelfV1PathToSVectors
 from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2PathToSVectors, CLOSED_FORM_VALUES
 from woodelf.high_depth_woodelf import woodelf_for_high_depth, create_high_depth_woodelf_p2s
+from tests.core.test_path_to_matrices import HighDepthWoodelfV2FullSVectorsPathToSVectors, \
+    HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors
 
 TOLERANCE = 0.00001
 
@@ -102,15 +105,17 @@ def test_custom_metric_end_to_end(background):
 
 
 @pytest.mark.parametrize("metric", [ShapleyValues(), ShapleyInteractionValues()], ids=["shap", "shap_iv"])
-@pytest.mark.parametrize("full_s_vector_consumers_ratio", [0, np.inf], ids=["full_s_vector", "consumer_patterns_only"])
-def test_consumer_values_are_added_into_the_given_values(metric, full_s_vector_consumers_ratio):
+@pytest.mark.parametrize(
+    "p2s_cls", [HighDepthWoodelfV2FullSVectorsPathToSVectors, HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors],
+    ids=["full_s_vector", "consumer_patterns_only"]
+)
+def test_consumer_values_are_added_into_the_given_values(metric, p2s_cls):
     depth = 6
     features_in_path = list(range(depth))
     rng = np.random.default_rng(0)
     consumer_patterns = rng.integers(0, 2 ** depth, size=100)
     background_patterns = rng.integers(0, 2 ** depth, size=300)
-    p2s = HighDepthWoodelfV2PathToSVectors(metric, max_depth=depth)
-    p2s.full_s_vector_consumers_ratio = full_s_vector_consumers_ratio
+    p2s = p2s_cls(metric, max_depth=depth)
 
     leaf_values = p2s.get_background_consumer_values(features_in_path, consumer_patterns, background_patterns, 2.0, 0.5)
     some_key = next(iter(leaf_values))
