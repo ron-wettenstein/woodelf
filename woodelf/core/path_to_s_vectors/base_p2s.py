@@ -88,20 +88,15 @@ class WoodelfPathToSVectors(PathToSVectors):
         Build the 2^D f vector from cover ratios (Formula 9 of the article).
         covers[i] is the proceed-cover ratio for the i-th unique feature in the path.
         """
-        D = len(covers)
-        if D == 0:
-            return np.ones(1, dtype=np.float32)
-        f_size = 2 ** D
-        f = np.ones(f_size)
-        for i in range(D):
-            proceed_cover = covers[i]
-            f = f * np.tile(
-                np.array(
-                    [1 - proceed_cover] * (f_size // 2 ** (1 + i)) +
-                    [proceed_cover]     * (f_size // 2 ** (1 + i))
-                ),
-                2 ** i
-            )
+        f = np.ones(1)
+        for proceed_cover in covers:
+            # Append the bit of the next feature (the first feature is the most significant bit): every pattern so far
+            # splits into the one that does not proceed with the feature (bit 0) and the one that does (bit 1)
+            # The f vector starts at [1] and doubles in size with every feature, 
+            # (for example [c_l1, c_r1], [c_l1 * c_l2, c_l1 * c_r2, c_r1 * c_l2, c_r1 * c_r2], etc),
+            # so the final f vector has size 2^D.
+            # In each iteration we do f = np.stack([f * (1 - proceed_cover), f * proceed_cover], axis=1).ravel(), but np.multiply.outer is faster.
+            f = np.multiply.outer(f, [1 - proceed_cover, proceed_cover]).ravel()
         return f.astype(np.float32)
 
     @staticmethod
