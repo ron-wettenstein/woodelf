@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 import numpy as np
 
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
-from woodelf.core.utils import bits_matrix
+from woodelf.core.utils import bits_matrix, safe_bitwise_count
 from woodelf.simple_woodelf import get_int_dtype_from_depth
 
 
@@ -21,8 +21,6 @@ class PDPPathToSVectors(PathToSVectors):
     get_background_s_matrix  — exact PDP using background data patterns.
     get_path_dependent_s_matrix — estimated PDP using tree cover ratios
                                   (was EstimatedPDPPathToMatrices).
-
-    Requires numpy >= 2, as it uses np.bitwise_count (added in numpy 2.0).
     """
 
     def __init__(self, max_depth: int, GPU: bool = False):
@@ -32,13 +30,13 @@ class PDPPathToSVectors(PathToSVectors):
 
     def _build_f_from_patterns(self, background_patterns: np.ndarray, D: int):
         """Exact: compute f and only_positive_literals from integer background patterns."""
-        x = background_patterns[np.bitwise_count(background_patterns) >= D - 1]
+        x = background_patterns[safe_bitwise_count(background_patterns) >= D - 1]
         int_type = get_int_dtype_from_depth(D)
         full = int_type(2 ** D - 1)
         orig_x_len = len(x)
         x = x[x != full]
         only_positive_literals = (orig_x_len - len(x)) / len(background_patterns)
-        zero_bit_location = np.bitwise_count(x + 1) - 1  # which is equivalent to: D - 1 - np.log2(full ^ x).astype(np.uint16)
+        zero_bit_location = safe_bitwise_count(x + 1) - 1  # which is equivalent to: D - 1 - np.log2(full ^ x).astype(np.uint16)
 
         f = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
         return f, only_positive_literals
@@ -46,8 +44,8 @@ class PDPPathToSVectors(PathToSVectors):
         # Clearer but less optimized equivalent:
         # full = int_type(2 ** D - 1)
         # only_positive_literals = np.sum(background_patterns == full) / len(background_patterns)
-        # x = background_patterns[D - np.bitwise_count(background_patterns) == 1]
-        # zero_bit_location = np.bitwise_count(x + 1) - 1
+        # x = background_patterns[D - safe_bitwise_count(background_patterns) == 1]
+        # zero_bit_location = safe_bitwise_count(x + 1) - 1
         # f = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
         # return f, only_positive_literals
 
@@ -115,8 +113,8 @@ class PDPIVPathToSVectors(PDPPathToSVectors):
     """
 
     def get_needed_b_vectors(self, background_patterns: np.ndarray, D: int):
-        x_up_to_2_zero_bits = background_patterns[np.bitwise_count(background_patterns) >= D - 2]
-        x_bitwise_count = np.bitwise_count(x_up_to_2_zero_bits)
+        x_up_to_2_zero_bits = background_patterns[safe_bitwise_count(background_patterns) >= D - 2]
+        x_bitwise_count = safe_bitwise_count(x_up_to_2_zero_bits)
         x_up_to_1_zero_bit = x_up_to_2_zero_bits[x_bitwise_count >= D - 1]
 
         int_type = get_int_dtype_from_depth(D)
@@ -125,7 +123,7 @@ class PDPIVPathToSVectors(PDPPathToSVectors):
         x_exactly_1_zero_bit = x_up_to_1_zero_bit[x_up_to_1_zero_bit != full]
         only_positive_literals = (orig_x_len - len(x_exactly_1_zero_bit)) / len(background_patterns)
 
-        zero_bit_location = np.bitwise_count(x_exactly_1_zero_bit + 1) - 1
+        zero_bit_location = safe_bitwise_count(x_exactly_1_zero_bit + 1) - 1
         f_1_zero_bit = np.bincount(zero_bit_location, minlength=D) / len(background_patterns)
 
         i_idx, j_idx = np.triu_indices(D, k=1)
@@ -144,8 +142,8 @@ class PDPIVPathToSVectors(PDPPathToSVectors):
         high = z ^ low
 
         # actual bit positions: 0 = LSB, ..., D-1 = MSB
-        p_low = np.bitwise_count(low - 1)
-        p_high = np.bitwise_count(high - 1)
+        p_low = safe_bitwise_count(low - 1)
+        p_high = safe_bitwise_count(high - 1)
 
         # convert actual bit positions to bits_matrix row indices
         r1 = D - 1 - p_high

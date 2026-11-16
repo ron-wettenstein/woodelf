@@ -4,7 +4,7 @@ import numpy as np
 
 from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
-from woodelf.core.utils import bits_matrix
+from woodelf.core.utils import bits_matrix, safe_bitwise_count
 
 
 class MNBackgroundPathToSVectors(PathToSVectors):
@@ -16,8 +16,6 @@ class MNBackgroundPathToSVectors(PathToSVectors):
     Our approach has O(mn) complexity but still have 2 advantages over the shap package:
     1. The m and n are not really the size of the consumer and background datasets but their number of unique decision patterns - which is effectively much smaller.
     2. All operations are vectorized using numpy.
-
-    Requires numpy >= 2, as it uses np.bitwise_count (added in numpy 2.0).
     """
 
     BATCH_SIZE = 1_000_000
@@ -76,8 +74,8 @@ class MNBackgroundPathToSVectors(PathToSVectors):
         # Pairs with a "both-diverge" bit (pc_k=0, pb_k=0) have no WDNF rule and contribute 0.
         valid = (consumer_batch[:, None] | unique_b[None, :]) == ((1 << D) - 1)  # (batch, U_b)
 
-        p = np.bitwise_count(positive)                                # (batch, U_b)
-        n = np.bitwise_count(negative)                                # (batch, U_b)
+        p = safe_bitwise_count(positive)                                # (batch, U_b)
+        n = safe_bitwise_count(negative)                                # (batch, U_b)
 
         pos_weighted = self.pos_contributions[p, n] * b_freqs * valid   # (batch, U_b)
         neg_weighted = self.neg_contributions[p, n] * b_freqs * valid   # (batch, U_b)
@@ -181,8 +179,8 @@ class MNBackgroundFasterPathToSVectors(MNBackgroundPathToSVectors):
         negative = unique_b[None, :]       & diff                     # s_minus bits per pair
         valid = (consumer_batch[:, None] | unique_b[None, :]) == ((1 << D) - 1)  # (batch, U_b)
 
-        p = np.bitwise_count(positive)                                # (batch, U_b)
-        n = np.bitwise_count(negative)                                # (batch, U_b)
+        p = safe_bitwise_count(positive)                                # (batch, U_b)
+        n = safe_bitwise_count(negative)                                # (batch, U_b)
 
         pos_weighted = self.pos_contributions[p, n] * b_freqs * valid  # (batch, U_b)
         neg_weighted = self.neg_contributions[p, n] * b_freqs * valid  # (batch, U_b)

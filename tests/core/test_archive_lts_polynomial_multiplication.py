@@ -15,7 +15,7 @@ def test_linear_tree_shap_magic_blocked(D):
     leaf_weight = 5
     consumer_size = 6 # Test many consumers while this is still fast
     r = rng.integers(low=1, high=9999, size=D) / 10000
-    p = np.concat([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
+    p = np.concatenate([rng.integers(low=0, high=(2 ** D) - 2, size=consumer_size), np.array([(2 ** D) - 1])])
     f_w = shapley_values_f_w(D)
 
     shap_matrix = improved_linear_tree_shap_magic(
@@ -43,7 +43,7 @@ def test_quadrature_shap_high_depth(D):
         for i in range(10):
             # generate many random ratios vectors (many r vectors)
             r = rng.integers(low=low, high=high, size=D) / 10000
-            p = np.concat([rng.integers(low=0, high=(2 ** D) - 1, size=consumer_size), np.array([(2 ** D) - 1])])
+            p = np.concatenate([rng.integers(low=0, high=(2 ** D) - 1, size=consumer_size), np.array([(2 ** D) - 1])])
 
             shap_matrix = quadrature_tree_shap_batched_approach(
                 r=r, p=p, leaf_value=leaf_weight,
