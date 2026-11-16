@@ -249,10 +249,6 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
         return values
 
     def _uses_full_s_vectors(self, num_consumers: int, depth: int) -> bool:
-        """
-        True when there are enough consumers to build every s vector over all the 2^D patterns and index it by the
-        consumer patterns, see FULL_S_VECTOR_CONSUMERS_RATIO.
-        """
         return num_consumers > self.full_s_vector_consumers_ratio * 2 ** depth
 
     def _add_consumer_values(
