@@ -3,7 +3,7 @@ import pytest
 
 from woodelf.core.cube_metric import PDIVOrder1Or2
 from woodelf.core.path_to_s_vectors.pdp_p2s import PDPPathToSVectors, PDPIVPathToSVectors
-from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.woodelfhd_v1_p2s import HighDepthWoodelfV1PathToSVectors
 
 TOLERANCE = 0.00001
 
@@ -21,7 +21,7 @@ LEAF_WEIGHTS = [1.0, 3.0, -2.0]
 
 
 def _reference_p2s():
-    return HighDepthWoodelfPathToSVectors(metric=PDIVOrder1Or2(), max_depth=DEPTH, GPU=False)
+    return HighDepthWoodelfV1PathToSVectors(metric=PDIVOrder1Or2(), max_depth=DEPTH, GPU=False)
 
 
 def _assert_order_1_close(actual: dict, reference: dict):

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import numpy as np
 import scipy
@@ -20,7 +20,13 @@ class PathToSVectors:
     Abstract base class for all path-to-s-vectors calculators.
     Subclasses implement get_background_s_matrix and/or get_path_dependent_s_matrix.
     Both methods return Dict[feature_key -> np.array[N_consumers]].
+
+    Subclasses with COMPUTES_CONSUMER_VALUES = True also implement get_background_consumer_values and
+    get_path_dependent_consumer_values, which return the leaf's values of every consumer (indexed like
+    consumer_patterns) instead of s vectors that the caller indexes by consumer_patterns itself.
     """
+    COMPUTES_CONSUMER_VALUES = False
+
     def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
         self.metric = metric
         self.max_depth = max_depth
@@ -36,6 +42,26 @@ class PathToSVectors:
         self, features_in_path: List, consumer_patterns: np.ndarray,
         covers: np.ndarray, w: float, w_neighbor: float = None
     ) -> Dict:
+        raise NotImplementedError
+
+    def get_background_consumer_values(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        background_patterns: np.ndarray, w: float, w_neighbor: float = None, values: Optional[Dict] = None
+    ) -> Optional[Dict]:
+        """
+        Returns the leaf's values of every consumer: Dict[feature_key -> np.array[len(consumer_patterns)]].
+        If values is given, the leaf's values are added into it in place and None is returned.
+        """
+        raise NotImplementedError
+
+    def get_path_dependent_consumer_values(
+        self, features_in_path: List, consumer_patterns: np.ndarray,
+        covers: np.ndarray, w: float, w_neighbor: float = None, values: Optional[Dict] = None
+    ) -> Optional[Dict]:
+        """
+        Returns the leaf's values of every consumer: Dict[feature_key -> np.array[len(consumer_patterns)]].
+        If values is given, the leaf's values are added into it in place and None is returned.
+        """
         raise NotImplementedError
 
     def present_statistics(self):

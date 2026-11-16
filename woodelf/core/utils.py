@@ -23,6 +23,31 @@ def neg_bits_matrix(x: np.ndarray, k: int) -> np.ndarray:
     return (((x[None, :] >> shifts) + 1) & 1).astype(np.uint8)
 
 
+def safe_bitwise_count(x: np.ndarray) -> np.ndarray:
+    """
+    The number of 1-bits in the absolute value of every element of x, as uint8.
+    np.bitwise_count on numpy >= 2 (where it was added), bitwise_count_fallback on older numpy versions.
+    """
+    if hasattr(np, "bitwise_count"):
+        return np.bitwise_count(x)
+    return bitwise_count_fallback(x)
+
+
+def bitwise_count_fallback(x: np.ndarray) -> np.ndarray:
+    """
+    np.bitwise_count for numpy < 2 (where it does not exist): adds up the bits of x one bit position at a time.
+    """
+    x = np.asarray(x)
+    if np.issubdtype(x.dtype, np.signedinteger):
+        # np.bitwise_count counts the bits of the absolute value. int64 first, so abs of int8/16/32 minimums does not
+        # overflow (abs of the int64 minimum wraps to itself, which is the right value once it is uint64)
+        x = np.abs(x.astype(np.int64)).astype(np.uint64)
+    counts = np.zeros(x.shape, dtype=np.uint8)
+    for bit in range(8 * x.dtype.itemsize):
+        counts += ((x >> bit) & 1).astype(np.uint8)
+    return counts
+
+
 def get_unique_features_in_path(path: List[DecisionTreeNode]):
     unique_features_in_path = []
     for n in path:
