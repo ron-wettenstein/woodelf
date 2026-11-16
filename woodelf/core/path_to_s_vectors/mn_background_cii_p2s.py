@@ -5,7 +5,7 @@ import numpy as np
 
 from woodelf.core.cube_metric import CubeMetric, CardinalityInteractionIndicesMetric
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
-from woodelf.core.utils import bits_matrix
+from woodelf.core.utils import bits_matrix, safe_bitwise_count
 
 
 class MNBackgroundCIIPathToSVectors(PathToSVectors):
@@ -20,8 +20,6 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
 
     The metric reports every order k in metric.orders(D), so the s-matrix holds one row per subset of every
     such size, ordered by order and then as self._subsets(D, order) (see self._all_subsets).
-
-    Requires numpy >= 2, as it uses np.bitwise_count (added in numpy 2.0).
     """
 
     BATCH_SIZE = 1_000_000
@@ -112,8 +110,8 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
         # Pairs with a "both-diverge" bit (pc_k=0, pb_k=0) have no WDNF rule and contribute 0.
         valid = (consumer_batch[:, None] | unique_b[None, :]) == ((1 << D) - 1)  # (batch, U_b)
 
-        p = np.bitwise_count(positive)                                # (batch, U_b)
-        n = np.bitwise_count(unique_b[None, :] & diff)                # (batch, U_b)
+        p = safe_bitwise_count(positive)                                # (batch, U_b)
+        n = safe_bitwise_count(unique_b[None, :] & diff)                # (batch, U_b)
 
         base = b_freqs * valid                                        # (batch, U_b)
 
@@ -123,7 +121,7 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
             for d in subset:
                 subset_mask |= 1 << (D - 1 - d)                       # row d of bits_matrix is bit D-1-d
             covered = (diff & subset_mask) == subset_mask             # S is fully inside the cube
-            a = np.bitwise_count(positive & subset_mask)              # |S ∩ positive literals|
+            a = safe_bitwise_count(positive & subset_mask)              # |S ∩ positive literals|
             s[s_index] = (self.contribution_tables[len(subset)][a, p, n] * base * covered).sum(axis=1)
         return s * w
 
@@ -289,8 +287,8 @@ class MNBackgroundCIIFasterPathToSVectors(MNBackgroundCIIPathToSVectors):
         positive = consumer_batch[:, None] & diff                     # s_plus bits per pair
         valid = (consumer_batch[:, None] | unique_b[None, :]) == ((1 << D) - 1)  # (batch, U_b)
 
-        p = np.bitwise_count(positive)                                # (batch, U_b)
-        n = np.bitwise_count(unique_b[None, :] & diff)                # (batch, U_b)
+        p = safe_bitwise_count(positive)                                # (batch, U_b)
+        n = safe_bitwise_count(unique_b[None, :] & diff)                # (batch, U_b)
 
         base = b_freqs * valid                                        # (batch, U_b)
 
