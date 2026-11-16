@@ -1,4 +1,5 @@
-from typing import Tuple, Generator
+from itertools import combinations
+from typing import Tuple, Generator, List
 
 import numpy as np
 import pandas as pd
@@ -87,6 +88,22 @@ def ignore_right_neighbor(left_leaf, path, use_neighbor_leaf_trick):
             left_leaf.parent.feature_name not in path_features[:-1]  # 4. The feature of the current leaf does not repeat in the path
     )
     return ignored_neighbor
+
+
+def get_value_keys_and_decision_pattern_bits(features_in_path: List, interaction_values: bool) -> List[Tuple]:
+    """
+    The output key of every feature of a path with unique features (of every pair of features when interaction_values
+    is True), with its bit (bits) in the decision patterns. Pairs come as (low bit, high bit) and their key is the
+    sorted pair of features.
+    """
+    depth = len(features_in_path)
+    bits = [1 << (depth - 1 - index) for index in range(depth)] # the first feature in the path is the most significant bit
+    if not interaction_values:
+        return [(features_in_path[index], (bits[index],)) for index in range(depth)]
+    return [
+        (tuple(sorted([features_in_path[index1], features_in_path[index2]])), (bits[index2], bits[index1]))
+        for index1, index2 in combinations(range(depth), 2)
+    ]
 
 
 def decision_patterns_generator(

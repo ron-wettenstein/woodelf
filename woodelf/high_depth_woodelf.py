@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -6,13 +6,13 @@ from tqdm import tqdm
 
 from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors, WoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.woodelfhd_v1_p2s import HighDepthWoodelfV1PathToSVectors
+from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2PathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
-from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
 from woodelf.core.utils import get_unique_features_in_path, get_covers_vector
 from woodelf.simple_woodelf import get_cupy_data, fill_mirror_pairs
-
 
 try:
     import cupy as cp
@@ -43,6 +43,26 @@ def woodelf_for_high_depth_single_tree(
 
         w_neighbor = leaf.parent.right.value if ignore_right_neighbor(leaf, path, use_neighbor_leaf_trick) else None
 
+        if path_to_matrices_calculator.COMPUTES_CONSUMER_VALUES:
+            if is_background:
+                leaf_b, background_patterns = next(background_patterns_generator)
+                assert leaf_b.index == leaf.index
+
+                consumer_values = path_to_matrices_calculator.get_background_consumer_values(
+                    unique_features_in_path, consumer_patterns, background_patterns, leaf.value, w_neighbor,
+                    values=None if global_importance else values
+                )
+            else:
+                covers = np.array(get_covers_vector(path + [leaf], unique_features_in_path))
+                consumer_values = path_to_matrices_calculator.get_path_dependent_consumer_values(
+                    unique_features_in_path, consumer_patterns, covers, leaf.value, w_neighbor,
+                    values=None if global_importance else values
+                )
+            if global_importance:
+                for feature, feature_values in consumer_values.items():
+                    add_feature_values(values, feature, feature_values, GPU, global_importance)
+            continue
+
         if is_background:
             leaf_b, background_patterns = next(background_patterns_generator)
             assert leaf_b.index == leaf.index
@@ -58,13 +78,29 @@ def woodelf_for_high_depth_single_tree(
 
         for feature, s_vec in s_matrix.items():
             s_vec_casted = cp.asarray(s_vec) if GPU else np.ascontiguousarray(s_vec)
-            feature_values = s_vec_casted[consumer_patterns]
-            if global_importance:
-                feature_values = cp.mean(feature_values) if GPU else np.mean(feature_values)
-            if feature not in values:
-                values[feature] = feature_values
-            else:
-                values[feature] += feature_values
+            add_feature_values(values, feature, s_vec_casted[consumer_patterns], GPU, global_importance)
+
+
+def add_feature_values(values: Dict[Any, float], feature, feature_values, GPU: bool, global_importance: bool):
+    """
+    Add a leaf's values of a feature to the values computed so far (their mean when global_importance is True).
+    """
+    if global_importance:
+        feature_values = cp.mean(feature_values) if GPU else np.mean(feature_values)
+    if feature not in values:
+        values[feature] = feature_values
+    else:
+        values[feature] += feature_values
+
+
+def create_high_depth_woodelf_p2s(metric: CubeMetric, max_depth: int, GPU: bool = False) -> WoodelfPathToSVectors:
+    """
+    HighDepthWoodelfV2PathToSVectors when it supports the metric (Shapley and Banzhaf values and interaction values),
+    otherwise HighDepthWoodelfV1PathToSVectors.
+    """
+    if HighDepthWoodelfV2PathToSVectors.supports_metric(metric):
+        return HighDepthWoodelfV2PathToSVectors(metric=metric, max_depth=max_depth, GPU=GPU)
+    return HighDepthWoodelfV1PathToSVectors(metric=metric, max_depth=max_depth, GPU=GPU)
 
 
 def woodelf_for_high_depth(
@@ -106,7 +142,7 @@ def woodelf_for_high_depth(
     # As we use unique feature decision patterns the length of each pattern can not be longer by the max_depth or the number of unique feature in the dataset
     effective_max_decision_pattern_length = min(model_obj.max_depth, len(consumer_data.columns))
     if path_to_matrices_calculator is None:
-        path_to_matrices_calculator = HighDepthWoodelfPathToSVectors(metric=metric, max_depth=effective_max_decision_pattern_length, GPU=GPU)
+        path_to_matrices_calculator = create_high_depth_woodelf_p2s(metric=metric, max_depth=effective_max_decision_pattern_length, GPU=GPU)
     if GPU:
         consumer_data = get_cupy_data(model_obj, consumer_data)
         if background_data is not None:
@@ -117,6 +153,9 @@ def woodelf_for_high_depth(
         # If the max depth is too large or the data size is smaller than (or within the same order of magnitude as)
         # the number of patterns - skip the neighbor leaf trick. It will be slower to apply it than to return the
         # regular computation.
+        use_neighbor_leaf_trick = False
+    if not path_to_matrices_calculator.USE_NEIGHBOR_LEAF_TRICK:
+        # The calculator gains nothing from the neighbor leaf trick (e.g. HighDepthWoodelfV2PathToSVectors)
         use_neighbor_leaf_trick = False
 
 

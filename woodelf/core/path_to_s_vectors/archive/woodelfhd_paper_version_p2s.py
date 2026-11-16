@@ -5,7 +5,7 @@ from typing import List, Dict
 
 import numpy as np
 
-from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.woodelfhd_v1_p2s import HighDepthWoodelfV1PathToSVectors
 
 try:
     import cupy as cp
@@ -15,9 +15,9 @@ except ModuleNotFoundError as e:
     IMPORTED_CP = False
 
 
-class HighDepthWoodelfVersion1PathToSVectors(HighDepthWoodelfPathToSVectors):
+class HighDepthWoodelfOriginalVersionPathToSVectors(HighDepthWoodelfV1PathToSVectors):
     """
-    Version 1 of HighDepthWoodelfPathToSVectors: every step of the f preparation and of the s computation
+    Original version of HighDepthWoodelfV1PathToSVectors: every step of the f preparation and of the s computation
     builds a shifted copy of the array, zeros the masked elements and sums the two arrays.
     Replaced by in-place updates on reshaped views; kept to verify and benchmark the newer version.
     """
@@ -70,9 +70,9 @@ class HighDepthWoodelfVersion1PathToSVectors(HighDepthWoodelfPathToSVectors):
         return f
 
 
-class HighDepthWoodelfPaperVersionPathToSVectors(HighDepthWoodelfPathToSVectors):
+class HighDepthWoodelfPaperVersionPathToSVectors(HighDepthWoodelfV1PathToSVectors):
     """
-    Paper-version of HighDepthWoodelfPathToSVectors using explicit StrassenLikeMult.
+    Paper-version of HighDepthWoodelfV1PathToSVectors using explicit StrassenLikeMult.
     Slightly slower in practice; used to verify the optimised version in tests.
     """
 

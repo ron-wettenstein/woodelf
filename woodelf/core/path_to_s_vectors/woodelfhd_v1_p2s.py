@@ -15,7 +15,7 @@ except ModuleNotFoundError as e:
     cp = None
     IMPORTED_CP = False
 
-class HighDepthWoodelfPathToSVectors(WoodelfPathToSVectors):
+class HighDepthWoodelfV1PathToSVectors(WoodelfPathToSVectors):
     """
     Pre-builds all M-matrix diagonals up to max_depth at construction time.
     Uses the Strassen-like anti-diagonal multiplication.
