@@ -1,9 +1,10 @@
 import numpy as np
 
-from woodelf.core.cube_metric import ShapleyValues
+from woodelf.core.cube_metric import ShapleyValues, GeneralShapleyInteractionValues
 from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.woodelf_p2s import HighDepthWoodelfPathToSVectors
-from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors
+from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors, \
+    HighDepthWoodelfVersion1PathToSVectors
 from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundPathToSVectors, MNBackgroundFasterPathToSVectors
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
 
@@ -134,6 +135,46 @@ def test_lts_recursive_matches_high_depth_woodelf():
     reference = reference_p2s.get_path_dependent_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _COVERS, w=3.0)
     actual = lts_p2s.get_path_dependent_s_matrix(_FEATURES_IN_PATH, _ALL_PATTERNS, _COVERS, w=3.0)
     _assert_s_dicts_close(actual, reference)
+
+def test_high_depth_and_high_depth_version1_are_equivalent():
+    depth = 10
+    features_in_path = list(range(depth))
+    high_depth_p2m = HighDepthWoodelfPathToSVectors(metric=ShapleyValues(), max_depth=depth, GPU=False)
+    version1_p2m = HighDepthWoodelfVersion1PathToSVectors(metric=ShapleyValues(), max_depth=depth, GPU=False)
+    patterns = np.random.default_rng(0).integers(0, 2 ** depth, size=5000)
+    covers = np.random.default_rng(1).uniform(0.05, 0.95, size=depth)
+
+    # background, with and without the neighbor leaf trick (which reuses f after the first s computation)
+    for w_neighbor in [None, 0.5]:
+        expected_s = version1_p2m.get_background_s_matrix(features_in_path, patterns, patterns, w=2.0, w_neighbor=w_neighbor)
+        actual_s = high_depth_p2m.get_background_s_matrix(features_in_path, patterns, patterns, w=2.0, w_neighbor=w_neighbor)
+        assert actual_s.keys() == expected_s.keys()
+        for feature in expected_s:
+            np.testing.assert_allclose(actual_s[feature], expected_s[feature], atol=TOLERANCE)
+
+    # path dependent
+    expected_s = version1_p2m.get_path_dependent_s_matrix(features_in_path, patterns, covers, w=3.0)
+    actual_s = high_depth_p2m.get_path_dependent_s_matrix(features_in_path, patterns, covers, w=3.0)
+    assert actual_s.keys() == expected_s.keys()
+    for feature in expected_s:
+        np.testing.assert_allclose(actual_s[feature], expected_s[feature], atol=TOLERANCE)
+
+    # _prepare_f must not change the f it receives
+    f = np.arange(2 ** depth, dtype=np.float64)
+    HighDepthWoodelfPathToSVectors._prepare_f(depth=depth, f=f, GPU=False)
+    np.testing.assert_array_equal(f, np.arange(2 ** depth, dtype=np.float64))
+
+    # paths shorter than the interaction order have no frs subsets
+    high_depth_p2m = HighDepthWoodelfPathToSVectors(metric=GeneralShapleyInteractionValues(3, 3), max_depth=4, GPU=False)
+    version1_p2m = HighDepthWoodelfVersion1PathToSVectors(metric=GeneralShapleyInteractionValues(3, 3), max_depth=4, GPU=False)
+    for path_depth in [1, 2, 3, 4]:
+        f = np.arange(2 ** path_depth) / 2 ** path_depth
+        expected_s = version1_p2m._get_s_vectors_given_f(list(range(path_depth)), f, w=1.5)
+        actual_s = high_depth_p2m._get_s_vectors_given_f(list(range(path_depth)), f, w=1.5)
+        assert actual_s.keys() == expected_s.keys()
+        for feature in expected_s:
+            np.testing.assert_allclose(actual_s[feature], expected_s[feature], atol=TOLERANCE)
+
 
 def test_simple_and_high_depth_paper_are_equivalent():
     high_depth_p2m = HighDepthWoodelfPaperVersionPathToSVectors(metric=ShapleyValues(), max_depth=6, GPU=False)
