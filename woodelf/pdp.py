@@ -182,10 +182,10 @@ def woodelf_fast_pdp(
     else:
         p2s = PDPPathToSVectors(model_obj.max_depth, GPU)
         pdvs = {}
-        consumer_columns, background_columns = consumer_and_background_to_dict(consumer_data, background_data, GPU, model_obj)
+        consumer_data_dict, background_data_dict = consumer_and_background_to_dict(consumer_data, background_data, GPU, model_obj)
         for tree in tqdm(model_obj.trees, desc="Preprocessing the trees and computing PDP",
                          disable=not verbose):
-            fast_pdp_for_a_single_tree(tree, consumer_columns, background_columns, pdvs, p2s, GPU, accurate=accurate)
+            fast_pdp_for_a_single_tree(tree, consumer_data_dict, background_data_dict, pdvs, p2s, GPU, accurate=accurate)
         if verbose:
             p2s.present_statistics()
 
