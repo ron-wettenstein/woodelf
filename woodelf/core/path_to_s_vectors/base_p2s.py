@@ -24,12 +24,8 @@ class PathToSVectors:
     Subclasses with COMPUTES_CONSUMER_VALUES = True also implement get_background_consumer_values and
     get_path_dependent_consumer_values, which return the leaf's values of every consumer (indexed like
     consumer_patterns) instead of s vectors that the caller indexes by consumer_patterns itself.
-
-    Subclasses with USE_NEIGHBOR_LEAF_TRICK = False gain nothing from the neighbor leaf trick, so
-    woodelf_for_high_depth does not use it with them.
     """
     COMPUTES_CONSUMER_VALUES = False
-    USE_NEIGHBOR_LEAF_TRICK = True
 
     def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
         self.metric = metric

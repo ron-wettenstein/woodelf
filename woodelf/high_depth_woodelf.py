@@ -154,9 +154,6 @@ def woodelf_for_high_depth(
         # the number of patterns - skip the neighbor leaf trick. It will be slower to apply it than to return the
         # regular computation.
         use_neighbor_leaf_trick = False
-    if not path_to_matrices_calculator.USE_NEIGHBOR_LEAF_TRICK:
-        # The calculator gains nothing from the neighbor leaf trick (e.g. HighDepthWoodelfV2PathToSVectors)
-        use_neighbor_leaf_trick = False
 
 
     values = {}

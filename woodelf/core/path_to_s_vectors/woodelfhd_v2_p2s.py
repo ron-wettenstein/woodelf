@@ -94,8 +94,6 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
     create_high_depth_woodelf_p2s falls back to HighDepthWoodelfV1PathToSVectors for the rest.
     """
     COMPUTES_CONSUMER_VALUES = True
-    # Benchmarked: the neighbor leaf trick does not speed v2 up (both leaves still need their shared s vectors and values)
-    USE_NEIGHBOR_LEAF_TRICK = False
     # With more consumers than FULL_S_VECTOR_CONSUMERS_RATIO * 2^D, build each s vector over all the 2^D patterns and
     # index it by the consumer patterns once. Otherwise index s+ and s_R (s++, s_A and s_Q) by the consumer patterns directly.
     # The ratios are the benchmarked crossovers: a pair takes 3 lookups per consumer in the direct way, a feature only 1
