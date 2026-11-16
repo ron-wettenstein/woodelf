@@ -5,7 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from woodelf.core.cube_metric import CubeMetric
-from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor, get_numpy_data
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors, WoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.woodelfhd_v1_p2s import HighDepthWoodelfV1PathToSVectors
 from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2PathToSVectors
@@ -147,8 +147,12 @@ def woodelf_for_high_depth(
         consumer_data = get_cupy_data(model_obj, consumer_data)
         if background_data is not None:
             background_data = get_cupy_data(model_obj, background_data)
+    else:
+        consumer_data = get_numpy_data(consumer_data)
+        if background_data is not None:
+            background_data = get_numpy_data(background_data)
 
-    data_len = len(consumer_data) + (0 if background_data is None else len(background_data))
+    data_len = len(next(iter(consumer_data.values()))) + (0 if background_data is None else len(next(iter(background_data.values()))))
     if model_obj.max_depth > 12 or data_len < 10 * (2 ** model_obj.max_depth):
         # If the max depth is too large or the data size is smaller than (or within the same order of magnitude as)
         # the number of patterns - skip the neighbor leaf trick. It will be slower to apply it than to return the

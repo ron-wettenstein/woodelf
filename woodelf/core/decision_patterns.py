@@ -1,5 +1,5 @@
 from itertools import combinations
-from typing import Tuple, Generator, List
+from typing import Tuple, Generator, List, Dict, Any, Union
 
 import numpy as np
 import pandas as pd
@@ -17,15 +17,24 @@ except ModuleNotFoundError as e:
     IMPORTED_CP = False
 
 
-def init_patterns_dict(tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool, int_dtype):
+def get_numpy_data(df: pd.DataFrame):
+    """
+    Cast the dataframe to a dict mapping between columns and NumPy arrays, the CPU version of get_cupy_data.
+    Splitting NumPy arrays instead of the dataframe saves building a pandas Series in every node, which made computing
+    the decision patterns slow. The arrays are views of the dataframe data (not copies), so all the columns are kept.
+    """
+    return {feature: df[feature].to_numpy() for feature in df.columns}
+
+
+def init_patterns_dict(tree: DecisionTreeNode, data: Dict[Any, np.ndarray], GPU: bool, int_dtype):
+    data_length = len(data[list(data.keys())[0]])
     if GPU:
-        data_length = len(data[list(data.keys())[0]])
         root_pattern = cp.zeros(data_length, dtype=int_dtype)
     else:
-        root_pattern = pd.Series(0, index=data.index).to_numpy().astype(int_dtype)
+        root_pattern = np.zeros(data_length, dtype=int_dtype)
     return {tree.index: root_pattern}
 
-def add_children_patterns(patterns_dict, node, path_features, data: pd.DataFrame, GPU: bool, int_dtype=int, ignore_neighbor_leaf: bool = False):
+def add_children_patterns(patterns_dict, node, path_features, data: Dict[Any, np.ndarray], GPU: bool, int_dtype=int, ignore_neighbor_leaf: bool = False):
     """
     Compute the pattern of the provided node given the cahced patterns in the patterns_dict.
     We assume its parent pattern is in this patterns_dict.
@@ -45,10 +54,10 @@ def add_children_patterns(patterns_dict, node, path_features, data: pd.DataFrame
     if not ignore_right:
         right_condition = ~left_condition
         if not GPU:
-            right_condition = right_condition.to_numpy().astype(int_dtype)
+            right_condition = right_condition.astype(int_dtype)
 
     if not GPU:
-        left_condition = left_condition.to_numpy().astype(int_dtype)
+        left_condition = left_condition.astype(int_dtype)
     my_pattern = patterns_dict[node.index]
 
     if node.feature_name not in path_features:
@@ -107,7 +116,8 @@ def get_value_keys_and_decision_pattern_bits(features_in_path: List, interaction
 
 
 def decision_patterns_generator(
-        tree: DecisionTreeNode, data: pd.DataFrame, GPU: bool = False, ignore_neighbor_leaf: bool = False
+        tree: DecisionTreeNode, data: Union[Dict[Any, np.ndarray], pd.DataFrame], GPU: bool = False,
+        ignore_neighbor_leaf: bool = False
 ) -> Generator[Tuple[DecisionTreeNode, np.array], None, None]:
     """
     Compute the decision patterns of the provided data for all the root-to-leaf paths in the provided tree.
@@ -117,7 +127,13 @@ def decision_patterns_generator(
     This implementation is RAM efficient. In the naive implementation all the pattern of all the nodes of the
     trees are saved in the RAM (its O(L2^D) RAM). In this implementation only the patterns of the nodes
     of the current path (and their imminent children) as same, achieving an O(D2^D) memory complexity.
+
+    The data is a dict mapping between columns and NumPy arrays (see get_numpy_data), or CuPy arrays when GPU is True
+    (see get_cupy_data). On CPU a DataFrame is also accepted and converted here, on every call, so callers that run
+    many trees convert it once beforehand.
     """
+    if not GPU and isinstance(data, pd.DataFrame):
+        data = get_numpy_data(data)
     nodes_to_visit_left = [tree]
     nodes_to_visit_right = []
 
@@ -125,7 +141,7 @@ def decision_patterns_generator(
         ignore_neighbor_leaf = False
 
     # As we use unique feature decision patterns the length of each pattern can not be longer by the max_depth or the number of unique feature in the dataset
-    features = list(data.columns) if not GPU else list(data.keys())
+    features = list(data.keys())
     effective_max_decision_pattern_length = min(tree.depth, len(features))
     int_dtype = GPU_get_int_dtype_from_depth(effective_max_decision_pattern_length) if GPU else get_int_dtype_from_depth(effective_max_decision_pattern_length)
     patterns = init_patterns_dict(tree, data, GPU, int_dtype)

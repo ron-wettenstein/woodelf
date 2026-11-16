@@ -7,7 +7,7 @@ from tqdm import tqdm
 from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues, \
     BanzhafInteractionValues, CardinalityInteractionIndicesMetric, GeneralShapleyInteractionValues, \
     GeneralBanzhafInteractionValues
-from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
+from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor, get_numpy_data
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
 from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterPathToSVectors, MNBackgroundPathToSVectors
@@ -174,6 +174,11 @@ def woodelf_sparse(
 
     if isinstance(metric, ShapleyInteractionValues) and not is_background:
         use_neighbor_leaf_trick = False # Linear TreeSHAP doesn't support the neighbor_leaf_trick for interaction values
+
+    if not GPU:
+        consumer_data = get_numpy_data(consumer_data)
+        if is_background:
+            background_data = get_numpy_data(background_data)
 
     values = {}
     for tree in tqdm(model.trees, desc=f"Computing {metric.__class__.__name__} using WOODELF",

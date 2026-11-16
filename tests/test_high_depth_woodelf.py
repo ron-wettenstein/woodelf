@@ -14,7 +14,7 @@ from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import H
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.core.utils import get_covers_vector
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
-from woodelf.core.decision_patterns import decision_patterns_generator
+from woodelf.core.decision_patterns import decision_patterns_generator, get_numpy_data
 import numpy as np
 import pytest
 import xgboost as xgb
@@ -103,6 +103,14 @@ def test_compute_f(simple_path):
     f_leaf_6 = compute_f_from_patterns(patterns[6], depth=2)
     np.testing.assert_allclose(f_leaf_7, np.array([2,2,1,1]) / 6)
     np.testing.assert_allclose(f_leaf_6, np.array([2,2,1,1]) / 6)
+
+
+def test_get_numpy_data_keeps_all_the_columns_without_copying(testset):
+    columns = get_numpy_data(testset)
+    assert list(columns.keys()) == list(testset.columns)
+    for feature, column in columns.items():
+        np.testing.assert_array_equal(column, testset[feature].to_numpy())
+        assert np.shares_memory(column, testset[feature].to_numpy())
 
 # def test_compute_f_of_neighbor(simple_path):
 #     data = pd.DataFrame({"a": [7, 8, 4, 3, 0, -1], "b": [4, 2, 5, 2, 9, 1]})
