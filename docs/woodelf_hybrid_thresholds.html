@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WOODELF Hybrid Thresholds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column; summary cards first, then one section per question, each chart with its table view */
+:root {
+  --bg: #f6f7f9; --surface: #fdfdfd; --ink: #12161c; --ink-2: #4a515c; --muted: #7d8590;
+  --rule: #e1e4e8; --axis: #c2c7ce; --accent: #2a78d6; --accent-ink: #1c5cab; --code-bg: #eef1f5;
+  --hd: #2a78d6; --sparse: #eb6834; --aqua: #1baf7a; --violet: #6250d6;
+  --m1: #86b6ef; --m2: #2a78d6; --m3: #104281;
+  --n1: #ee935f; --n2: #d6582a; --n3: #9a3a16;
+  --win-hd: rgba(42,120,214,0.10); --win-sparse: rgba(235,104,52,0.12);
+  --good-wash: rgba(42,120,214,0.16); --bad-wash: rgba(227,73,72,0.16); --neutral-wash: rgba(125,133,144,0.08);
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101317; --surface: #171b20; --ink: #eef0f2; --ink-2: #b9bfc7; --muted: #8b939d;
+    --rule: #2a3038; --axis: #3a414b; --accent: #5598e7; --accent-ink: #86b6ef; --code-bg: #1e242b;
+    --hd: #3987e5; --sparse: #d95926; --aqua: #199e70; --violet: #9085e9;
+    --m1: #256abf; --m2: #5598e7; --m3: #b7d3f6;
+    --n1: #b3461c; --n2: #e2733f; --n3: #f7c3a6;
+    --win-hd: rgba(57,135,229,0.14); --win-sparse: rgba(217,89,38,0.16);
+    --good-wash: rgba(57,135,229,0.24); --bad-wash: rgba(230,103,103,0.24); --neutral-wash: rgba(139,147,157,0.10);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101317; --surface: #171b20; --ink: #eef0f2; --ink-2: #b9bfc7; --muted: #8b939d;
+  --rule: #2a3038; --axis: #3a414b; --accent: #5598e7; --accent-ink: #86b6ef; --code-bg: #1e242b;
+  --hd: #3987e5; --sparse: #d95926; --aqua: #199e70; --violet: #9085e9;
+  --m1: #256abf; --m2: #5598e7; --m3: #b7d3f6;
+  --n1: #b3461c; --n2: #e2733f; --n3: #f7c3a6;
+  --win-hd: rgba(57,135,229,0.14); --win-sparse: rgba(217,89,38,0.16);
+  --good-wash: rgba(57,135,229,0.24); --bad-wash: rgba(230,103,103,0.24); --neutral-wash: rgba(139,147,157,0.10);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.page { max-width: 980px; margin: 0 auto; padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 44px; }
+header { display: flex; flex-direction: column; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--font-head); font-weight: 600; font-size: clamp(28px, 4.4vw, 40px); line-height: 1.12; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--font-head); font-weight: 600; font-size: 24px; line-height: 1.2; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--font-head); font-weight: 600; font-size: 17px; margin: 0; }
+p { margin: 0; max-width: 70ch; }
+.lede { font-size: 17px; color: var(--ink-2); max-width: 72ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 16px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre { margin: 0; background: var(--code-bg); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 13px; line-height: 1.5; }
+pre .del { color: var(--muted); text-decoration: line-through; }
+pre .add { color: var(--accent-ink); font-weight: 600; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card .label { font-size: 12.5px; color: var(--muted); letter-spacing: 0.02em; }
+.card .value { font-family: var(--font-mono); font-size: 19px; font-weight: 600; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.card .value .from { color: var(--muted); font-weight: 400; text-decoration: line-through; font-size: 17px; }
+.card .note { font-size: 13.5px; color: var(--ink-2); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-family: var(--font-mono); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-2); width: fit-content; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.pill.done::before { background: var(--hd); }
+.pill.pending::before { background: var(--sparse); }
+figure { margin: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+figcaption { display: flex; flex-direction: column; gap: 2px; }
+figcaption .t { font-weight: 600; font-size: 15px; }
+figcaption .s { font-size: 13px; color: var(--ink-2); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 14px; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { fill: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+.chart .grid line { stroke: var(--rule); stroke-width: 1; }
+.chart .axisline { stroke: var(--axis); stroke-width: 1; }
+.chart .ref { stroke: var(--ink-2); stroke-width: 1; }
+.chart .thr { stroke: var(--muted); stroke-width: 1; }
+.chart .thr-new { stroke: var(--accent); stroke-width: 1.5; }
+.chart .zone-label { fill: var(--ink-2); font-family: var(--font-body); font-size: 11.5px; }
+.chart .series-label { fill: var(--ink-2); font-family: var(--font-body); font-size: 13px; }
+.chart .cross { stroke: var(--axis); stroke-width: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 16px; height: 2px; border-radius: 2px; display: inline-block; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 18px rgba(0,0,0,0.12); min-width: 170px; z-index: 5; }
+.tip .h { color: var(--muted); font-family: var(--font-mono); font-size: 11px; margin-bottom: 4px; }
+.tip .row { display: grid; grid-template-columns: 14px auto 1fr; align-items: center; gap: 6px; }
+.tip .row b { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
+.tip .row span { color: var(--ink-2); }
+.tip .row i { width: 12px; height: 2px; display: inline-block; border-radius: 2px; }
+details { font-size: 13px; }
+details summary { cursor: pointer; color: var(--accent-ink); width: fit-content; }
+details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.tablewrap { overflow-x: auto; margin-top: 8px; }
+table { border-collapse: collapse; font-size: 12.5px; width: 100%; }
+th, td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; font-variant-numeric: tabular-nums; }
+th { color: var(--muted); font-weight: 500; font-family: var(--font-body); }
+th:first-child, td:first-child { text-align: left; }
+td.win-hd { background: var(--win-hd); }
+td.win-sparse { background: var(--win-sparse); }
+td.good { background: var(--good-wash); }
+td.bad { background: var(--bad-wash); }
+td.neutral { background: var(--neutral-wash); }
+td .cut { font-size: 10px; color: var(--accent-ink); margin-left: 3px; vertical-align: super; }
+.key { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-2); }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key b { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+.callout { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; display: flex; flex-direction: column; gap: 6px; }
+ul.tight { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 74ch; }
+a { color: var(--accent-ink); }
+.small { font-size: 13px; color: var(--ink-2); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <div class="eyebrow">woodelf 0.5.0 · main @ 483d72c · CPU benchmark, 22 Nov 2026</div>
+  <h1>Hybrid thresholds after WoodelfHD v2</h1>
+  <p class="lede"><code>hybrid_woodelf</code> hands a model to sparse WOODELF above depth 12 (background) and depth 10
+  (path dependent). Those thresholds were tuned in May against WoodelfHD v1. With v2 and the NumPy decision patterns of
+  PR #22, WoodelfHD stays faster far past both, and how far depends on the metric and on the background size. This page
+  has the measurements, a proposed rule scored against them, the CPU check of the neighbor leaf trick cutoff, and the
+  GPU notebook for the trick.</p>
+  <div class="meta"><span>CPU: AMD Ryzen 7 5700U, 8 cores, 15 W laptop · 38 GB</span><span>Windows 11 · Python 3.12.7 · NumPy 2.4.6 · LightGBM 4.6.0 · XGBoost 3.0.5</span><span>GPU: none here, Colab notebook ready</span></div>
+</header>
+
+<section id="summary">
+  <h2>Recommendations</h2>
+  <div class="cards">
+    <div class="card"><div class="label">Background values (SV, BV)</div>
+      <div class="value"><span class="from">depth &gt; 12</span> depth &gt; 11 + log₂ m</div>
+      <div class="note">m is the number of background rows. WoodelfHD then runs up to depth 17 at m = 100,
+      20 at m = 1,000 and 24 at m = 10,000, and never above 24. Best rule measured, but not
+      universal: near-full XGBoost trees and data with few distinct rows (KDD-99) favour sparse WOODELF earlier.</div></div>
+    <div class="card"><div class="label">Background interaction values (SIV, BIV)</div>
+      <div class="value"><span class="from">depth &gt; 12</span> depth &gt; 24</div>
+      <div class="note">WoodelfHD v2 wins at every depth up to 24, by 3.54× to 207×. Above 24 its
+      O(2<sup>D</sup>) vectors per leaf take gigabytes, so sparse WOODELF stays as the memory guard. CII metrics, still on
+      WoodelfHD v1: depth &gt; 7 + log₂ m, at most 18.</div></div>
+    <div class="card"><div class="label">Path dependent, per metric</div>
+      <div class="value"><span class="from">depth &gt; 10</span> SV 16 · SIV 22 · BV 10</div>
+      <div class="note">Per metric, with depth measured as the longest decision pattern. Shapley values cross at about
+      16, interaction values deeper, and Banzhaf values keep today's 10.</div></div>
+    <div class="card"><div class="label">Neighbor leaf trick, CPU cutoff</div>
+      <div class="value"><span class="from">D ≤ 12, n + m ≥ 10·2<sup>D</sup></span> always on (CPU)</div>
+      <div class="note">On CPU the trick costs at most 17% where it loses and saves up to 1.67× where 0.5.0 turns it off. Keep the 0.5.0 cutoff for GPU=True until the Colab numbers are in.</div></div>
+    <div class="card"><div class="label">Neighbor leaf trick, GPU</div>
+      <div class="value"><span class="pill pending">needs a CUDA GPU</span></div>
+      <div class="note">Not timed here: this laptop has no NVIDIA GPU. The Colab notebook is ready and checked; see section 4.</div></div>
+  </div>
+  <div class="stack">
+    <h3>The change to <code>woodelf/woodelf_sparse.py</code> and <code>woodelf/high_depth_woodelf.py</code></h3>
+    <pre><span>  # woodelf/woodelf_sparse.py</span>
+<span class="del">- _MAX_DEPTH_FOR_HIGH_WOODELF = 12</span>
+<span class="del">- _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF = 10</span>
+<span class="add">+ _MAX_DEPTH_FOR_HIGH_WOODELF = 24  # deeper, WoodelfHD&#x27;s O(2^D) vectors per leaf take gigabytes</span>
+<span class="add">+ _HIGH_WOODELF_VALUES_DEPTH_OFFSET = 11  # values: sparse WOODELF once depth &gt; 11 + log2(background rows)</span>
+<span class="add">+ _HIGH_WOODELF_CII_DEPTH_OFFSET = 7  # CardinalityInteractionIndicesMetric still runs on WoodelfHD v1</span>
+<span class="add">+ _MAX_DEPTH_FOR_CII_HIGH_WOODELF = 18  # v1 keeps a diagonal per pair: O(D^2 * 2^D) memory</span>
+<span class="add">+ _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF = {ShapleyValues: 16, ShapleyInteractionValues: 22, BanzhafValues: 10}</span>
+<span>  </span>
+<span class="del">- def use_sparse_approach(depth, metric, is_background):</span>
+<span class="add">+ def use_sparse_approach(depth, metric, is_background, background_size=None):</span>
+<span>      if is_background:</span>
+<span class="del">-         return depth &gt; _MAX_DEPTH_FOR_HIGH_WOODELF and isinstance(metric, _SUPPORTED_SPARSE_BACKGROUND_METRICS)</span>
+<span class="add">+         if not isinstance(metric, _SUPPORTED_SPARSE_BACKGROUND_METRICS):</span>
+<span class="add">+             return False</span>
+<span class="add">+         if depth &gt; _MAX_DEPTH_FOR_HIGH_WOODELF:</span>
+<span class="add">+             return True</span>
+<span class="add">+         if isinstance(metric, CardinalityInteractionIndicesMetric):</span>
+<span class="add">+             return depth &gt; min(_MAX_DEPTH_FOR_CII_HIGH_WOODELF, _HIGH_WOODELF_CII_DEPTH_OFFSET + math.log2(background_size))</span>
+<span class="add">+         if metric.INTERACTION_VALUE:  # WoodelfHD v2: three shared s vectors give every pair</span>
+<span class="add">+             return False</span>
+<span class="add">+         return depth &gt; _HIGH_WOODELF_VALUES_DEPTH_OFFSET + math.log2(background_size)</span>
+<span class="del">-     return depth &gt; _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF and isinstance(metric, _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS)</span>
+<span class="add">+     for metric_class, max_depth in _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF.items():</span>
+<span class="add">+         if isinstance(metric, metric_class):</span>
+<span class="add">+             return depth &gt; max_depth</span>
+<span class="add">+     return False</span>
+<span>  </span>
+<span>  # hybrid_woodelf: min(max_depth, features) only bounds the longest decision pattern</span>
+<span class="del">-     if use_sparse_approach(effective_depth, metric, is_background):</span>
+<span class="add">+     use_sparse = use_sparse_approach(effective_depth, metric, is_background, background_size)</span>
+<span class="add">+     if use_sparse:</span>
+<span class="add">+         longest_decision_pattern = max(get_max_unique_features_in_path(tree) for tree in model.trees)</span>
+<span class="add">+         use_sparse = use_sparse_approach(longest_decision_pattern, metric, is_background, background_size)</span>
+<span class="add">+     if use_sparse:</span>
+<span>  </span>
+<span>  # woodelf/high_depth_woodelf.py, in woodelf_for_high_depth</span>
+<span class="del">-     if model_obj.max_depth &gt; 12 or data_len &lt; 10 * (2 ** model_obj.max_depth):</span>
+<span class="add">+     if GPU and (model_obj.max_depth &gt; 12 or data_len &lt; 10 * (2 ** model_obj.max_depth)):</span></pre>
+    <p class="small">Implemented after this benchmark, which timed woodelf 0.5.0 before the change.
+    <code>hybrid_woodelf</code> passes the background size, and before it picks sparse WOODELF it computes the longest
+    decision pattern (<code>get_max_unique_features_in_path</code> in <code>woodelf/core/utils.py</code>, about 1 µs per
+    leaf), because min(max_depth, features) only bounds it. The dispatch changed, not the algorithms.</p>
+  </div>
+</section>
+
+<section id="bg">
+  <div class="stack"><div class="eyebrow">Task 1 · threshold 1</div>
+  <h2>Background SHAP: WoodelfHD or sparse WOODELF</h2></div>
+  <p>Both sides of the threshold are timed as <code>hybrid_woodelf</code> calls them: <code>woodelf_for_high_depth</code>
+  (with its own trick cutoff) and <code>woodelf_sparse</code>, on the same parsed model and the same trees. The models are
+  IEEE-CIS with the paper notebooks' LightGBM parameters (2,024 leaves at most, at least 500 rows per leaf) at max_depth
+  12 to 24, 10 trees, and 10,000 consumers. The charts plot sparse time ÷ WoodelfHD time on a log scale: above 1,
+  WoodelfHD is faster.</p>
+  <div class="grid2">
+    <figure><figcaption><span class="t">Shapley values</span><span class="s">Sparse ÷ WoodelfHD, by background size m</span></figcaption><div id="bg-sv"></div></figure>
+    <figure><figcaption><span class="t">Shapley interaction values</span><span class="s">Sparse ÷ WoodelfHD, by background size m</span></figcaption><div id="bg-siv"></div></figure>
+  </div>
+  <ul class="tight">
+    <li><strong>Shapley values, small background.</strong> With m = 100, WoodelfHD stays ahead up to depth 17
+    (1.04×) and sparse WOODELF wins from 18 (0.76×, then 0.31× at 20 and
+    0.10× at 24).</li>
+    <li><strong>Every 10× more background rows moves the crossover about 3.3 depths deeper.</strong> With m = 1,000
+    WoodelfHD leads up to about 21 (1.42× at 20, 0.76× at 22). With m = 10,000 it still leads at
+    24 (1.50×). Per leaf, sparse WOODELF pays for every pair of distinct consumer and background patterns,
+    and their number grows with m. WoodelfHD pays O(D·2<sup>D</sup>) whatever m is. The crossover sits where
+    2<sup>D</sup> matches that pair count, so it moves by log₂ 10 ≈ 3.3 depths per decade of m. That is the form of the
+    proposed rule.</li>
+    <li><strong>Interaction values never cross up to depth 24.</strong> WoodelfHD v2 builds every pair from three shared s
+    vectors, while sparse WOODELF's order-2 CII path pays for every pair and every pattern pair: 3.54× at m = 100
+    and depth 24, 50× at m = 1,000 and depth 18.</li>
+    <li>Today's threshold (12) is wrong for 60 of the 100 clean background
+    configs on this page, and costs up to 207×.</li>
+  </ul>
+  <div class="stack"><h3>Every rule, scored on every clean background config</h3>
+  <p class="small">The slowdown of a rule is its time over the time of the faster method, per config. Total time compares
+  the sum over all configs. A wrong pick is more than 5% slower than the best. Configs from every model, dataset and metric
+  on this page are included.</p>
+  <div class="tablewrap"><table><thead><tr><th>rule</th><th>worst</th><th>geometric mean</th><th>total time</th><th>wrong picks</th></tr></thead><tbody>
+<tr><td>now: sparse when depth > 12</td><td>207.12×</td><td>3.308×</td><td>7.194×</td><td>60 of 100</td></tr>
+<tr><td>sparse when depth > 17</td><td>54.31×</td><td>1.538×</td><td>3.597×</td><td>31 of 100</td></tr>
+<tr><td>sparse when depth > 20</td><td>5.66×</td><td>1.154×</td><td>1.578×</td><td>22 of 100</td></tr>
+<tr><td>sparse when depth > 24</td><td>15.37×</td><td>1.219×</td><td>1.625×</td><td>24 of 100</td></tr>
+<tr><td>values D > 11 + log2(m), v2 IV D > 24, CII D > 7 + log2(m), D = min(max_depth, features)</td><td>2.47×</td><td>1.060×</td><td>1.128×</td><td>13 of 100</td></tr>
+<tr style="font-weight:600"><td>proposed: the same with D = the longest decision pattern</td><td>2.26×</td><td>1.050×</td><td>1.126×</td><td>12 of 100</td></tr>
+</tbody></table></div></div>
+  <div class="stack"><h3>Other models and datasets (Shapley values)</h3>
+  <p class="small">Cells are sparse ÷ WoodelfHD (blue: WoodelfHD faster, orange: sparse faster), columns are max_depth.
+  Hover a cell for the seconds.</p>
+  <div class="tablewrap"><table><thead><tr><th></th><th>12</th><th>14</th><th>15</th><th>16</th><th>18</th><th>20</th><th>22</th><th>24</th></tr></thead><tbody>
+<tr><td>HIGGS · LightGBM (paper params) · n=10k, m=100</td><td class="win-hd" title="WoodelfHD 3.69 s, sparse 6.69 s on 10 trees">1.81</td><td class="win-hd" title="WoodelfHD 6.02 s, sparse 13.03 s on 10 trees">2.16</td><td></td><td class="win-hd" title="WoodelfHD 7.29 s, sparse 17.63 s on 10 trees">2.42</td><td class="win-hd" title="WoodelfHD 6.51 s, sparse 16.10 s on 10 trees">2.47</td><td></td><td></td><td></td></tr>
+<tr><td>HIGGS · LightGBM (paper params) · n=10k, m=10k</td><td class="win-hd" title="WoodelfHD 4.56 s, sparse 22.55 s on 10 trees">4.94</td><td class="win-hd" title="WoodelfHD 7.16 s, sparse 119.68 s on 10 trees">16.71</td><td></td><td class="win-hd" title="WoodelfHD 7.83 s, sparse 244.70 s on 10 trees">31.27</td><td class="win-hd" title="WoodelfHD 7.95 s, sparse 235.28 s on 10 trees">29.58</td><td></td><td></td><td></td></tr>
+<tr><td>IEEE-CIS · LightGBM (deep: 10k leaves) · n=10k, m=100</td><td></td><td></td><td></td><td class="win-sparse" title="WoodelfHD 11.94 s, sparse 11.11 s on 3 trees">0.93</td><td class="win-sparse" title="WoodelfHD 22.53 s, sparse 12.10 s on 3 trees">0.54</td><td class="win-sparse" title="WoodelfHD 81.15 s, sparse 32.52 s on 3 trees">0.40</td><td class="win-sparse" title="WoodelfHD 276.88 s, sparse 42.57 s on 3 trees">0.15</td><td class="win-sparse" title="WoodelfHD 924.09 s, sparse 60.12 s on 3 trees">0.07</td></tr>
+<tr><td>IEEE-CIS · LightGBM (deep: 10k leaves) · n=10k, m=10k</td><td></td><td></td><td></td><td class="win-hd" title="WoodelfHD 13.58 s, sparse 226.02 s on 3 trees">16.64</td><td class="win-hd" title="WoodelfHD 27.41 s, sparse 145.02 s on 3 trees">5.29</td><td class="win-hd" title="WoodelfHD 81.65 s, sparse 239.95 s on 3 trees">2.94</td><td class="win-hd" title="WoodelfHD 280.90 s, sparse 372.39 s on 3 trees">1.33</td><td class="win-sparse" title="WoodelfHD 926.16 s, sparse 558.82 s on 3 trees">0.60</td></tr>
+<tr><td>IEEE-CIS · XGBoost (depth-wise) · n=10k, m=100</td><td class="win-sparse" title="WoodelfHD 4.69 s, sparse 4.33 s on 10 trees">0.92</td><td class="win-sparse" title="WoodelfHD 13.70 s, sparse 9.04 s on 10 trees">0.66</td><td></td><td class="win-sparse" title="WoodelfHD 38.91 s, sparse 17.23 s on 10 trees">0.44</td><td class="win-sparse" title="WoodelfHD 128.20 s, sparse 37.35 s on 10 trees">0.29</td><td></td><td></td><td></td></tr>
+<tr><td>IEEE-CIS · XGBoost (depth-wise) · n=10k, m=10k</td><td class="win-hd" title="WoodelfHD 5.11 s, sparse 13.80 s on 10 trees">2.70</td><td class="win-hd" title="WoodelfHD 13.82 s, sparse 45.58 s on 10 trees">3.30</td><td></td><td class="win-hd" title="WoodelfHD 37.58 s, sparse 100.85 s on 10 trees">2.68</td><td class="win-hd" title="WoodelfHD 129.07 s, sparse 284.17 s on 10 trees">2.20</td><td></td><td></td><td></td></tr>
+<tr><td>KDD-99 · XGBoost (depth-wise) · n=100k, m=1k</td><td class="win-hd" title="WoodelfHD 6.65 s, sparse 7.08 s on 10 trees">1.07</td><td></td><td class="win-sparse" title="WoodelfHD 12.25 s, sparse 8.89 s on 10 trees">0.73</td><td></td><td class="win-sparse" title="WoodelfHD 19.64 s, sparse 13.35 s on 10 trees">0.68</td><td class="win-sparse" title="WoodelfHD 27.26 s, sparse 15.68 s on 10 trees">0.58</td><td></td><td></td></tr>
+<tr><td>KDD-99 · XGBoost (depth-wise) · n=100k, m=100k</td><td class="win-hd" title="WoodelfHD 7.81 s, sparse 8.74 s on 10 trees">1.12</td><td></td><td class="win-sparse" title="WoodelfHD 14.01 s, sparse 10.83 s on 10 trees">0.77</td><td></td><td class="win-sparse" title="WoodelfHD 22.45 s, sparse 15.71 s on 10 trees">0.70</td><td class="win-sparse" title="WoodelfHD 30.97 s, sparse 18.01 s on 10 trees">0.58</td><td></td><td></td></tr>
+</tbody></table></div>
+  
+  <p class="small">These models were not used to choose the rule's offsets, so they are its out-of-sample check. Two of them
+  break it, for reasons that point to a better rule:</p>
+  <ul class="tight">
+    <li><strong>Deep LightGBM (10,000 leaves) and HIGGS follow it.</strong> Deep LightGBM crosses at about 17 with m = 100
+    (0.93× at 16, 0.54× at 18) and still favours WoodelfHD at 22
+    with m = 10,000 (1.33×). HIGGS favours WoodelfHD at every depth: its paths hold at most 13
+    distinct features even at max_depth 18, so its patterns stay short. That is why the proposal measures depth as the
+    longest decision pattern rather than <code>min(max_depth, features)</code>.</li>
+    <li><strong>XGBoost depth-wise, small background: sparse wins earlier.</strong> With m = 100 it wins already at 12
+    (0.92×) and by 16 it is ahead (0.44×), where the rule still picks WoodelfHD.
+    These trees are nearly full (711 leaves at depth 12 against 172 for the paper's LightGBM), so many leaves have long
+    patterns and WoodelfHD's Σ 2<sup>pattern length</sup> grows fast. With m = 10,000 WoodelfHD still wins
+    (2.20× at 18).</li>
+    <li><strong>KDD-99: sparse wins from 15 even with m = 100,000</strong> (0.77× at 15,
+    0.58× at 20). The data has very few distinct rows, so the number of distinct background
+    patterns stays small however large m is. The rule's log₂ m stands in for that number, and here it overstates it.</li>
+  </ul>
+  <p class="small">The better signal is the one the cost model names: Σ 2<sup>pattern length</sup> over the leaves (from the
+  tree, free) against the number of distinct consumer and background patterns (from the data, which a small sample would
+  estimate). That is a bigger change than a threshold, so it is a follow-up. The m-aware rule is still the best of the rules
+  measured here, on every model together.</p></div>
+  <div class="stack"><h3>Banzhaf values, Banzhaf IV and a CII metric</h3>
+  <p class="small">IEEE-CIS LightGBM, n = 10,000. <code>GeneralShapleyInteractionValues(2, 2)</code> stands for the
+  <code>CardinalityInteractionIndicesMetric</code> family, which WoodelfHD still runs on v1.</p>
+  <div class="tablewrap"><table><thead><tr><th></th><th>10</th><th>12</th><th>14</th><th>15</th><th>16</th><th>18</th><th>20</th></tr></thead><tbody>
+<tr><td>Banzhaf IV · m=1k</td><td></td><td></td><td></td><td class="win-hd" title="WoodelfHD 13.95 s, sparse 661.21 s on 10 trees">47.40</td><td></td><td class="win-hd" title="WoodelfHD 27.21 s, sparse 1477.86 s on 10 trees">54.31</td><td class="win-hd" title="WoodelfHD 57.39 s, sparse 2625.64 s on 10 trees">45.75</td></tr>
+<tr><td>Banzhaf values · m=1k</td><td></td><td></td><td></td><td class="win-hd" title="WoodelfHD 1.95 s, sparse 12.47 s on 10 trees">6.38</td><td></td><td class="win-hd" title="WoodelfHD 8.01 s, sparse 47.71 s on 10 trees">5.96</td><td class="win-hd" title="WoodelfHD 26.66 s, sparse 107.80 s on 10 trees">4.04</td></tr>
+<tr><td>GeneralShapleyInteractionValues(2, 2) · m=100</td><td class="win-hd" title="WoodelfHD 2.57 s, sparse 5.82 s on 10 trees">2.26</td><td class="win-hd" title="WoodelfHD 7.59 s, sparse 19.01 s on 10 trees">2.50</td><td class="win-hd" title="WoodelfHD 42.51 s, sparse 42.75 s on 10 trees">1.01</td><td></td><td class="win-sparse" title="WoodelfHD 301.75 s, sparse 127.45 s on 10 trees">0.42</td><td></td><td></td></tr>
+<tr><td>GeneralShapleyInteractionValues(2, 2) · m=1k</td><td class="win-hd" title="WoodelfHD 2.30 s, sparse 11.77 s on 10 trees">5.13</td><td class="win-hd" title="WoodelfHD 7.36 s, sparse 45.28 s on 10 trees">6.15</td><td class="win-hd" title="WoodelfHD 68.12 s, sparse 242.22 s on 10 trees">3.56</td><td></td><td class="win-hd" title="WoodelfHD 299.87 s, sparse 940.26 s on 10 trees">3.14</td><td></td><td></td></tr>
+</tbody></table></div>
+  <p class="small">Banzhaf values follow Shapley values (6.38× at depth 15 and 5.96× at 18 with m = 1,000), and Banzhaf IV follows Shapley IV (47× and 54×). The CII metric is different: WoodelfHD still runs it on v1, so it crosses earlier. With m = 100 it ties at depth 14 (1.01×) and loses at 16 (0.42×). With m = 1,000 it still wins at 16 (3.14×). The same rule form fits with a smaller offset, depth &gt; 7 + log₂ m, capped at 18 because v1 keeps a diagonal per pair (O(D²·2<sup>D</sup>) memory). A v2 path for these metrics is in progress on <code>feature/WoodelfHD_v2_any_order</code>, so re-measure this one when it lands.</p></div>
+  <div class="stack"><h3>The number of consumers</h3>
+  <div class="tablewrap"><table><thead><tr><th></th><th>16</th><th>18</th><th>20</th></tr></thead><tbody>
+<tr><td>n=1k, m=1k</td><td class="win-hd" title="WoodelfHD 2.12 s, sparse 4.12 s on 10 trees">1.94</td><td class="win-hd" title="WoodelfHD 6.64 s, sparse 7.71 s on 10 trees">1.16</td><td class="win-sparse" title="WoodelfHD 26.84 s, sparse 14.76 s on 10 trees">0.55</td></tr>
+<tr><td>n=100k, m=1k</td><td class="win-hd" title="WoodelfHD 13.57 s, sparse 47.30 s on 10 trees">3.49</td><td class="win-hd" title="WoodelfHD 23.82 s, sparse 141.98 s on 10 trees">5.96</td><td class="win-hd" title="WoodelfHD 44.61 s, sparse 208.05 s on 10 trees">4.66</td></tr>
+</tbody></table></div>
+  <p class="small">Shapley values with m = 1,000. Fewer consumers move the crossover about one or two depths shallower: with n = 1,000 WoodelfHD leads by 1.16× at depth 18, against 2.78× with n = 10,000, and at 20 sparse WOODELF is already ahead (0.55×), while the rule keeps WoodelfHD up to 20 at m = 1,000. More consumers favour WoodelfHD (4.66× at 20 with n = 100,000). The rule ignores n: the scoring above includes these rows.</p></div>
+</section>
+
+<section id="pd">
+  <div class="stack"><div class="eyebrow">Task 1 · threshold 2</div>
+  <h2>Path-dependent SHAP: WoodelfHD or Linear TreeSHAP</h2></div>
+  <p>The same models, no background. The sparse side is <code>woodelf_sparse</code> with no background data, which runs
+  the recursive Linear TreeSHAP. Above 1, WoodelfHD is faster.</p>
+  <div class="grid2">
+    <figure><figcaption><span class="t">Shapley values</span><span class="s">Linear TreeSHAP ÷ WoodelfHD, by consumers n</span></figcaption><div id="pd-sv"></div></figure>
+    <figure><figcaption><span class="t">Interaction values and Banzhaf values</span><span class="s">Linear TreeSHAP ÷ WoodelfHD, n = 10,000</span></figcaption><div id="pd-other"></div></figure>
+  </div>
+  <ul class="tight">
+    <li><strong>Shapley values cross at about 14 to 16.</strong> With n = 1,000: 1.03× at 14,
+    0.84× at 15. With n = 10,000: 1.14× at 15, 0.99× at 16. With
+    n = 100,000: 1.16× at 16. The ratios stay close to 1 across that band, so one threshold
+    (16) costs little either way. Over every model and dataset it is never more than 1.6× off.</li>
+    <li><strong>Interaction values favour WoodelfHD much longer:</strong> 6.08× at 12,
+    4.92× at 17 and 2.45× at 22, the deepest measured. Linear TreeSHAP's interaction values run one Shapley pass per feature, so its cost grows with an extra factor of the depth. The proposal uses 22, the deepest depth measured.</li>
+    <li><strong>Banzhaf values favour Linear TreeSHAP early:</strong> its Banzhaf path is a closed-form product with no
+    polynomial multiplication, 0.78× at 12. Here n decides: with n = 1,000 Linear TreeSHAP already wins at depth 8 (0.76×), with n = 100,000 WoodelfHD still wins at 11 (1.26×). Every threshold from 8 to 11 stays within 1.26× to 1.40× of the best, and today's 10 has the lowest total time, so Banzhaf keeps 10.</li>
+  </ul>
+  <div class="stack"><h3>Every rule, scored on every clean path-dependent config</h3><div class="tablewrap"><table><thead><tr><th>rule</th><th>worst</th><th>geometric mean</th><th>total time</th><th>wrong picks</th></tr></thead><tbody>
+<tr><td>now: Linear TreeSHAP when depth > 10</td><td>6.08×</td><td>1.303×</td><td>1.732×</td><td>33 of 68</td></tr>
+<tr><td>Linear TreeSHAP when depth > 12</td><td>4.92×</td><td>1.239×</td><td>1.703×</td><td>26 of 68</td></tr>
+<tr><td>Linear TreeSHAP when depth > 14</td><td>4.92×</td><td>1.199×</td><td>1.669×</td><td>21 of 68</td></tr>
+<tr><td>Linear TreeSHAP when depth > 16</td><td>4.92×</td><td>1.150×</td><td>1.553×</td><td>19 of 68</td></tr>
+<tr><td>Linear TreeSHAP when depth > 18</td><td>4.11×</td><td>1.173×</td><td>1.450×</td><td>22 of 68</td></tr>
+<tr><td>SV D > 16, SIV D > 22, BV D > 10, D = min(max_depth, features)</td><td>1.67×</td><td>1.045×</td><td>1.020×</td><td>12 of 68</td></tr>
+<tr style="font-weight:600"><td>proposed: the same with D = the longest decision pattern</td><td>1.56×</td><td>1.037×</td><td>1.014×</td><td>11 of 68</td></tr>
+</tbody></table></div></div>
+  <div class="stack"><h3>Other models and datasets (Shapley values)</h3><div class="tablewrap"><table><thead><tr><th></th><th>12</th><th>14</th><th>15</th><th>16</th><th>18</th><th>20</th><th>22</th><th>24</th></tr></thead><tbody>
+<tr><td>HIGGS · LightGBM (paper params) · n=10k</td><td class="win-hd" title="WoodelfHD 3.74 s, sparse 5.59 s on 10 trees">1.50</td><td class="win-hd" title="WoodelfHD 5.64 s, sparse 8.86 s on 10 trees">1.57</td><td></td><td class="win-hd" title="WoodelfHD 6.21 s, sparse 9.86 s on 10 trees">1.59</td><td class="win-hd" title="WoodelfHD 6.84 s, sparse 11.45 s on 10 trees">1.67</td><td></td><td></td><td></td></tr>
+<tr><td>IEEE-CIS · LightGBM (deep: 10k leaves) · n=10k</td><td></td><td></td><td></td><td class="win-hd" title="WoodelfHD 7.99 s, sparse 13.93 s on 3 trees">1.74</td><td class="win-sparse" title="WoodelfHD 19.74 s, sparse 16.77 s on 3 trees">0.85</td><td class="win-sparse" title="WoodelfHD 66.84 s, sparse 35.06 s on 3 trees">0.52</td><td class="win-sparse" title="WoodelfHD 223.92 s, sparse 50.48 s on 3 trees">0.23</td><td class="win-sparse" title="WoodelfHD 728.26 s, sparse 85.83 s on 3 trees">0.12</td></tr>
+<tr><td>IEEE-CIS · XGBoost (depth-wise) · n=10k</td><td class="win-hd" title="WoodelfHD 3.85 s, sparse 4.60 s on 10 trees">1.19</td><td class="win-hd" title="WoodelfHD 10.41 s, sparse 11.64 s on 10 trees">1.12</td><td></td><td class="win-sparse" title="WoodelfHD 31.09 s, sparse 26.10 s on 10 trees">0.84</td><td class="win-sparse" title="WoodelfHD 117.54 s, sparse 56.67 s on 10 trees">0.48</td><td></td><td></td><td></td></tr>
+<tr><td>KDD-99 · XGBoost (depth-wise) · n=100k</td><td class="win-hd" title="WoodelfHD 3.09 s, sparse 3.44 s on 10 trees">1.11</td><td></td><td class="win-sparse" title="WoodelfHD 5.44 s, sparse 4.23 s on 10 trees">0.78</td><td></td><td class="win-sparse" title="WoodelfHD 9.77 s, sparse 6.76 s on 10 trees">0.69</td><td class="win-sparse" title="WoodelfHD 14.34 s, sparse 7.67 s on 10 trees">0.53</td><td></td><td></td></tr>
+</tbody></table></div>
+  </div>
+</section>
+
+<section id="trick">
+  <div class="stack"><div class="eyebrow">Task 1 · threshold 3</div>
+  <h2>The neighbor leaf trick cutoff on CPU</h2></div>
+  <p><code>woodelf_for_high_depth</code> turns the trick off when <code>max_depth &gt; 12</code> or
+  <code>n + m &lt; 10 · 2<sup>max_depth</sup></code>. Here WoodelfHD runs with the trick forced on and forced off (the
+  cutoff bypassed, the same per-tree code). Cells are seconds without the trick ÷ seconds with it, so above 1 the trick
+  helps. A small <span class="mono">on</span> marks the cells where 0.5.0 uses the trick.</p>
+  <div class="key"><span><b style="background:var(--good-wash)"></b>trick ≥ 5% faster</span><span><b style="background:var(--neutral-wash)"></b>within 5%</span><span><b style="background:var(--bad-wash)"></b>trick ≥ 5% slower</span></div>
+  
+  <ul class="tight">
+    <li><strong>With 10,000 rows or more, the trick helps at every depth measured, 6 to 16.</strong> That includes the
+    cells 0.5.0 turns off: depth 12 with n = m = 10,000 (1.25× for SIV), depth 15
+    (1.67× for SIV, 1.23× for SV
+    with 100,000 rows) and KDD-99 at depth 15 (1.24×).</li>
+    <li><strong>With 1,000 rows it is a wash, and it loses only for background Shapley values at depth 12 and deeper</strong>,
+    by 5% to 17% (0.86× at depth 15).</li>
+    <li><strong>Few features change little.</strong> On California Housing (8 features, so patterns of at most 8 bits at any
+    depth) the trick stays within 0.95× to 1.27×. Using the effective depth in the cutoff fixes its two misses there, but
+    leaves the larger misses elsewhere.</li>
+    <li>Why: v2 folds the neighbor leaf into the s vectors only when n &gt; 2<sup>D</sup>, and otherwise adds the two leaves one
+    after the other. Either way the right leaf's decision patterns and bincount are skipped, and that saving does not depend
+    on the depth.</li>
+  </ul>
+  <div class="stack"><h3>Every cutoff, scored on every clean trick config (138 rows)</h3><div class="tablewrap"><table><thead><tr><th>policy</th><th>worst</th><th>geometric mean</th><th>total time</th><th>wrong picks</th></tr></thead><tbody><tr><td>0.5.0 cutoff</td><td>1.67×</td><td>1.053×</td><td>1.109×</td><td>30 of 138</td></tr><tr><td>never</td><td>1.67×</td><td>1.141×</td><td>1.229×</td><td>74 of 138</td></tr><tr style="font-weight:600"><td>always (proposed for CPU)</td><td>1.17×</td><td>1.005×</td><td>1.002×</td><td>6 of 138</td></tr><tr><td>0.5.0 with the effective depth min(max_depth, features)</td><td>1.67×</td><td>1.051×</td><td>1.108×</td><td>28 of 138</td></tr></tbody></table></div></div>
+  <div class="stack"><h3>California · LightGBM (housing params) · BG SIV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=1k, m=1k</th><th>n=4k, m=16k</th></tr></thead><tbody><tr><td>6</td><td class="neutral" title="trick on 0.091 s, off 0.091 s (10/10 trees)">1.00<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 0.161 s, off 0.176 s (10/10 trees)">1.09<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="neutral" title="trick on 0.662 s, off 0.655 s (10/10 trees)">0.99</td><td class="good" title="trick on 1.185 s, off 1.266 s (10/10 trees)">1.07<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="neutral" title="trick on 2.135 s, off 2.206 s (10/10 trees)">1.03</td><td class="neutral" title="trick on 3.470 s, off 3.511 s (10/10 trees)">1.01</td></tr><tr><td>15</td><td class="neutral" title="trick on 3.990 s, off 3.906 s (10/10 trees)">0.98</td><td class="neutral" title="trick on 6.817 s, off 6.970 s (10/10 trees)">1.02</td></tr><tr><td>18</td><td class="neutral" title="trick on 4.986 s, off 4.950 s (10/10 trees)">0.99</td><td class="neutral" title="trick on 8.766 s, off 8.802 s (10/10 trees)">1.00</td></tr></tbody></table></div></div>
+<div class="stack"><h3>California · LightGBM (housing params) · BG SV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=1k, m=1k</th><th>n=4k, m=16k</th></tr></thead><tbody><tr><td>6</td><td class="neutral" title="trick on 0.066 s, off 0.066 s (10/10 trees)">1.00<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 0.143 s, off 0.164 s (10/10 trees)">1.14<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="neutral" title="trick on 0.454 s, off 0.448 s (10/10 trees)">0.99</td><td class="good" title="trick on 0.920 s, off 0.999 s (10/10 trees)">1.09<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="neutral" title="trick on 1.353 s, off 1.341 s (10/10 trees)">0.99</td><td class="good" title="trick on 2.789 s, off 2.933 s (10/10 trees)">1.05</td></tr><tr><td>15</td><td class="neutral" title="trick on 2.556 s, off 2.429 s (10/10 trees)">0.95</td><td class="neutral" title="trick on 4.919 s, off 4.904 s (10/10 trees)">1.00</td></tr><tr><td>18</td><td class="neutral" title="trick on 3.048 s, off 3.065 s (10/10 trees)">1.01</td><td class="neutral" title="trick on 6.061 s, off 6.102 s (10/10 trees)">1.01</td></tr></tbody></table></div></div>
+<div class="stack"><h3>California · LightGBM (housing params) · PD SIV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=1k</th><th>n=4k</th></tr></thead><tbody><tr><td>6</td><td class="neutral" title="trick on 0.084 s, off 0.087 s (10/10 trees)">1.04<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="neutral" title="trick on 0.105 s, off 0.109 s (10/10 trees)">1.03<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="neutral" title="trick on 0.641 s, off 0.648 s (10/10 trees)">1.01</td><td class="good" title="trick on 0.795 s, off 0.878 s (10/10 trees)">1.10</td></tr><tr><td>12</td><td class="neutral" title="trick on 2.089 s, off 2.127 s (10/10 trees)">1.02</td><td class="neutral" title="trick on 2.629 s, off 2.643 s (10/10 trees)">1.01</td></tr><tr><td>15</td><td class="neutral" title="trick on 3.857 s, off 3.782 s (10/10 trees)">0.98</td><td class="neutral" title="trick on 4.724 s, off 4.728 s (10/10 trees)">1.00</td></tr><tr><td>18</td><td class="neutral" title="trick on 4.891 s, off 4.858 s (10/10 trees)">0.99</td><td class="neutral" title="trick on 7.107 s, off 7.150 s (10/10 trees)">1.01</td></tr></tbody></table></div></div>
+<div class="stack"><h3>California · LightGBM (housing params) · PD SV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=1k</th><th>n=4k</th></tr></thead><tbody><tr><td>6</td><td class="neutral" title="trick on 0.064 s, off 0.065 s (10/10 trees)">1.01<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 0.077 s, off 0.081 s (10/10 trees)">1.05<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="neutral" title="trick on 0.427 s, off 0.428 s (10/10 trees)">1.00</td><td class="neutral" title="trick on 0.531 s, off 0.544 s (10/10 trees)">1.03</td></tr><tr><td>12</td><td class="neutral" title="trick on 1.336 s, off 1.350 s (10/10 trees)">1.01</td><td class="neutral" title="trick on 1.670 s, off 1.705 s (10/10 trees)">1.02</td></tr><tr><td>15</td><td class="neutral" title="trick on 2.358 s, off 2.319 s (10/10 trees)">0.98</td><td class="neutral" title="trick on 2.953 s, off 2.913 s (10/10 trees)">0.99</td></tr><tr><td>18</td><td class="neutral" title="trick on 3.177 s, off 3.229 s (10/10 trees)">1.02</td><td class="neutral" title="trick on 3.874 s, off 3.958 s (10/10 trees)">1.02</td></tr></tbody></table></div></div>
+<div class="stack"><h3>HIGGS · LightGBM (paper params) · BG SV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=100k, m=100k</th><th>n=1M, m=1M</th></tr></thead><tbody><tr><td>6</td><td class="good" title="trick on 1.692 s, off 1.879 s (10/10 trees)">1.11<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 14.394 s, off 21.090 s (8/10 trees)">1.47<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="good" title="trick on 7.921 s, off 9.356 s (10/10 trees)">1.18<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 13.772 s, off 16.844 s (1/10 trees)">1.22<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="good" title="trick on 15.294 s, off 18.704 s (4/10 trees)">1.22<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 48.152 s, off 56.195 s (1/10 trees)">1.17<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr></tbody></table></div></div>
+<div class="stack"><h3>HIGGS · LightGBM (paper params) · PD SV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=100k</th><th>n=1M</th></tr></thead><tbody><tr><td>6</td><td class="good" title="trick on 0.774 s, off 0.976 s (10/10 trees)">1.26<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 10.395 s, off 12.982 s (10/10 trees)">1.25<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="good" title="trick on 6.125 s, off 7.243 s (10/10 trees)">1.18<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 8.644 s, off 10.168 s (1/10 trees)">1.18<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="good" title="trick on 16.605 s, off 19.445 s (8/10 trees)">1.17<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 30.169 s, off 33.757 s (1/10 trees)">1.12<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr></tbody></table></div></div>
+<div class="stack"><h3>IEEE-CIS · LightGBM (paper params) · BG SIV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=1k, m=1k</th><th>n=10k, m=10k</th></tr></thead><tbody><tr><td>6</td><td class="neutral" title="trick on 0.099 s, off 0.100 s (10/10 trees)">1.01<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 0.196 s, off 0.260 s (10/10 trees)">1.32<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="neutral" title="trick on 0.419 s, off 0.411 s (10/10 trees)">0.98</td><td class="good" title="trick on 0.953 s, off 1.545 s (10/10 trees)">1.62<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="good" title="trick on 1.391 s, off 1.506 s (10/10 trees)">1.08</td><td class="good" title="trick on 4.537 s, off 5.681 s (10/10 trees)">1.25</td></tr><tr><td>13</td><td class="neutral" title="trick on 2.009 s, off 2.012 s (10/10 trees)">1.00</td><td class="good" title="trick on 7.130 s, off 9.897 s (10/10 trees)">1.39</td></tr><tr><td>14</td><td class="neutral" title="trick on 2.576 s, off 2.529 s (10/10 trees)">0.98</td><td class="good" title="trick on 10.764 s, off 16.302 s (10/10 trees)">1.51</td></tr><tr><td>15</td><td class="neutral" title="trick on 3.788 s, off 3.767 s (10/10 trees)">0.99</td><td class="good" title="trick on 15.476 s, off 25.805 s (10/10 trees)">1.67</td></tr><tr><td>16</td><td class="neutral" title="trick on 5.076 s, off 4.939 s (10/10 trees)">0.97</td><td class="good" title="trick on 15.012 s, off 20.826 s (10/10 trees)">1.39</td></tr></tbody></table></div></div>
+<div class="stack"><h3>IEEE-CIS · LightGBM (paper params) · BG SV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=1k, m=1k</th><th>n=10k, m=10k</th><th>n=100k, m=100k</th></tr></thead><tbody><tr><td>6</td><td class="neutral" title="trick on 0.055 s, off 0.056 s (10/10 trees)">1.01<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 0.121 s, off 0.143 s (10/10 trees)">1.18<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 0.839 s, off 1.279 s (10/10 trees)">1.52<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="neutral" title="trick on 0.167 s, off 0.167 s (10/10 trees)">1.00</td><td class="good" title="trick on 0.317 s, off 0.367 s (10/10 trees)">1.16<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 2.520 s, off 3.768 s (10/10 trees)">1.50<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="bad" title="trick on 0.487 s, off 0.433 s (10/10 trees)">0.89</td><td class="good" title="trick on 0.831 s, off 0.951 s (10/10 trees)">1.14</td><td class="good" title="trick on 5.305 s, off 7.382 s (10/10 trees)">1.39<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>13</td><td class="bad" title="trick on 0.673 s, off 0.619 s (10/10 trees)">0.92</td><td class="neutral" title="trick on 1.269 s, off 1.329 s (10/10 trees)">1.05</td><td class="good" title="trick on 6.800 s, off 8.628 s (10/10 trees)">1.27</td></tr><tr><td>14</td><td class="bad" title="trick on 0.927 s, off 0.879 s (10/10 trees)">0.95</td><td class="good" title="trick on 1.610 s, off 1.697 s (10/10 trees)">1.05</td><td class="good" title="trick on 9.052 s, off 11.363 s (10/10 trees)">1.26</td></tr><tr><td>15</td><td class="bad" title="trick on 1.542 s, off 1.321 s (10/10 trees)">0.86</td><td class="neutral" title="trick on 2.245 s, off 2.338 s (10/10 trees)">1.04</td><td class="good" title="trick on 11.938 s, off 14.660 s (10/10 trees)">1.23</td></tr><tr><td>16</td><td class="bad" title="trick on 2.405 s, off 2.221 s (10/10 trees)">0.92</td><td class="neutral" title="trick on 3.429 s, off 3.587 s (10/10 trees)">1.05</td><td class="good" title="trick on 12.771 s, off 14.176 s (8/10 trees)">1.11</td></tr></tbody></table></div></div>
+<div class="stack"><h3>IEEE-CIS · LightGBM (paper params) · PD SIV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=1k</th><th>n=10k</th></tr></thead><tbody><tr><td>6</td><td class="neutral" title="trick on 0.098 s, off 0.102 s (10/10 trees)">1.04<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 0.150 s, off 0.195 s (10/10 trees)">1.30<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="neutral" title="trick on 0.405 s, off 0.417 s (10/10 trees)">1.03</td><td class="good" title="trick on 0.707 s, off 0.963 s (10/10 trees)">1.36<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="neutral" title="trick on 1.356 s, off 1.376 s (10/10 trees)">1.01</td><td class="good" title="trick on 2.730 s, off 3.471 s (10/10 trees)">1.27</td></tr><tr><td>13</td><td class="neutral" title="trick on 1.813 s, off 1.837 s (10/10 trees)">1.01</td><td class="good" title="trick on 4.533 s, off 5.615 s (10/10 trees)">1.24</td></tr><tr><td>14</td><td class="neutral" title="trick on 2.538 s, off 2.546 s (10/10 trees)">1.00</td><td class="good" title="trick on 7.442 s, off 9.839 s (10/10 trees)">1.32</td></tr><tr><td>15</td><td class="neutral" title="trick on 3.542 s, off 3.538 s (10/10 trees)">1.00</td><td class="good" title="trick on 10.785 s, off 15.360 s (10/10 trees)">1.42</td></tr><tr><td>16</td><td class="neutral" title="trick on 5.050 s, off 5.070 s (10/10 trees)">1.00</td><td class="good" title="trick on 15.232 s, off 22.937 s (10/10 trees)">1.51</td></tr></tbody></table></div></div>
+<div class="stack"><h3>IEEE-CIS · LightGBM (paper params) · PD SV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=1k</th><th>n=10k</th><th>n=100k</th></tr></thead><tbody><tr><td>6</td><td class="good" title="trick on 0.054 s, off 0.057 s (10/10 trees)">1.05<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 0.080 s, off 0.096 s (10/10 trees)">1.20<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 0.438 s, off 0.627 s (10/10 trees)">1.43<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="neutral" title="trick on 0.166 s, off 0.174 s (10/10 trees)">1.05</td><td class="good" title="trick on 0.253 s, off 0.294 s (10/10 trees)">1.16<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 1.359 s, off 1.885 s (10/10 trees)">1.39<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="neutral" title="trick on 0.458 s, off 0.466 s (10/10 trees)">1.02</td><td class="good" title="trick on 0.682 s, off 0.811 s (10/10 trees)">1.19</td><td class="good" title="trick on 3.119 s, off 4.026 s (10/10 trees)">1.29<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>13</td><td class="neutral" title="trick on 0.630 s, off 0.650 s (10/10 trees)">1.03</td><td class="neutral" title="trick on 0.892 s, off 0.935 s (10/10 trees)">1.05</td><td class="good" title="trick on 3.342 s, off 4.212 s (10/10 trees)">1.26</td></tr><tr><td>14</td><td class="neutral" title="trick on 0.924 s, off 0.951 s (10/10 trees)">1.03</td><td class="good" title="trick on 1.355 s, off 1.501 s (10/10 trees)">1.11</td><td class="good" title="trick on 5.217 s, off 6.367 s (10/10 trees)">1.22</td></tr><tr><td>15</td><td class="neutral" title="trick on 1.382 s, off 1.378 s (10/10 trees)">1.00</td><td class="neutral" title="trick on 2.071 s, off 2.069 s (10/10 trees)">1.00</td><td class="good" title="trick on 5.422 s, off 6.459 s (10/10 trees)">1.19</td></tr><tr><td>16</td><td class="neutral" title="trick on 2.173 s, off 2.218 s (10/10 trees)">1.02</td><td class="good" title="trick on 2.791 s, off 2.995 s (10/10 trees)">1.07</td><td class="good" title="trick on 8.989 s, off 10.388 s (10/10 trees)">1.16</td></tr></tbody></table></div></div>
+<div class="stack"><h3>KDD-99 · XGBoost (depth-wise) · BG SV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=100k, m=100k</th><th>n=1M, m=1M</th></tr></thead><tbody><tr><td>6</td><td class="good" title="trick on 0.786 s, off 1.194 s (10/10 trees)">1.52<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 8.996 s, off 13.968 s (10/10 trees)">1.55<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="good" title="trick on 1.798 s, off 2.705 s (10/10 trees)">1.50<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 12.932 s, off 19.252 s (5/10 trees)">1.49<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="good" title="trick on 2.623 s, off 3.287 s (10/10 trees)">1.25<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 15.405 s, off 20.255 s (5/10 trees)">1.31<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>15</td><td class="good" title="trick on 2.625 s, off 3.248 s (10/10 trees)">1.24</td><td class="good" title="trick on 13.409 s, off 18.256 s (3/10 trees)">1.36</td></tr></tbody></table></div></div>
+<div class="stack"><h3>KDD-99 · XGBoost (depth-wise) · PD SV</h3><div class="tablewrap"><table><thead><tr><th>max_depth</th><th>n=100k</th><th>n=1M</th></tr></thead><tbody><tr><td>6</td><td class="good" title="trick on 0.376 s, off 0.500 s (10/10 trees)">1.33<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 5.319 s, off 7.998 s (10/10 trees)">1.50<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>9</td><td class="good" title="trick on 0.999 s, off 1.337 s (10/10 trees)">1.34<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 12.533 s, off 17.969 s (9/10 trees)">1.43<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>12</td><td class="good" title="trick on 1.133 s, off 1.436 s (10/10 trees)">1.27<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td><td class="good" title="trick on 15.347 s, off 20.371 s (9/10 trees)">1.33<span class="cut" title="the 0.5.0 cutoff uses the trick here">on</span></td></tr><tr><td>15</td><td class="good" title="trick on 2.011 s, off 2.435 s (10/10 trees)">1.21</td><td class="good" title="trick on 13.192 s, off 17.064 s (5/10 trees)">1.29</td></tr></tbody></table></div></div>
+</section>
+
+
+<section id="gpu">
+  <div class="stack">
+    <div class="eyebrow">Task 2</div>
+    <h2>The neighbor leaf trick on a real GPU</h2>
+    <span class="pill pending">not run yet: needs a CUDA GPU</span>
+  </div>
+  <p>This laptop has no NVIDIA GPU (a Ryzen 7 5700U with integrated Radeon graphics), and CuPy needs CUDA, so the GPU timings
+  are left to Colab, on the same T4 High-RAM setup as the paper rerun notebooks. The notebook is ready:
+  <code>treebranchmarks/colab/woodelf_neighbor_trick_gpu.ipynb</code>.</p>
+  <div class="cards">
+    <div class="card"><div class="label">What it times</div>
+      <div class="note"><code>woodelf_for_high_depth</code> of woodelf 0.5.0 (the PyPI wheel, byte-identical to main's <code>woodelf/</code>)
+      with the trick forced on and forced off. It bypasses the cutoff by calling <code>woodelf_for_high_depth_single_tree</code>
+      directly: the same p2s, the same per-tree code, the same mirroring.</div></div>
+    <div class="card"><div class="label">Grid</div>
+      <div class="note">IEEE-CIS, KDD-99, HIGGS and California Housing · BG SHAP, BG SHAP IV, PD SHAP, PD SHAP IV ·
+      depths 6, 9, 12, 15, 18 · 1k, 10k, 100k rows and the full data. It uses the first trees of the notebooks' 100-tree models:
+      10 trees in general, and 1 to 3 trees for the deep HIGGS models.</div></div>
+    <div class="card"><div class="label">Before any timing</div>
+      <div class="note">A correctness cell compares trick on and off, on GPU and on CPU, at depths 6 and 12 (both the full
+      s vector and the consumers-only branches). The Shapley values must also add up to the predictions.</div></div>
+    <div class="card"><div class="label">Send back</div>
+      <div class="note">The <code>woodelfhd_rerun/trick_gpu_*.csv</code> files, one per Colab machine. The last cell prints
+      the speedup of the trick per cell, the 0.5.0 cutoff's choice, and the total time of never, always, the cutoff, and
+      the best choice per run.</div></div>
+  </div>
+  <div class="stack">
+    <h3>Checked here first</h3>
+    <ul class="tight">
+      <li>Every code cell ran end to end with NumPy standing in for CuPy, so the <code>GPU=True</code> branches of woodelf ran.
+      It used a small fake Drive folder with the paper's file names and columns, and logging, resuming and the summary
+      tables all worked. The stand-in timings mean nothing.</li>
+      <li>The correctness cell passed: trick on and off, "GPU" and CPU give the same values for BG and PD, Shapley values
+      and interaction values.</li>
+      <li>The notebook reuses the rerun notebooks' <code>PARAMS</code>, <code>load_dataset</code> and <code>get_model</code>
+      unchanged, so it shares their model files, and it slices the first trees of the saved 100-tree models rather than
+      retraining.</li>
+    </ul>
+  </div>
+  <div class="stack">
+    <h3>What to expect, and what would change the cutoff</h3>
+    <p>For a pair of sibling leaves, the trick skips the right leaf's decision patterns and bincount. With many consumers
+    (n &gt; 2<sup>D</sup>) it also folds the right leaf into the s vectors, so the consumers are gathered once per feature
+    instead of twice. With few consumers it adds the two leaves one after the other, which saves only the patterns. It
+    adds a second shared-s-vector computation and a <code>neighbor_vector</code> pass (about eight small kernels) per
+    pair. On a GPU, gathers over n are cheap and every kernel launch has a fixed cost, so the trick should pay only when
+    n is large. If the CSVs show that the trick loses at sizes where 0.5.0 turns it on, the fix is a GPU-specific
+    cutoff (for example a larger row multiple when <code>GPU=True</code>).</p>
+  </div>
+</section>
+
+
+<section id="method">
+  <h2>How it was measured</h2>
+  <ul class="tight">
+    <li><strong>Code.</strong> <code>git archive v0.5.0 woodelf</code> (= main, 483d72c), first on <code>sys.path</code>, so
+    neither the stale 0.4.6 install in <code>.venv</code> nor the working tree (edited by another session at the time)
+    could leak in.</li>
+    <li><strong>Data.</strong> The treebranchmarks cache: IEEE-CIS (590,540 × 397, 80/20 split), KDD-99 (4.9M × 121, a 2M
+    train sample), HIGGS (11M × 28: the first 2M rows train, the last 1M test), California Housing (the paper's split).
+    Consumers are the first n test rows, the background m train rows sampled with seed 0.</li>
+    <li><strong>Models.</strong> LightGBM with the paper notebooks' parameters at max_depth D; LightGBM deep (10,000 leaves,
+    20 rows per leaf); XGBoost depth-wise (hist, min_child_weight 1). The model is parsed once, outside the timing.</li>
+    <li><strong>Timing.</strong> Both methods run on the same trees, interleaved A B, B A, best of two under 20 seconds.
+    When the slower method would pass the budget (30 s for the crossover plans, 20 s for the rest) on all trees, an evenly
+    spaced subset of k trees is timed (calibrated on the middle tree). Ratios use those trees, and seconds are scaled to
+    all trees. The first boosting tree is not used alone: it was much cheaper than average for sparse WOODELF.</li>
+    <li><strong>Correctness.</strong> Every config compares WoodelfHD's values with the other method's. The largest
+    difference, relative to the largest value, was 5e-08 in background mode and
+    7e-06 in path-dependent mode.</li>
+    <li><strong>A shared laptop.</strong> Another Claude session ran CPU benchmarks on this machine at the same time. Before
+    each config the runner waited while other Python processes kept 2 or more cores busy, and it recorded their load
+    during the run. The 26 rows that ran next to more than 1.5 busy cores were timed again on a quiet
+    machine, and those second timings are the ones shown. One busy core did not move
+    the ratios: the same config gave 0.233 with and without it. Absolute seconds on this 15 W laptop vary by up to 2×
+    with its thermal state, so read the ratios, not the seconds.</li>
+    <li><strong>The old thresholds, for comparison.</strong> The same script on v0.4.8, the last release before WoodelfHD v2, shows that 12 and 10 were right for it: sparse WOODELF already won at depth 12 with a 100-row background and in path-dependent mode. In 0.5.0 WoodelfHD got about 3× faster at depth 12 and 11× to 20× faster at depth 15, while sparse WOODELF barely moved. That is what moved the crossovers.<div class="tablewrap"><table><thead><tr><th>IEEE-CIS LightGBM, n = 10,000</th><th>0.4.8 WoodelfHD</th><th>0.4.8 sparse</th><th>0.4.8 sparse ÷ HD</th><th>0.5.0 WoodelfHD</th><th>0.5.0 sparse</th><th>0.5.0 sparse ÷ HD</th></tr></thead><tbody><tr><td>depth 12 BG SIV, m = 100</td><td>20.29 s</td><td>13.92 s</td><td class="win-sparse">0.69</td><td>3.62 s</td><td>13.49 s</td><td class="win-hd">3.73</td></tr><tr><td>depth 12 BG SV, m = 100</td><td>2.47 s</td><td>1.44 s</td><td class="win-sparse">0.58</td><td>0.76 s</td><td>1.06 s</td><td class="win-hd">1.39</td></tr><tr><td>depth 12 BG SV, m = 10,000</td><td>2.63 s</td><td>7.00 s</td><td class="win-hd">2.66</td><td>0.88 s</td><td>6.15 s</td><td class="win-hd">6.99</td></tr><tr><td>depth 12 PD SV</td><td>2.40 s</td><td>1.49 s</td><td class="win-sparse">0.62</td><td>0.77 s</td><td>1.11 s</td><td class="win-hd">1.44</td></tr><tr><td>depth 15 BG SV, m = 100</td><td>36.68 s</td><td>3.87 s</td><td class="win-sparse">0.11</td><td>2.04 s</td><td>2.95 s</td><td class="win-hd">1.44</td></tr><tr><td>depth 15 BG SV, m = 10,000</td><td>44.71 s</td><td>243.25 s</td><td class="win-hd">5.44</td><td>2.26 s</td><td>85.11 s</td><td class="win-hd">37.67</td></tr><tr><td>depth 15 PD SV</td><td>23.30 s</td><td>2.87 s</td><td class="win-sparse">0.12</td><td>2.11 s</td><td>2.57 s</td><td class="win-hd">1.22</td></tr></tbody></table></div></li>
+  </ul>
+</section>
+
+
+<section id="side">
+  <h2>Side findings</h2>
+  <ul class="tight">
+    <li><strong>The 0.5.0 wheel on PyPI ships <code>woodelf/woodelfhd_paper.py</code>.</strong> The file is untracked in
+    git, so the wheel was built from a working tree that had it. It imports <code>woodelf.cube_metric</code>,
+    <code>woodelf.decision_trees_ensemble</code> and <code>woodelf.parse_models</code>, paths that no longer exist, so
+    importing it fails. Nothing imports it, so it is harmless. Building the next release from a clean checkout keeps it
+    out. Apart from this file, the wheel's <code>woodelf/</code> is identical to <code>git archive v0.5.0</code>.</li>
+    <li><strong>The trick cutoff looks at <code>max_depth</code>, not at the pattern length.</strong> One line above the
+    cutoff, <code>woodelf_for_high_depth</code> computes
+    <code>effective_max_decision_pattern_length = min(model_obj.max_depth, len(consumer_data.keys()))</code>, but the
+    cutoff tests <code>model_obj.max_depth &gt; 12</code> and <code>n + m &lt; 10 * 2**model_obj.max_depth</code>. On
+    data with few features the patterns stay short at any depth: California Housing has 8 features, so a depth-15 model
+    has patterns of at most 8 bits, yet the trick is off. The California rows in section 3 test this.</li>
+  </ul>
+</section>
+
+</div>
+<script>const DATA = {"charts": {"bg-sv": {"series": [{"name": "m = 100", "colorVar": "--m1", "points": [{"x": 12, "y": 1.3344168217463332, "hd": 0.7517385000246577, "sparse": 1.0031324999872595, "trees": "10/10", "unique": 12, "leaves": 172, "note": "HD 0.8 s, sparse 1.0 s"}, {"x": 14, "y": 1.2441651550411819, "hd": 1.9537279999931343, "sparse": 2.430760300019756, "trees": "10/10", "unique": 14, "leaves": 230, "note": "HD 2.0 s, sparse 2.4 s"}, {"x": 15, "y": 1.4186450266180788, "hd": 2.22112850000849, "sparse": 3.1509929000167176, "trees": "10/10", "unique": 15, "leaves": 259, "note": "HD 2.2 s, sparse 3.2 s"}, {"x": 16, "y": 1.3227673243144797, "hd": 3.119705199962482, "sparse": 4.1266441000043415, "trees": "10/10", "unique": 16, "leaves": 290, "note": "HD 3.1 s, sparse 4.1 s"}, {"x": 17, "y": 1.0435741024566363, "hd": 4.648703899991233, "sparse": 4.851267000020016, "trees": "10/10", "unique": 17, "leaves": 320, "note": "HD 4.6 s, sparse 4.9 s"}, {"x": 18, "y": 0.7605849432400748, "hd": 8.395987399970181, "sparse": 6.385861600050703, "trees": "10/10", "unique": 18, "leaves": 353, "note": "HD 8.4 s, sparse 6.4 s"}, {"x": 20, "y": 0.31402239225566275, "hd": 31.46383170003537, "sparse": 9.880347699974664, "trees": "10/10", "unique": 20, "leaves": 411, "note": "HD 31.5 s, sparse 9.9 s"}, {"x": 22, "y": 0.16713720606625634, "hd": 79.45393824993516, "sparse": 13.27970925005502, "trees": "4/10", "unique": 22, "leaves": 467, "note": "HD 79.5 s, sparse 13.3 s"}, {"x": 24, "y": 0.0995735831435352, "hd": 177.5661520002177, "sparse": 17.680897999671288, "trees": "1/10", "unique": 24, "leaves": 509, "note": "HD 177.6 s, sparse 17.7 s"}]}, {"name": "m = 1k", "colorVar": "--m2", "points": [{"x": 12, "y": 2.8278549057488283, "hd": 0.6995012000006682, "sparse": 1.9780878999990819, "trees": "10/10", "unique": 12, "leaves": 172, "note": "HD 0.7 s, sparse 2.0 s"}, {"x": 14, "y": 4.558526406503586, "hd": 1.8700029000174254, "sparse": 8.524457599967718, "trees": "10/10", "unique": 14, "leaves": 230, "note": "HD 1.9 s, sparse 8.5 s"}, {"x": 15, "y": 5.718902340532807, "hd": 2.3786043333044895, "sparse": 13.603005888936524, "trees": "9/10", "unique": 15, "leaves": 259, "note": "HD 2.4 s, sparse 13.6 s"}, {"x": 16, "y": 4.422658855871903, "hd": 2.799799111089669, "sparse": 12.38255633332301, "trees": "9/10", "unique": 16, "leaves": 290, "note": "HD 2.8 s, sparse 12.4 s"}, {"x": 17, "y": 3.562717938347681, "hd": 4.688224099983927, "sparse": 16.702820100006647, "trees": "10/10", "unique": 17, "leaves": 320, "note": "HD 4.7 s, sparse 16.7 s"}, {"x": 18, "y": 2.783938076113386, "hd": 8.235876399965491, "sparse": 22.92816990002757, "trees": "10/10", "unique": 18, "leaves": 353, "note": "HD 8.2 s, sparse 22.9 s"}, {"x": 20, "y": 1.4197601919739304, "hd": 28.681274999980815, "sparse": 40.720532500029854, "trees": "6/10", "unique": 20, "leaves": 411, "note": "HD 28.7 s, sparse 40.7 s"}, {"x": 22, "y": 0.7640258706785568, "hd": 78.36550580000039, "sparse": 59.87327380001079, "trees": "5/10", "unique": 22, "leaves": 467, "note": "HD 78.4 s, sparse 59.9 s"}, {"x": 24, "y": 0.41568641369478726, "hd": 178.3174059999874, "sparse": 74.1241229994921, "trees": "1/10", "unique": 24, "leaves": 509, "note": "HD 178.3 s, sparse 74.1 s"}]}, {"name": "m = 10k", "colorVar": "--m3", "points": [{"x": 12, "y": 5.518252619903, "hd": 0.8344172000070103, "sparse": 4.60452490003081, "trees": "10/10", "unique": 12, "leaves": 172, "note": "HD 0.8 s, sparse 4.6 s"}, {"x": 14, "y": 12.245798948972999, "hd": 2.020962666720152, "sparse": 24.748302500035305, "trees": "6/10", "unique": 14, "leaves": 230, "note": "HD 2.0 s, sparse 24.7 s"}, {"x": 15, "y": 55.268102418788516, "hd": 3.0130089999875054, "sparse": 166.52329000004102, "trees": "1/10", "unique": 15, "leaves": 259, "note": "HD 3.0 s, sparse 166.5 s"}, {"x": 16, "y": 54.48761390724446, "hd": 3.90817400009837, "sparse": 212.94707599969115, "trees": "1/10", "unique": 16, "leaves": 290, "note": "HD 3.9 s, sparse 212.9 s"}, {"x": 17, "y": 9.182391337415485, "hd": 4.729598249978153, "sparse": 43.42902200005483, "trees": "4/10", "unique": 17, "leaves": 320, "note": "HD 4.7 s, sparse 43.4 s"}, {"x": 18, "y": 9.118255669956852, "hd": 8.726008666562848, "sparse": 79.56597799997932, "trees": "3/10", "unique": 18, "leaves": 353, "note": "HD 8.7 s, sparse 79.6 s"}, {"x": 20, "y": 5.36007942179407, "hd": 28.937141000060365, "sparse": 155.10537399997702, "trees": "2/10", "unique": 20, "leaves": 411, "note": "HD 28.9 s, sparse 155.1 s"}, {"x": 22, "y": 3.302161241650481, "hd": 59.64515800005756, "sparse": 196.9579289999092, "trees": "1/10", "unique": 22, "leaves": 467, "note": "HD 59.6 s, sparse 197.0 s"}, {"x": 24, "y": 1.4956783542325711, "hd": 177.54590300028212, "sparse": 265.5515640001977, "trees": "1/10", "unique": 24, "leaves": 509, "note": "HD 177.5 s, sparse 265.6 s"}]}], "xMin": 11, "xMax": 25, "yMin": 0.05, "yMax": 100, "thresholds": [{"x": 12, "label": "now: 12", "kind": "now"}], "upLabel": "Above 1\u00d7: WoodelfHD faster", "downLabel": "below: sparse WOODELF faster", "aria": "Background SV: sparse time divided by WoodelfHD time, by depth", "xStep": 2}, "bg-siv": {"series": [{"name": "m = 100", "colorVar": "--m1", "points": [{"x": 12, "y": 4.288137573567577, "hd": 3.1966722999932244, "sparse": 13.707770599983633, "trees": "10/10", "unique": 12, "leaves": 172, "note": "HD 3.2 s, sparse 13.7 s"}, {"x": 14, "y": 5.106989809442178, "hd": 9.55802400004662, "sparse": 48.812731166641846, "trees": "6/10", "unique": 14, "leaves": 230, "note": "HD 9.6 s, sparse 48.8 s"}, {"x": 15, "y": 5.19210104972456, "hd": 14.286277999926824, "sparse": 74.17579900007695, "trees": "2/10", "unique": 15, "leaves": 259, "note": "HD 14.3 s, sparse 74.2 s"}, {"x": 16, "y": 7.852389752255779, "hd": 22.128632999956608, "sparse": 173.76265100028832, "trees": "1/10", "unique": 16, "leaves": 290, "note": "HD 22.1 s, sparse 173.8 s"}, {"x": 17, "y": 6.393528521824542, "hd": 16.946251999997912, "sparse": 108.34634550001283, "trees": "2/10", "unique": 17, "leaves": 320, "note": "HD 16.9 s, sparse 108.3 s"}, {"x": 18, "y": 7.278660106880734, "hd": 32.31478700006846, "sparse": 235.20835099974647, "trees": "1/10", "unique": 18, "leaves": 353, "note": "HD 32.3 s, sparse 235.2 s"}, {"x": 20, "y": 6.798768326600034, "hd": 66.73798299976625, "sparse": 453.73608499998227, "trees": "1/10", "unique": 20, "leaves": 411, "note": "HD 66.7 s, sparse 453.7 s"}, {"x": 22, "y": 5.660613329320309, "hd": 123.71891600021627, "sparse": 700.3249449998839, "trees": "1/10", "unique": 22, "leaves": 467, "note": "HD 123.7 s, sparse 700.3 s"}, {"x": 24, "y": 3.5361528516793497, "hd": 296.4103660004912, "sparse": 1048.1523609999567, "trees": "1/10", "unique": 24, "leaves": 509, "note": "HD 296.4 s, sparse 1048.2 s"}]}, {"name": "m = 1k", "colorVar": "--m2", "points": [{"x": 12, "y": 13.371659175357603, "hd": 3.2761652499902993, "sparse": 43.807765125020524, "trees": "8/10", "unique": 12, "leaves": 172, "note": "HD 3.3 s, sparse 43.8 s"}, {"x": 14, "y": 21.777278616727006, "hd": 12.634090000065044, "sparse": 275.13609800022095, "trees": "1/10", "unique": 14, "leaves": 230, "note": "HD 12.6 s, sparse 275.1 s"}, {"x": 15, "y": 44.33225249600138, "hd": 17.729145999765024, "sparse": 785.9729770000558, "trees": "1/10", "unique": 15, "leaves": 259, "note": "HD 17.7 s, sparse 786.0 s"}, {"x": 16, "y": 64.19898259830359, "hd": 18.910115999751724, "sparse": 1214.0102079999633, "trees": "1/10", "unique": 16, "leaves": 290, "note": "HD 18.9 s, sparse 1214.0 s"}, {"x": 17, "y": 51.13731767895184, "hd": 23.50080500007607, "sparse": 1201.7681309999898, "trees": "1/10", "unique": 17, "leaves": 320, "note": "HD 23.5 s, sparse 1201.8 s"}, {"x": 18, "y": 49.56918013249027, "hd": 32.52916599973105, "sparse": 1612.4440890003461, "trees": "1/10", "unique": 18, "leaves": 353, "note": "HD 32.5 s, sparse 1612.4 s"}]}, {"name": "m = 10k", "colorVar": "--m3", "points": [{"x": 12, "y": 32.29598216268714, "hd": 3.3222429999538385, "sparse": 107.2951006666214, "trees": "3/10", "unique": 12, "leaves": 172, "note": "HD 3.3 s, sparse 107.3 s"}, {"x": 14, "y": 68.5242420373979, "hd": 11.920883000129834, "sparse": 816.8694720003987, "trees": "1/10", "unique": 14, "leaves": 230, "note": "HD 11.9 s, sparse 816.9 s"}, {"x": 15, "y": 148.49194922771102, "hd": 14.103004000498913, "sparse": 2094.18255400029, "trees": "1/10", "unique": 15, "leaves": 259, "note": "HD 14.1 s, sparse 2094.2 s"}, {"x": 16, "y": 207.11559301343038, "hd": 18.67085199977737, "sparse": 3867.0245839998825, "trees": "1/10", "unique": 16, "leaves": 290, "note": "HD 18.7 s, sparse 3867.0 s"}]}], "xMin": 11, "xMax": 25, "yMin": 0.5, "yMax": 500, "thresholds": [{"x": 12, "label": "now: 12", "kind": "now"}], "upLabel": "Above 1\u00d7: WoodelfHD faster", "downLabel": "below: sparse WOODELF faster", "aria": "Background SIV: sparse time divided by WoodelfHD time, by depth", "xStep": 2}, "pd-sv": {"series": [{"name": "n = 1k", "colorVar": "--n1", "points": [{"x": 10, "y": 1.3574812430450642, "hd": 0.2475618000025861, "sparse": 0.33606049999798415, "trees": "10/10", "unique": 10, "leaves": 118, "note": "HD 0.2 s, sparse 0.3 s"}, {"x": 11, "y": 1.354213036102762, "hd": 0.33867499999905704, "sparse": 0.45863810000082594, "trees": "10/10", "unique": 11, "leaves": 146, "note": "HD 0.3 s, sparse 0.5 s"}, {"x": 12, "y": 1.2773922397815693, "hd": 0.498091800021939, "sparse": 0.6362586000468582, "trees": "10/10", "unique": 12, "leaves": 172, "note": "HD 0.5 s, sparse 0.6 s"}, {"x": 14, "y": 1.0288917435473424, "hd": 1.0205580000183545, "sparse": 1.0500437000300735, "trees": "10/10", "unique": 14, "leaves": 230, "note": "HD 1.0 s, sparse 1.1 s"}, {"x": 15, "y": 0.8407872273491332, "hd": 1.4713919999776408, "sparse": 1.2371276000048965, "trees": "10/10", "unique": 15, "leaves": 259, "note": "HD 1.5 s, sparse 1.2 s"}, {"x": 16, "y": 0.6426293350476945, "hd": 2.367001499980688, "sparse": 1.521104599989485, "trees": "10/10", "unique": 16, "leaves": 290, "note": "HD 2.4 s, sparse 1.5 s"}, {"x": 17, "y": 0.4714199001122458, "hd": 3.8806074999738485, "sparse": 1.8293956000125036, "trees": "10/10", "unique": 17, "leaves": 320, "note": "HD 3.9 s, sparse 1.8 s"}, {"x": 18, "y": 0.3662010033579002, "hd": 8.251412400000845, "sparse": 3.0216755000001285, "trees": "10/10", "unique": 18, "leaves": 353, "note": "HD 8.3 s, sparse 3.0 s"}, {"x": 20, "y": 0.14720096015387735, "hd": 25.975836000002346, "sparse": 3.823667999999998, "trees": "8/10", "unique": 20, "leaves": 411, "note": "HD 26.0 s, sparse 3.8 s"}, {"x": 22, "y": 0.06603148634337895, "hd": 55.785328285715615, "sparse": 3.6835881428591426, "trees": "7/10", "unique": 22, "leaves": 467, "note": "HD 55.8 s, sparse 3.7 s"}]}, {"name": "n = 10k", "colorVar": "--n2", "points": [{"x": 10, "y": 1.3382677788528095, "hd": 0.382623199999216, "sparse": 0.5120523000005051, "trees": "10/10", "unique": 10, "leaves": 118, "note": "HD 0.4 s, sparse 0.5 s"}, {"x": 11, "y": 1.390003815448889, "hd": 0.5666442000001553, "sparse": 0.7876376000021992, "trees": "10/10", "unique": 11, "leaves": 146, "note": "HD 0.6 s, sparse 0.8 s"}, {"x": 12, "y": 1.44373812507795, "hd": 0.8247921000001952, "sparse": 1.1907838000333868, "trees": "10/10", "unique": 12, "leaves": 172, "note": "HD 0.8 s, sparse 1.2 s"}, {"x": 14, "y": 1.2172647787107, "hd": 1.5074099999619648, "sparse": 1.8349171000299975, "trees": "10/10", "unique": 14, "leaves": 230, "note": "HD 1.5 s, sparse 1.8 s"}, {"x": 15, "y": 1.14269011475499, "hd": 1.943641999969259, "sparse": 2.2209804999874905, "trees": "10/10", "unique": 15, "leaves": 259, "note": "HD 1.9 s, sparse 2.2 s"}, {"x": 16, "y": 0.9931597809749355, "hd": 2.96553370001493, "sparse": 2.945248799980618, "trees": "10/10", "unique": 16, "leaves": 290, "note": "HD 3.0 s, sparse 2.9 s"}, {"x": 17, "y": 0.7720168235687913, "hd": 4.684546099975705, "sparse": 3.616548399964813, "trees": "10/10", "unique": 17, "leaves": 320, "note": "HD 4.7 s, sparse 3.6 s"}, {"x": 18, "y": 0.6885014642220793, "hd": 9.44535739999992, "sparse": 6.503142400000797, "trees": "10/10", "unique": 18, "leaves": 353, "note": "HD 9.4 s, sparse 6.5 s"}, {"x": 20, "y": 0.252307908574317, "hd": 26.83475287500187, "sparse": 6.770620375000362, "trees": "8/10", "unique": 20, "leaves": 411, "note": "HD 26.8 s, sparse 6.8 s"}, {"x": 22, "y": 0.17430809697023347, "hd": 58.34148466666496, "sparse": 10.169393166664426, "trees": "6/10", "unique": 22, "leaves": 467, "note": "HD 58.3 s, sparse 10.2 s"}]}, {"name": "n = 100k", "colorVar": "--n3", "points": [{"x": 12, "y": 1.3883367932454644, "hd": 3.500882799969986, "sparse": 4.860404400038533, "trees": "10/10", "unique": 12, "leaves": 172, "note": "HD 3.5 s, sparse 4.9 s"}, {"x": 14, "y": 1.1452041018975139, "hd": 5.579852700000629, "sparse": 6.390070200024638, "trees": "10/10", "unique": 14, "leaves": 230, "note": "HD 5.6 s, sparse 6.4 s"}, {"x": 15, "y": 1.1733341125467505, "hd": 6.936864200048149, "sparse": 8.13925940002082, "trees": "10/10", "unique": 15, "leaves": 259, "note": "HD 6.9 s, sparse 8.1 s"}, {"x": 16, "y": 1.1565694741740635, "hd": 8.966413200017996, "sparse": 10.370279799972195, "trees": "10/10", "unique": 16, "leaves": 290, "note": "HD 9.0 s, sparse 10.4 s"}, {"x": 17, "y": 1.073877560821769, "hd": 13.954557900000509, "sparse": 14.985486599998694, "trees": "10/10", "unique": 17, "leaves": 320, "note": "HD 14.0 s, sparse 15.0 s"}, {"x": 18, "y": 1.0872863943736168, "hd": 19.531069099999513, "sparse": 21.23586570000043, "trees": "10/10", "unique": 18, "leaves": 353, "note": "HD 19.5 s, sparse 21.2 s"}, {"x": 20, "y": 0.931834545672563, "hd": 33.108200888887545, "sparse": 30.851365333332474, "trees": "9/10", "unique": 20, "leaves": 411, "note": "HD 33.1 s, sparse 30.9 s"}, {"x": 22, "y": 0.7582263637580525, "hd": 73.06884520000312, "sparse": 55.402724799998396, "trees": "5/10", "unique": 22, "leaves": 467, "note": "HD 73.1 s, sparse 55.4 s"}]}], "xMin": 7, "xMax": 23, "yMin": 0.02, "yMax": 5, "thresholds": [{"x": 10, "label": "now: 10", "kind": "now"}, {"x": 16, "label": "proposed: 16", "kind": "new"}], "upLabel": "Above 1\u00d7: WoodelfHD faster", "downLabel": "below: Linear TreeSHAP faster", "aria": "Path-dependent SV: Linear TreeSHAP time divided by WoodelfHD time, by depth", "xStep": 2}, "pd-other": {"series": [{"name": "Banzhaf values", "colorVar": "--violet", "points": [{"x": 8, "y": 0.7551881782394777, "hd": 0.12822419999793055, "sparse": 0.09683340000265162, "trees": "10/10", "unique": 8, "leaves": 73, "note": "HD 0.1 s, sparse 0.1 s"}, {"x": 8, "y": 1.0785741197347054, "hd": 0.1924284999986412, "sparse": 0.2075483999979042, "trees": "10/10", "unique": 8, "leaves": 73, "note": "HD 0.2 s, sparse 0.2 s"}, {"x": 8, "y": 1.2353883489200739, "hd": 0.9936129000016081, "sparse": 1.2274977999986731, "trees": "10/10", "unique": 8, "leaves": 73, "note": "HD 1.0 s, sparse 1.2 s"}, {"x": 9, "y": 0.7494654084687347, "hd": 0.17237459999887506, "sparse": 0.12918879999779165, "trees": "10/10", "unique": 9, "leaves": 91, "note": "HD 0.2 s, sparse 0.1 s"}, {"x": 9, "y": 1.0203951148410753, "hd": 0.2483682999991288, "sparse": 0.25343380000049365, "trees": "10/10", "unique": 9, "leaves": 91, "note": "HD 0.2 s, sparse 0.3 s"}, {"x": 9, "y": 1.2573893723025544, "hd": 1.3586878000023717, "sparse": 1.7083996000001207, "trees": "10/10", "unique": 9, "leaves": 91, "note": "HD 1.4 s, sparse 1.7 s"}, {"x": 10, "y": 0.7128186429707214, "hd": 0.24957399999766494, "sparse": 0.17790099999911035, "trees": "10/10", "unique": 10, "leaves": 118, "note": "HD 0.2 s, sparse 0.2 s"}, {"x": 10, "y": 0.8650327790630747, "hd": 0.409636500000488, "sparse": 0.3543490000010934, "trees": "10/10", "unique": 10, "leaves": 118, "note": "HD 0.4 s, sparse 0.4 s"}, {"x": 10, "y": 1.2174641925532077, "hd": 1.9792669999987993, "sparse": 2.409686700000748, "trees": "10/10", "unique": 10, "leaves": 118, "note": "HD 2.0 s, sparse 2.4 s"}, {"x": 11, "y": 0.6671744524698019, "hd": 0.3422702999996545, "sparse": 0.22835399999894435, "trees": "10/10", "unique": 11, "leaves": 146, "note": "HD 0.3 s, sparse 0.2 s"}, {"x": 11, "y": 0.8027126915264159, "hd": 0.530240900003264, "sparse": 0.42563109999900917, "trees": "10/10", "unique": 11, "leaves": 146, "note": "HD 0.5 s, sparse 0.4 s"}, {"x": 11, "y": 1.2616512836856426, "hd": 2.0912287999999535, "sparse": 2.6384015000003274, "trees": "10/10", "unique": 11, "leaves": 146, "note": "HD 2.1 s, sparse 2.6 s"}, {"x": 12, "y": 0.7768615921862235, "hd": 0.7939681999851018, "sparse": 0.6168033999856561, "trees": "10/10", "unique": 12, "leaves": 172, "note": "HD 0.8 s, sparse 0.6 s"}, {"x": 15, "y": 0.527302931403935, "hd": 1.9869643000420183, "sparse": 1.0477321000071242, "trees": "10/10", "unique": 15, "leaves": 259, "note": "HD 2.0 s, sparse 1.0 s"}, {"x": 18, "y": 0.24356953125844638, "hd": 9.04715539999961, "sparse": 2.203611400000227, "trees": "10/10", "unique": 18, "leaves": 353, "note": "HD 9.0 s, sparse 2.2 s"}]}, {"name": "Shapley IV", "colorVar": "--aqua", "points": [{"x": 12, "y": 6.080994589313478, "hd": 3.2403929999563843, "sparse": 19.70481229998404, "trees": "10/10", "unique": 12, "leaves": 172, "note": "HD 3.2 s, sparse 19.7 s"}, {"x": 14, "y": 3.7291210854654935, "hd": 7.563287099997979, "sparse": 28.204413400031626, "trees": "10/10", "unique": 14, "leaves": 230, "note": "HD 7.6 s, sparse 28.2 s"}, {"x": 15, "y": 4.505003361699026, "hd": 9.290168142844257, "sparse": 41.852238714262576, "trees": "7/10", "unique": 15, "leaves": 259, "note": "HD 9.3 s, sparse 41.9 s"}, {"x": 16, "y": 4.804757943323516, "hd": 13.400134399998933, "sparse": 64.38440219999757, "trees": "5/10", "unique": 16, "leaves": 290, "note": "HD 13.4 s, sparse 64.4 s"}, {"x": 17, "y": 4.924698076141778, "hd": 17.529522249969887, "sparse": 86.32760450011119, "trees": "4/10", "unique": 17, "leaves": 320, "note": "HD 17.5 s, sparse 86.3 s"}, {"x": 18, "y": 4.208145557122719, "hd": 26.956289999998262, "sparse": 113.43599200000426, "trees": "2/10", "unique": 18, "leaves": 353, "note": "HD 27.0 s, sparse 113.4 s"}, {"x": 20, "y": 3.5916348135114013, "hd": 48.67139550000502, "sparse": 174.8098785000002, "trees": "2/10", "unique": 20, "leaves": 411, "note": "HD 48.7 s, sparse 174.8 s"}, {"x": 22, "y": 2.452149222050229, "hd": 82.82513199999812, "sparse": 203.0995830000029, "trees": "1/10", "unique": 22, "leaves": 467, "note": "HD 82.8 s, sparse 203.1 s"}]}], "xMin": 7, "xMax": 23, "yMin": 0.1, "yMax": 10, "thresholds": [{"x": 10, "label": "now: 10", "kind": "now"}, {"x": 16, "label": "proposed: 16", "kind": "new"}], "upLabel": "Above 1\u00d7: WoodelfHD faster", "downLabel": "below: Linear TreeSHAP faster", "aria": "Path-dependent SIV and BV: Linear TreeSHAP time divided by WoodelfHD time", "xStep": 2}}};</script>
+<script>
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function fmtRatio(v) { return v >= 10 ? v.toFixed(0) + "×" : v >= 1 ? v.toFixed(2) + "×" : v.toFixed(2) + "×"; }
+function fmtSec(v) { return v >= 100 ? v.toFixed(0) + " s" : v >= 10 ? v.toFixed(1) + " s" : v.toFixed(2) + " s"; }
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+// A log-scale line chart of a ratio against depth. spec: {series:[{name, colorVar, points:[{x, y, hd, sparse, note}]}],
+// xMin, xMax, yMin, yMax, thresholds:[{x, label, kind}], upLabel, downLabel}
+function ratioChart(container, spec) {
+  const W = 520, H = 320, L = 52, R = 70, T = 20, B = 42;
+  const svg = el("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": spec.aria || "chart"}, container);
+  const lx = v => L + (v - spec.xMin) / (spec.xMax - spec.xMin) * (W - L - R);
+  const ly = v => T + (Math.log10(spec.yMax) - Math.log10(v)) / (Math.log10(spec.yMax) - Math.log10(spec.yMin)) * (H - T - B);
+  const grid = el("g", {class: "grid"}, svg);
+  const ticks = [];
+  for (let e = Math.floor(Math.log10(spec.yMin)); e <= Math.ceil(Math.log10(spec.yMax)); e++) {
+    for (const m of [1, 2, 5]) { const v = m * Math.pow(10, e); if (v >= spec.yMin * 0.999 && v <= spec.yMax * 1.001) ticks.push(v); }
+  }
+  ticks.forEach(v => {
+    el("line", {x1: L, x2: W - R, y1: ly(v), y2: ly(v)}, grid);
+    const t = el("text", {x: L - 8, y: ly(v) + 4, "text-anchor": "end"}, svg);
+    t.textContent = v >= 1 ? v + "×" : "1/" + Math.round(1 / v) + "×";
+  });
+  for (let x = spec.xMin; x <= spec.xMax; x++) {
+    if (x % (spec.xStep || 2) !== 0) continue;
+    const t = el("text", {x: lx(x), y: H - B + 18, "text-anchor": "middle"}, svg);
+    t.textContent = x;
+  }
+  const xl = el("text", {x: (L + W - R) / 2, y: H - 4, "text-anchor": "middle"}, svg);
+  xl.textContent = spec.xLabel || "max_depth of the model";
+  el("line", {class: "axisline", x1: L, x2: W - R, y1: H - B, y2: H - B}, svg);
+  // break-even line and zone labels
+  el("line", {class: "ref", x1: L, x2: W - R, y1: ly(1), y2: ly(1)}, svg);
+  (spec.thresholds || []).forEach(th => {
+    el("line", {class: th.kind === "new" ? "thr-new" : "thr", x1: lx(th.x), x2: lx(th.x), y1: T, y2: H - B}, svg);
+    const t = el("text", {x: lx(th.x) + 4, y: T + 10}, svg); t.textContent = th.label;
+    if (th.kind === "new") t.setAttribute("style", "fill: var(--accent-ink)");
+  });
+  // series
+  spec.series.forEach(s => {
+    const color = `var(${s.colorVar})`;
+    const pts = s.points.filter(p => p.y > 0);
+    if (pts.length > 1) {
+      el("polyline", {points: pts.map(p => `${lx(p.x)},${ly(Math.min(Math.max(p.y, spec.yMin), spec.yMax))}`).join(" "),
+        fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}, svg);
+    }
+    pts.forEach(p => {
+      const few = parseInt(p.trees) <= 2;
+      el("circle", {cx: lx(p.x), cy: ly(Math.min(Math.max(p.y, spec.yMin), spec.yMax)), r: few ? 3.5 : 4,
+        fill: few ? "var(--surface)" : color, stroke: few ? color : "var(--surface)", "stroke-width": 2}, svg);
+    });
+    const last = pts[pts.length - 1];
+    if (last) {
+      const t = el("text", {class: "series-label", x: lx(last.x) + 9, y: ly(Math.min(Math.max(last.y, spec.yMin), spec.yMax)) + 4 + (s.labelDy || 0)}, svg);
+      t.textContent = s.name;
+    }
+  });
+  // hover: crosshair snapping to the nearest depth, one tooltip with every series
+  const xs = [...new Set(spec.series.flatMap(s => s.points.map(p => p.x)))].sort((a, b) => a - b);
+  const cross = el("line", {class: "cross", x1: 0, x2: 0, y1: T, y2: H - B, visibility: "hidden"}, svg);
+  const hit = el("rect", {x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent", tabindex: 0}, svg);
+  const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; container.appendChild(tip);
+  let focusIndex = -1;
+  function show(x) {
+    cross.setAttribute("x1", lx(x)); cross.setAttribute("x2", lx(x)); cross.setAttribute("visibility", "visible");
+    tip.replaceChildren();
+    const h = document.createElement("div"); h.className = "h"; h.textContent = (spec.xName || "max_depth") + " " + x; tip.appendChild(h);
+    spec.series.forEach(s => {
+      const p = s.points.find(q => q.x === x); if (!p) return;
+      const row = document.createElement("div"); row.className = "row";
+      const i = document.createElement("i"); i.style.background = `var(${s.colorVar})`;
+      const b = document.createElement("b"); b.textContent = fmtRatio(p.y);
+      const sp = document.createElement("span"); sp.textContent = s.name + (p.note ? " · " + p.note : "");
+      row.append(i, b, sp); tip.appendChild(row);
+    });
+    tip.hidden = false;
+    const box = container.getBoundingClientRect();
+    const px = lx(x) / W * box.width;
+    tip.style.left = Math.min(Math.max(px + 12, 0), box.width - tip.offsetWidth) + "px";
+    tip.style.top = "8px";
+  }
+  function hide() { cross.setAttribute("visibility", "hidden"); tip.hidden = true; }
+  hit.addEventListener("pointermove", ev => {
+    const box = svg.getBoundingClientRect();
+    const vx = (ev.clientX - box.left) / box.width * W;
+    let best = xs[0]; xs.forEach(x => { if (Math.abs(lx(x) - vx) < Math.abs(lx(best) - vx)) best = x; });
+    show(best);
+  });
+  hit.addEventListener("pointerleave", hide);
+  hit.addEventListener("focus", () => { focusIndex = 0; show(xs[0]); });
+  hit.addEventListener("blur", hide);
+  hit.addEventListener("keydown", ev => {
+    if (ev.key === "ArrowRight") { focusIndex = Math.min(xs.length - 1, focusIndex + 1); show(xs[focusIndex]); ev.preventDefault(); }
+    if (ev.key === "ArrowLeft") { focusIndex = Math.max(0, focusIndex - 1); show(xs[focusIndex]); ev.preventDefault(); }
+  });
+}
+
+function legend(container, series) {
+  const d = document.createElement("div"); d.className = "legend";
+  series.forEach(s => { const sp = document.createElement("span"); const i = document.createElement("i"); i.style.background = `var(${s.colorVar})`; sp.append(i, document.createTextNode(s.name)); d.appendChild(sp); });
+  container.appendChild(d);
+}
+
+function tableView(container, columns, rows, summary) {
+  const det = document.createElement("details");
+  const sm = document.createElement("summary"); sm.textContent = summary || "Table view"; det.appendChild(sm);
+  const wrap = document.createElement("div"); wrap.className = "tablewrap";
+  const t = document.createElement("table");
+  const thead = document.createElement("thead"); const hr = document.createElement("tr");
+  columns.forEach(c => { const th = document.createElement("th"); th.textContent = c; hr.appendChild(th); });
+  thead.appendChild(hr); t.appendChild(thead);
+  const tb = document.createElement("tbody");
+  rows.forEach(r => { const tr = document.createElement("tr"); r.forEach(v => { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); }); tb.appendChild(tr); });
+  t.appendChild(tb); wrap.appendChild(t); det.appendChild(wrap); container.appendChild(det);
+}
+
+function renderRatioFigure(id) {
+  const spec = DATA.charts[id];
+  const host = document.getElementById(id);
+  if (!host || !spec) return;
+  const chartDiv = document.createElement("div"); chartDiv.className = "chart"; host.appendChild(chartDiv);
+  ratioChart(chartDiv, spec);
+  legend(host, spec.series);
+  const guide = document.createElement("div"); guide.className = "small";
+  guide.textContent = spec.upLabel + ", " + spec.downLabel + ". Hollow points: timed on 1 or 2 trees.";
+  host.appendChild(guide);
+  const rows = [];
+  spec.series.forEach(s => s.points.forEach(p => rows.push([s.name, p.x, p.unique, p.leaves, p.trees, fmtSec(p.hd), fmtSec(p.sparse), fmtRatio(p.y), p.y > 1 ? "WoodelfHD" : "sparse"])));
+  tableView(host, ["series", "max_depth", "longest pattern", "leaves/tree", "trees timed", "WoodelfHD", "sparse", "sparse ÷ HD", "faster"], rows);
+}
+
+document.addEventListener("DOMContentLoaded", () => { Object.keys(DATA.charts).forEach(renderRatioFigure); });
+</script>
+</body>
+</html>

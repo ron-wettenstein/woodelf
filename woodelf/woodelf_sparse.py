@@ -1,3 +1,4 @@
+import math
 from typing import Dict, Any, Optional
 
 import numpy as np
@@ -14,7 +15,8 @@ from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterP
 from woodelf.core.path_to_s_vectors.mn_background_cii_p2s import MNBackgroundCIIPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.utils import get_unique_features_in_path, get_covers_vector, consumer_and_background_to_dict
+from woodelf.core.utils import get_unique_features_in_path, get_covers_vector, consumer_and_background_to_dict, \
+    get_max_unique_features_in_path
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 from woodelf.simple_woodelf import fill_mirror_pairs
 
@@ -25,17 +27,38 @@ except ModuleNotFoundError:
     cp = None
     IMPORTED_CP = False
 
-_MAX_DEPTH_FOR_HIGH_WOODELF = 12
-_MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF = 10
+# The thresholds were benchmarked on CPU against woodelf 0.5.0 (WoodelfHD v2), see docs/woodelf_hybrid_thresholds.html
+_MAX_DEPTH_FOR_HIGH_WOODELF = 24  # deeper, WoodelfHD's O(2^D) vectors per leaf take gigabytes
+_HIGH_WOODELF_VALUES_DEPTH_OFFSET = 11  # values: sparse WOODELF once depth > 11 + log2(background rows)
+_HIGH_WOODELF_CII_DEPTH_OFFSET = 7  # CardinalityInteractionIndicesMetric still runs on WoodelfHD v1
+_MAX_DEPTH_FOR_CII_HIGH_WOODELF = 18  # v1 keeps a diagonal per pair: O(D^2 * 2^D) memory
+_MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF = {ShapleyValues: 16, ShapleyInteractionValues: 22, BanzhafValues: 10}
 _SUPPORTED_SPARSE_BACKGROUND_METRICS = (ShapleyValues, BanzhafValues, CardinalityInteractionIndicesMetric,
                                         ShapleyInteractionValues, BanzhafInteractionValues)
 _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS = (ShapleyValues, BanzhafValues, ShapleyInteractionValues)
 
 
-def use_sparse_approach(depth, metric, is_background):
+def use_sparse_approach(depth, metric, is_background, background_size=None):
+    """
+    True when sparse WOODELF is expected to be faster than WoodelfHD on trees whose decision patterns are at most
+    depth long. In background mode it also depends on the number of background rows: sparse WOODELF pays for every
+    pair of distinct consumer and background patterns in a leaf, WoodelfHD pays O(D * 2^D) whatever their number is.
+    """
     if is_background:
-        return depth > _MAX_DEPTH_FOR_HIGH_WOODELF and isinstance(metric, _SUPPORTED_SPARSE_BACKGROUND_METRICS)
-    return depth > _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF and isinstance(metric, _SUPPORTED_SPARSE_PATH_DEPENDENT_METRICS)
+        assert background_size is not None, "use_sparse_approach needs the background size in background mode"
+        if not isinstance(metric, _SUPPORTED_SPARSE_BACKGROUND_METRICS):
+            return False
+        if depth > _MAX_DEPTH_FOR_HIGH_WOODELF:
+            return True
+        if isinstance(metric, CardinalityInteractionIndicesMetric):
+            return depth > min(_MAX_DEPTH_FOR_CII_HIGH_WOODELF, _HIGH_WOODELF_CII_DEPTH_OFFSET + math.log2(background_size))
+        if metric.INTERACTION_VALUE:  # WoodelfHD v2: three shared s vectors give every pair
+            return False
+        return depth > _HIGH_WOODELF_VALUES_DEPTH_OFFSET + math.log2(background_size)
+    for metric_class, max_depth in _MAX_DEPTH_FOR_PATH_DEPENDENT_HIGH_WOODELF.items():
+        if isinstance(metric, metric_class):
+            return depth > max_depth
+    return False
 
 
 def _accumulate(values: Dict, s_matrix: Dict, indices: np.ndarray, GPU: bool):
@@ -222,8 +245,18 @@ def hybrid_woodelf(
 
     effective_depth = min(model.max_depth, len(consumer_data.keys()))
     is_background = background_data is not None
+    background_size = None
+    if is_background:
+        background_size = len(background_data) if isinstance(background_data, pd.DataFrame) else len(next(iter(background_data.values())))
 
-    if use_sparse_approach(effective_depth, metric, is_background):
+    use_sparse = use_sparse_approach(effective_depth, metric, is_background, background_size)
+    if use_sparse:
+        # min(max_depth, features) only bounds the longest decision pattern, which is what WoodelfHD's cost depends on
+        # (a feature that repeats along a path shares one bit of the pattern). Compute it before choosing sparse WOODELF.
+        longest_decision_pattern = max(get_max_unique_features_in_path(tree) for tree in model.trees)
+        use_sparse = use_sparse_approach(longest_decision_pattern, metric, is_background, background_size)
+
+    if use_sparse:
         return woodelf_sparse(
             model, consumer_data, background_data, metric, GPU=GPU,
             use_neighbor_leaf_trick=use_neighbor_leaf_trick, model_was_loaded=True,

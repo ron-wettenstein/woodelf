@@ -64,6 +64,25 @@ def get_unique_features_in_path(path: List[DecisionTreeNode]):
     return unique_features_in_path
 
 
+def get_max_unique_features_in_path(tree: DecisionTreeNode) -> int:
+    """
+    Return the largest number of distinct features on any root-to-leaf path of the tree.
+    This is the effective depth of WoodelfHD: a feature that repeats along a path shares one bit
+    of the decision pattern, so no decision pattern is longer than this.
+    """
+    max_unique_features = 0
+    nodes_to_visit = [(tree, frozenset())]
+    while len(nodes_to_visit) > 0:
+        node, features_above = nodes_to_visit.pop()
+        if node.is_leaf():
+            max_unique_features = max(max_unique_features, len(features_above))
+        else:
+            features_above = features_above | {node.feature_name}
+            nodes_to_visit.append((node.left, features_above))
+            nodes_to_visit.append((node.right, features_above))
+    return max_unique_features
+
+
 def get_covers_vector(path: List[DecisionTreeNode], unique_features_in_path: List[Any]):
     if len(unique_features_in_path) == 0:
         # If the leaf is the tree's root, it has cover of 1.
