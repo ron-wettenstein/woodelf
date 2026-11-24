@@ -8,12 +8,16 @@ from sklearn.ensemble import HistGradientBoostingRegressor, GradientBoostingRegr
     IsolationForest, RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues, GeneralShapleyInteractionValues
+from woodelf.core.cube_metric import ShapleyValues, ShapleyInteractionValues, GeneralShapleyInteractionValues, \
+    GeneralBanzhafInteractionValues, MobiusCoefficients, FaithfulShapleyInteractionValues, PDIVOrder1Or2, CPDVMetric
+from woodelf.core.path_to_s_vectors.woodelfhd_v1_p2s import HighDepthWoodelfV1PathToSVectors
+from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2PathToSVectors, \
+    HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors
 from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.core.utils import get_covers_vector
-from woodelf.high_depth_woodelf import woodelf_for_high_depth
+from woodelf.high_depth_woodelf import woodelf_for_high_depth, create_high_depth_woodelf_p2s
 from woodelf.core.decision_patterns import decision_patterns_generator
 import numpy as np
 import pytest
@@ -433,3 +437,36 @@ def test_general_interaction_value_classes(trainset, testset, xgb_model, path_de
             np.testing.assert_allclose(woodelf_values[features[0]], woodelf_general_shapley_iv[features], atol=TOLERANCE)
         else:
             np.testing.assert_allclose(woodelf_iv[features], woodelf_general_shapley_iv[features], atol=TOLERANCE)
+
+
+@pytest.mark.parametrize("metric", [
+    GeneralShapleyInteractionValues(1, 3), GeneralBanzhafInteractionValues(3, 4), MobiusCoefficients(1, None),
+    FaithfulShapleyInteractionValues(1, 2),
+], ids=["GeneralShapley(1,3)", "GeneralBanzhaf(3,4)", "Mobius(1,None)", "FaithfulShapley(1,2)"])
+@pytest.mark.parametrize("path_dependent", [True, False], ids=["Path Dependent", "Background"])
+def test_v2cii_matches_v1(trainset, testset, xgb_model, metric, path_dependent):
+    trainset = trainset if not path_dependent else None
+    testset = testset.head(200)
+    model_obj = load_decision_tree_ensemble_model(xgb_model, list(testset.columns))
+    model_obj = DecisionTreesEnsemble(model_obj.trees[:3]) # the first 3 of the 100 trees, to keep the test short
+    v1_values = woodelf_for_high_depth(
+        model_obj, testset, trainset, metric=metric, model_was_loaded=True,
+        path_to_matrices_calculator=HighDepthWoodelfV1PathToSVectors(metric=metric, max_depth=model_obj.max_depth)
+    )
+    v2cii_values = woodelf_for_high_depth(model_obj, testset, trainset, metric=metric, model_was_loaded=True) # the default p2s
+    assert v1_values.keys() == v2cii_values.keys()
+    for subset in v1_values:
+        np.testing.assert_allclose(v2cii_values[subset], v1_values[subset], atol=TOLERANCE)
+
+
+def test_create_high_depth_woodelf_p2s_picks_the_p2s_class_of_the_metric():
+    for metric, p2s_cls in [
+        (ShapleyValues(), HighDepthWoodelfV2PathToSVectors),
+        (ShapleyInteractionValues(), HighDepthWoodelfV2PathToSVectors),
+        (GeneralShapleyInteractionValues(1, 2, shap_convention=True), HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors),
+        (MobiusCoefficients(1, None), HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors),
+        (FaithfulShapleyInteractionValues(1, 2), HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors),
+        (PDIVOrder1Or2(), HighDepthWoodelfV1PathToSVectors),
+        (CPDVMetric(), HighDepthWoodelfV1PathToSVectors),
+    ]:
+        assert type(create_high_depth_woodelf_p2s(metric, max_depth=4)) is p2s_cls, type(metric).__name__

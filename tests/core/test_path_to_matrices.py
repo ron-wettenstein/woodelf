@@ -2,13 +2,16 @@ import numpy as np
 import pytest
 
 from woodelf.core.cube_metric import ShapleyValues, BanzhafValues, ShapleyInteractionValues, BanzhafInteractionValues, \
-    GeneralShapleyInteractionValues
+    GeneralShapleyInteractionValues, GeneralBanzhafInteractionValues, MobiusCoefficients, ArbitraryOrderPDIV, \
+    FaithfulShapleyInteractionValues, FaithfulBanzhafInteractionValues, ShapleyTaylorInteractionValues
 from woodelf.core.path_to_s_vectors.simple_p2s import SimpleWoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.woodelfhd_v1_p2s import HighDepthWoodelfV1PathToSVectors
-from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2PathToSVectors
+from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2PathToSVectors, \
+    HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors
 from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors, \
     HighDepthWoodelfOriginalVersionPathToSVectors
 from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundPathToSVectors, MNBackgroundFasterPathToSVectors
+from woodelf.core.path_to_s_vectors.mn_background_cii_p2s import MNBackgroundCIIPathToSVectors
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
 
 TOLERANCE = 0.00001
@@ -25,6 +28,32 @@ class HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors(HighDepthWoodelfV2Pat
     FULL_S_VECTOR_CONSUMERS_RATIO = np.inf
     FULL_PAIR_S_VECTOR_CONSUMERS_RATIO = np.inf
 
+
+V2CII = HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors
+
+
+class V2CIIInclusionExclusion(V2CII):
+    """Inclusion-exclusion: the 2^k terms of every subset at the consumer patterns, whatever the number of consumers."""
+
+    def should_use_inclusion_exclusion(self, depth, order, num_consumers):
+        return True
+
+
+class V2CIIDynamicProgramming(V2CII):
+    """Dynamic programming: every s vector over all the 2^D patterns, whatever the number of consumers."""
+
+    def should_use_inclusion_exclusion(self, depth, order, num_consumers):
+        return False
+
+
+class V2CIISmallBatches(V2CII):
+    """Computes the s vectors a few subsets at a time, and splits the dynamic programming by the first members."""
+    SUBSETS_BATCH_ELEMENTS = 1000
+
+
+class V2CIIDynamicProgrammingInBatchesOfOne(V2CIIDynamicProgramming):
+    """Splits the dynamic programming down to a single prefix of size order - 1 at a time."""
+    SUBSETS_BATCH_ELEMENTS = 1
 
 
 # Shared test fixtures for the p2s equivalence tests.
@@ -113,6 +142,12 @@ def _leaf_consumer_values(p2s, mode, consumer_patterns, w, w_neighbor):
     return {key: s_vector[consumer_patterns] for key, s_vector in s_matrix.items()}
 
 
+def _assert_same_leaf_values(actual, reference, case, tolerance=TOLERANCE):
+    assert actual.keys() == reference.keys(), f"{case}: feature key mismatch: {actual.keys() ^ reference.keys()}"
+    for key in reference:
+        np.testing.assert_allclose(actual[key], reference[key], atol=tolerance, err_msg=f"{case}, key {key}")
+
+
 @pytest.mark.parametrize(
     "reference_cls, candidate_cls", _P2S_PAIRS,
     ids=[f"{reference_cls.__name__}-vs-{candidate_cls.__name__}" for reference_cls, candidate_cls in _P2S_PAIRS]
@@ -129,11 +164,7 @@ def test_p2s_classes_are_equivalent(reference_cls, candidate_cls):
         for w in [1.0, 3.0]:
             reference = _leaf_consumer_values(reference_p2s, mode, consumer_patterns, w, w_neighbor)
             actual = _leaf_consumer_values(candidate_p2s, mode, consumer_patterns, w, w_neighbor)
-            assert actual.keys() == reference.keys(), f"{case}: feature key mismatch: {actual.keys()} vs {reference.keys()}"
-            for feature in reference:
-                np.testing.assert_allclose(
-                    actual[feature], reference[feature], atol=TOLERANCE, err_msg=f"{case}, w={w}, feature {feature}"
-                )
+            _assert_same_leaf_values(actual, reference, f"{case}, w={w}")
 
 
 @pytest.mark.parametrize("p2s_cls", [HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2PathToSVectors])
@@ -172,3 +203,55 @@ def test_paths_shorter_than_the_interaction_order():
         assert actual_s.keys() == expected_s.keys()
         for feature in expected_s:
             np.testing.assert_allclose(actual_s[feature], expected_s[feature], atol=TOLERANCE)
+
+
+# CardinalityInteractionIndicesMetric instances for V2CII: several orders at once, the any order metrics, orders above 2
+# (the general inclusion-exclusion branches) and the faithful indices
+_CARDINALITY_METRICS = [
+    GeneralShapleyInteractionValues(1, None),
+    GeneralShapleyInteractionValues(3, 3, shap_convention=True),
+    GeneralBanzhafInteractionValues(1, 4),
+    MobiusCoefficients(1, None),
+    ArbitraryOrderPDIV(2, 5),
+    FaithfulShapleyInteractionValues(1, 3),
+    FaithfulBanzhafInteractionValues(2, 3),
+    ShapleyTaylorInteractionValues(1, 3),
+]
+_CARDINALITY_METRICS_IDS = [f"{type(metric).__name__}({metric.min_order},{metric.max_order})" for metric in _CARDINALITY_METRICS]
+_V2CII_VARIANTS = [
+    V2CII, V2CIIInclusionExclusion, V2CIIDynamicProgramming, V2CIISmallBatches, V2CIIDynamicProgrammingInBatchesOfOne
+]
+
+
+@pytest.mark.parametrize("v2cii_cls", _V2CII_VARIANTS, ids=[cls.__name__ for cls in _V2CII_VARIANTS])
+def test_v2cii_matches_v1(v2cii_cls):
+    for metric_name, metric in zip(_CARDINALITY_METRICS_IDS, _CARDINALITY_METRICS):
+        v1_p2s = HighDepthWoodelfV1PathToSVectors(metric=metric, max_depth=_DEPTH, GPU=False)
+        v2cii_p2s = v2cii_cls(metric=metric, max_depth=_DEPTH, GPU=False)
+        for mode in _BOTH_MODES:
+            for w_neighbor in [None, 0.5]:
+                for consumers, consumer_patterns in _CONSUMER_PATTERNS.items():
+                    reference = _leaf_consumer_values(v1_p2s, mode, consumer_patterns, 3.0, w_neighbor)
+                    actual = _leaf_consumer_values(v2cii_p2s, mode, consumer_patterns, 3.0, w_neighbor)
+                    _assert_same_leaf_values(actual, reference, f"{metric_name}, {mode}, w_neighbor={w_neighbor}, {consumers}")
+
+
+@pytest.mark.parametrize("metric", _CARDINALITY_METRICS, ids=_CARDINALITY_METRICS_IDS)
+def test_v2cii_matches_mn_background_cii(metric):
+    # MN reads every (consumer, background) cube off the patterns, independently of the M matrices. Both compute in
+    # float64, so they agree to far below the float32 TOLERANCE
+    v2cii_p2s = V2CII(metric=metric, max_depth=_DEPTH, GPU=False)
+    mn_p2s = MNBackgroundCIIPathToSVectors(metric=metric, max_depth=_DEPTH, GPU=False)
+    for w_neighbor in [None, 0.5]:
+        for consumers, consumer_patterns in _CONSUMER_PATTERNS.items():
+            reference = mn_p2s.get_background_s_matrix(_FEATURES_IN_PATH, consumer_patterns, _BACKGROUND_PATTERNS, 3.0, w_neighbor)
+            actual = v2cii_p2s.get_background_consumer_values(_FEATURES_IN_PATH, consumer_patterns, _BACKGROUND_PATTERNS, 3.0, w_neighbor)
+            _assert_same_leaf_values(actual, reference, f"w_neighbor={w_neighbor}, {consumers}", tolerance=1e-12)
+
+
+def test_v2cii_on_paths_shorter_than_the_interaction_order():
+    # paths shorter than the lowest order have no subsets
+    v2cii_p2s = V2CII(metric=GeneralShapleyInteractionValues(3, 3), max_depth=5, GPU=False)
+    features_in_path = [0, 1]
+    assert v2cii_p2s._get_s_vectors_given_f(features_in_path, np.arange(4) / 4, w=1.5) == {}
+    assert v2cii_p2s.get_path_dependent_consumer_values(features_in_path, np.arange(4), np.full(2, 0.3), 1.5) == {}

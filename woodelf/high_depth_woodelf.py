@@ -8,7 +8,8 @@ from woodelf.core.cube_metric import CubeMetric
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors, WoodelfPathToSVectors
 from woodelf.core.path_to_s_vectors.woodelfhd_v1_p2s import HighDepthWoodelfV1PathToSVectors
-from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2PathToSVectors
+from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2PathToSVectors, \
+    HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.core.utils import get_unique_features_in_path, get_covers_vector, consumer_and_background_to_dict
@@ -95,11 +96,13 @@ def add_feature_values(values: Dict[Any, float], feature, feature_values, GPU: b
 
 def create_high_depth_woodelf_p2s(metric: CubeMetric, max_depth: int, GPU: bool = False) -> WoodelfPathToSVectors:
     """
-    HighDepthWoodelfV2PathToSVectors when it supports the metric (Shapley and Banzhaf values and interaction values),
-    otherwise HighDepthWoodelfV1PathToSVectors.
+    The v2 p2s class that supports the metric: HighDepthWoodelfV2PathToSVectors for Shapley and Banzhaf values and
+    interaction values, HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors for a
+    CardinalityInteractionIndicesMetric of any orders. Otherwise HighDepthWoodelfV1PathToSVectors.
     """
-    if HighDepthWoodelfV2PathToSVectors.supports_metric(metric):
-        return HighDepthWoodelfV2PathToSVectors(metric=metric, max_depth=max_depth, GPU=GPU)
+    for p2s_cls in (HighDepthWoodelfV2PathToSVectors, HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors):
+        if p2s_cls.supports_metric(metric):
+            return p2s_cls(metric=metric, max_depth=max_depth, GPU=GPU)
     return HighDepthWoodelfV1PathToSVectors(metric=metric, max_depth=max_depth, GPU=GPU)
 
 
