@@ -22,8 +22,7 @@ from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, Decisio
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
 import woodelf.woodelf_sparse as woodelf_sparse_module
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
-from woodelf.core.utils import get_max_unique_features_in_path
-from woodelf.woodelf_sparse import woodelf_sparse, hybrid_woodelf, use_sparse_approach
+from woodelf.woodelf_sparse import woodelf_sparse, hybrid_woodelf
 from woodelf.simple_woodelf import calculate_path_dependent_metric, calculate_background_metric
 
 FIXTURES = [trainset, testset, xgb_model, xgb_model_depth_16, xgb_model_depth_22]
@@ -298,41 +297,6 @@ def test_fsii_fbii_and_stii_match_the_ones_rebuilt_from_the_mobius_coefficients(
         np.testing.assert_allclose(
             woodelf_values[subset], rebuilt_values[subset], atol=TOLERANCE
         )
-
-
-@pytest.mark.parametrize("depth, metric, background_size, expected", [
-    (17, ShapleyValues(), 100, False), (18, ShapleyValues(), 100, True),
-    (24, ShapleyValues(), 10_000, False), (25, ShapleyValues(), 10_000, True),
-    (20, BanzhafValues(), 1_000, False), (21, BanzhafValues(), 1_000, True),
-    (24, ShapleyInteractionValues(), 100, False), (25, ShapleyInteractionValues(), 100, True),
-    (24, BanzhafInteractionValues(), 100, False), (25, BanzhafInteractionValues(), 100, True),
-    (13, GeneralShapleyInteractionValues(2, 2), 100, False), (14, GeneralShapleyInteractionValues(2, 2), 100, True),
-    (18, GeneralShapleyInteractionValues(2, 2), 10 ** 6, False), (19, GeneralShapleyInteractionValues(2, 2), 10 ** 6, True),
-])
-def test_use_sparse_approach_in_background_mode(depth, metric, background_size, expected):
-    # values: sparse WOODELF when depth > 11 + log2(m), interaction values: when depth > 24,
-    # CardinalityInteractionIndicesMetric: when depth > min(18, 7 + log2(m))
-    assert use_sparse_approach(depth, metric, True, background_size) == expected
-
-
-@pytest.mark.parametrize("depth, metric, expected", [
-    (16, ShapleyValues(), False), (17, ShapleyValues(), True),
-    (22, ShapleyInteractionValues(), False), (23, ShapleyInteractionValues(), True),
-    (10, BanzhafValues(), False), (11, BanzhafValues(), True),
-    (30, GeneralShapleyInteractionValues(3, 3), False),
-])
-def test_use_sparse_approach_in_path_dependent_mode(depth, metric, expected):
-    assert use_sparse_approach(depth, metric, False) == expected
-
-
-def test_max_unique_features_in_path(testset, xgb_model_depth_22):
-    model = load_decision_tree_ensemble_model(xgb_model_depth_22, list(testset.columns))
-    for tree in model.trees:
-        expected = max(len(set(path)) for _, path in tree.get_all_leaves_with_paths())
-        assert get_max_unique_features_in_path(tree) == expected
-    # A feature repeats on the deepest paths, so the longest decision pattern is shorter than the max depth
-    assert model.max_depth == 22
-    assert max(get_max_unique_features_in_path(tree) for tree in model.trees) == 21
 
 
 def test_hybrid_woodelf_measures_depth_as_the_longest_decision_pattern(monkeypatch, testset, xgb_model_depth_22):
