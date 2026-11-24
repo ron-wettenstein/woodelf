@@ -1,0 +1,474 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Any-Order WoodelfHD</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* Layout: one reading column with numbered derivation steps; formulas in their own scroll boxes, bit patterns in mono. */
+  :root {
+    --bg: #f5f7f8;
+    --surface: #ffffff;
+    --fg: #1a1f24;
+    --muted: #566270;
+    --rule: #d9dfe4;
+    --accent: #23677f;
+    --accent-soft: #e2eef2;
+    --pos: #23677f;
+    --neg: #9b4a33;
+    --code-bg: #edf1f3;
+    --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11161a; --surface: #171d22; --fg: #e2e7eb; --muted: #9aa6b1; --rule: #2a333b;
+      --accent: #7dbcd4; --accent-soft: #1b2a31; --pos: #7dbcd4; --neg: #e39a80; --code-bg: #1c242a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11161a; --surface: #171d22; --fg: #e2e7eb; --muted: #9aa6b1; --rule: #2a333b;
+    --accent: #7dbcd4; --accent-soft: #1b2a31; --pos: #7dbcd4; --neg: #e39a80; --code-bg: #1c242a;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font-body); font-size: 1.07rem; line-height: 1.62;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 2.5rem 4rem;
+  }
+  main { max-width: 46rem; margin: 0 auto; display: flex; flex-direction: column; gap: 2.75rem; }
+  header { display: flex; flex-direction: column; gap: .6rem; }
+  .eyebrow { font-family: var(--font-mono); font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.45rem; display: flex; gap: .6rem; align-items: baseline; }
+  h2 .step { font-family: var(--font-mono); font-size: .9rem; color: var(--accent); font-weight: 600; }
+  h3 { font-size: 1.08rem; }
+  p { margin: 0; }
+  section { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+  .lede { font-size: 1.15rem; color: var(--muted); }
+  code, .mono { font-family: var(--font-mono); font-size: .86em; }
+  code { background: var(--code-bg); padding: .08em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+  a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .math { overflow-x: auto; overflow-y: hidden; padding: .2rem 0; }
+  mjx-container[display="true"] { margin: .4rem 0 !important; }
+  .summary { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 1.1rem 1.3rem; display: flex; flex-direction: column; gap: .6rem; }
+  .summary ul { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .35rem; }
+  nav ol { margin: 0; padding-left: 1.4rem; columns: 2; column-gap: 2rem; font-family: var(--font-display); font-size: .95rem; }
+  nav li { break-inside: avoid; padding-block: .1rem; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; font-variant-numeric: tabular-nums; }
+  th, td { padding: .45rem .7rem; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { font-family: var(--font-display); font-weight: 600; font-size: .82rem; color: var(--muted); background: var(--code-bg); }
+  td:first-child, th:first-child { text-align: left; }
+  tr:last-child td { border-bottom: 0; }
+  td.best { color: var(--accent); font-weight: 600; }
+  td.mono, td .mono { font-family: var(--font-mono); font-size: .86rem; }
+  .pos { color: var(--pos); font-weight: 600; }
+  .neg { color: var(--neg); font-weight: 600; }
+  .bits { font-family: var(--font-mono); letter-spacing: .12em; }
+  table.cases td, table.cases th { text-align: left; }
+  table.tri td, table.tri th { text-align: center; }
+  table.tri td:first-child { text-align: left; }
+  pre.code { margin: 0; padding: .8rem 1rem; background: var(--code-bg); border-radius: 8px; overflow-x: auto; font-family: var(--font-mono); font-size: .84rem; line-height: 1.55; }
+  pre.code code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+  details.derivation { border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); padding: .75rem 1.1rem; }
+  details.derivation > * + * { margin-top: .7rem; }
+  details.derivation summary { cursor: pointer; font-family: var(--font-display); font-weight: 600; font-size: .95rem; color: var(--accent); }
+  details.derivation summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .note { font-size: .93rem; color: var(--muted); }
+  .remark { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: .9rem 1.1rem; border-radius: 0 6px 6px 0; display: flex; flex-direction: column; gap: .5rem; }
+  .remark .label { font-family: var(--font-mono); font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  @media (max-width: 560px) { nav ol { columns: 1; } h1 { font-size: 1.8rem; } }
+</style>
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]], macros: { ze: "\\zeta", pm: "{\\,\\setminus\\,}" } },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+
+<main>
+  <header>
+    <div class="eyebrow">WOODELF · HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors</div>
+    <h1>Any-Order WoodelfHD</h1>
+    <p class="lede">How the v2 symmetry extends from Shapley and Banzhaf values and pairwise interaction values to every cardinality interaction index of any order. It needs \(k+1\) shared diagonals per order, a \(2^k\)-term inclusion-exclusion, and a prefix recurrence that shares those terms.</p>
+  </header>
+
+  <div class="summary">
+    <h3>In short</h3>
+    <ul>
+      <li>For a <code>CardinalityInteractionIndicesMetric</code> of order \(k\), the M matrices of all \(\binom{D}{k}\) subsets are combinations of <b>\(k+1\) shared matrices</b>. A leaf needs \(k+1\) StrassenLike multiplications per order instead of one per subset.</li>
+      <li>The s vector of a subset is the inclusion-exclusion \(s_S[c]=\sum_{T\subseteq S}s_{|T|}[c^{-T}]\).</li>
+      <li>A <b>prefix recurrence</b> shares those \(2^k\) terms between subsets, so building all the s vectors costs about one vector addition per subset, where v1 needs \(D\).</li>
+      <li>A cost model picks one of two routes: the \(2^k\) terms read at the consumer patterns, or every s vector built over all \(2^D\) patterns and then one lookup per consumer. A route in between, through prefixes of size \(j\), is future work.</li>
+    </ul>
+  </div>
+
+  <nav aria-label="Contents">
+    <ol>
+      <li><a href="#setting">The leaf computation</a></li>
+      <li><a href="#symmetry">The v2 symmetry, orders 1 and 2</a></li>
+      <li><a href="#any-order">Any order: \(k+1\) shared diagonals</a></li>
+      <li><a href="#example">A worked bit example</a></li>
+      <li><a href="#precision">Why float64</a></li>
+      <li><a href="#prefix">The prefix recurrence</a></li>
+      <li><a href="#route">Future work: the prefix size \(j\)</a></li>
+      <li><a href="#neighbor">The neighbor leaf</a></li>
+      <li><a href="#complexity">Costs per leaf</a></li>
+      <li><a href="#benchmarks">Benchmarks</a></li>
+      <li><a href="#remark">A remark for the paper</a></li>
+    </ol>
+  </nav>
+
+  <section id="setting">
+    <h2><span class="step">1</span>The leaf computation</h2>
+    <p>Take a leaf with weight \(w\) whose root-to-leaf path has \(D\) unique features. The first feature is the most significant bit of a decision pattern. A consumer pattern \(c\) and a background pattern \(b\) define a cube: feature \(i\) is a <span class="pos">positive literal</span> when \(c_i=1, b_i=0\) (rule 1), a <span class="neg">negated literal</span> when \(c_i=0, b_i=1\) (rule 2), and absent when both are 1 (rule 3).</p>
+    <p>WoodelfHD keeps only the secondary diagonal. Its row \(q\) is the <em>full</em> cube whose positive literals are the set bits of \(q\) and whose negated literals are the zero bits. Rule 3 follows by linearity: the game of a cube without feature \(i\) is the sum of the games with \(i\) positive and with \(i\) negated. For a subset \(S\), let \(D_S[q]\) be the metric's value of \(S\) on the full cube of \(q\). With \(g\) the prepared, reversed f vector of the leaf, the StrassenLike multiplication is a subset-sum (zeta) transform over the pattern bits:</p>
+    <div class="math">\[ s_S[c] \;=\; \sum_{q \subseteq c} D_S[q]\, g[q], \qquad\text{and the leaf adds } w\, s_S[c] \text{ to every consumer with pattern } c. \]</div>
+    <p>Everything below uses one fact: \(s_S\) is <b>linear in \(D_S\)</b>. Any way of writing \(D_S\) as a sum of shared diagonals, each restricted to some rows, carries over term by term to \(s_S\).</p>
+    <p>Notation: \(c^{-T}\) is \(c\) with the bits of the features in \(T\) set to 0, and \(c^{-m}\) is short for \(c^{-\{m\}}\). Over a full \(2^D\) vector \(y\), reading \(y[c^{-m}]\) at every \(c\) copies the half where bit \(m\) is 0 onto both halves, which is a broadcast.</p>
+  </section>
+
+  <section id="symmetry">
+    <h2><span class="step">2</span>The v2 symmetry, orders 1 and 2</h2>
+    <p>For Shapley and Banzhaf values, the value of feature \(i\) on a full cube depends only on the cube's number of positive literals \(|q|\), and on whether \(i\) is one of them. So all the features share two diagonals: \(M_+[q] = v_+(|q|)\) and \(M_-[q] = v_-(|q|)\). The diagonal of feature \(i\) is \(M_+\) on the rows where bit \(i\) is set and \(M_-\) on the others, so \(D_i = M_+ + \mathbb 1[i\notin q]\,(M_- - M_+)\). By linearity:</p>
+    <div class="math">\[ s_i[c] = s_+[c] + s_R\big[c^{-i}\big], \qquad s_R = s_- - s_+ . \]</div>
+    <p>Pairs need three diagonals, \(M_{++}, M_{+-}, M_{--}\), and the same argument gives the formula of <code>HighDepthWoodelfV2PathToSVectors</code>:</p>
+    <div class="math">\[ s_{ij}[c] = s_{++}[c] + s_A[c^{-i}] + s_A[c^{-j}] + s_Q[c^{-ij}],\qquad s_A = s_{+-}-s_{++},\quad s_Q = s_{++}-2s_{+-}+s_{--}. \]</div>
+  </section>
+
+  <section id="any-order">
+    <h2><span class="step">3</span>Any order: \(k+1\) shared diagonals</h2>
+    <p>A <code>CardinalityInteractionIndicesMetric</code> gives a subset of size \(k\), on a cube with \(P\) positive and \(Q\) negated literals, a value that depends only on how many of the subset's members are positive. On the full cube of \(q\) (\(P=|q|\), \(Q=D-|q|\)), let \(h_u(q)\) be the value of a \(k\)-subset with \(u\) negated members and \(k-u\) positive ones. In the code this is <code>cardinality_value(D-|q|, |q|, k-u, u)</code>, set to 0 where the cube can't hold such a subset. Then</p>
+    <div class="math">\[ D_S[q] = h_{\,|S\pm q|}(q), \qquad S\pm q = \text{the members of } S \text{ whose bit is 0 in } q. \]</div>
+    <h3>Forward differences</h3>
+    <p>Fix a row \(q\). The value of a \(k\)-subset \(S\) can be decomposed into a sum of terms, one for each set \(T\subseteq S\) of members that are all negated in \(q\): a term for the empty set, one for each negated member, one for each negated pair, and so on. By symmetry, the value of \(S\) depends only on how many of its members are negated, and never on which. Swapping two positive literals of a full cube, or two negated ones, does not change its game, and these indices are symmetric, so they give the same value to every subset with the same number of negated members. Hence the term of \(T\) comes out the same for all the sets of one size, and a single diagonal \(M_t\) holds the term of every set of \(t\) negated members, in every subset.</p>
+    <h3>Pairs, case by case</h3>
+    <p>Take a pair \(S=\{i,j\}\). Its value on row \(q\) is \(h_0\), \(h_1\) or \(h_2\), by how many of \(i, j\) are zero bits of \(q\). Decompose it into \(M_0\) for the empty set, \(M_1\) for each negated member, and \(M_2\) for the two of them when both are negated:</p>
+    <div class="table-wrap">
+      <table class="cases">
+        <thead><tr><th>\(q_i\,q_j\)</th><th>negated</th><th>value as a sum of terms</th></tr></thead>
+        <tbody>
+          <tr><td class="bits">11</td><td>none</td><td>\(h_0 = M_0\)</td></tr>
+          <tr><td class="bits">01</td><td>\(i\)</td><td>\(h_1 = M_0 + M_1\)</td></tr>
+          <tr><td class="bits">10</td><td>\(j\)</td><td>\(h_1 = M_0 + M_1\)</td></tr>
+          <tr><td class="bits">00</td><td>\(i\) and \(j\)</td><td>\(h_2 = M_0 + M_1 + M_1 + M_2\)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Solving from the top, each case brings in one new unknown:</p>
+    <div class="math">\[ M_0 = h_0, \qquad M_1 = h_1 - h_0, \qquad M_2 = h_2 - 2h_1 + h_0 . \]</div>
+    <p>These are the zeroth, first and second forward differences of the sequence \(h_0, h_1, h_2\). \(M_1\) is the term of one negated member, and \(M_2\) the term of a negated pair: the part of \(h_2\) that is not already in the terms of \(\emptyset\), \(\{i\}\) and \(\{j\}\).</p>
+    <p>By the symmetry, the two middle cases give the same equation, and that is where the sharing comes from. Whichever of \(i, j\) is the negated one, the value is \(h_1\), so one \(M_1\) serves both members. Nothing in \(M_0, M_1, M_2\) names \(i\) or \(j\), so the same three diagonals serve every pair. What sets one pair apart from another is only the rows on which each term is switched on, and those depend only on the bits of its members.</p>
+    <h3>Any order</h3>
+    <p>For a subset of any size \(k\), the terms are found the same way, one size at a time, and \(M_t\) is the \(t\)-th forward difference of \(h\) in \(u\):</p>
+    <div class="math">\[ M_t[q] \;=\; \sum_{u=0}^{t} (-1)^{t-u}\binom{t}{u}\, h_u(q), \qquad t = 0,\dots,k. \]</div>
+    <p>Binomial inversion, which here is Newton's forward-difference formula, turns them back into \(h_u = \sum_{t=0}^{u}\binom{u}{t} M_t\).</p>
+    <details class="derivation">
+      <summary>Derivation of \(h_u = \sum_{t=0}^{u}\binom{u}{t} M_t\)</summary>
+      <p>Write the sum in the definition of \(M_t\) over \(w\), put it in, and swap the two sums, since \(0\le w\le t\le u\):</p>
+      <div class="math">\[ \sum_{t=0}^{u}\binom{u}{t}M_t \;=\; \sum_{t=0}^{u}\binom{u}{t}\sum_{w=0}^{t}(-1)^{t-w}\binom{t}{w}\,h_w \;=\; \sum_{w=0}^{u}h_w\sum_{t=w}^{u}(-1)^{t-w}\binom{u}{t}\binom{t}{w}. \]</div>
+      <p>Choosing \(t\) of the \(u\) and then \(w\) of those \(t\) is the same as choosing the \(w\) first and then the other \(t-w\) of the remaining \(u-w\), so \(\binom{u}{t}\binom{t}{w} = \binom{u}{w}\binom{u-w}{t-w}\). With \(s = t-w\) and the binomial theorem, the inner sum is</p>
+      <div class="math">\[ \sum_{t=w}^{u}(-1)^{t-w}\binom{u}{t}\binom{t}{w} \;=\; \binom{u}{w}\sum_{s=0}^{u-w}(-1)^{s}\binom{u-w}{s} \;=\; \binom{u}{w}\,(1-1)^{u-w}. \]</div>
+      <p>This is 1 for \(w=u\) and 0 for every \(w&lt;u\), so only \(h_u\) is left. For pairs at \(u=2\): \(M_0+2M_1+M_2 = h_0 + 2(h_1-h_0) + (h_2-2h_1+h_0) = h_2\).</p>
+    </details>
+    <p>This sum counts the terms that are switched on: a cube in which \(u\) members of \(S\) are negated has exactly \(\binom{u}{t}\) subsets \(T\subseteq S\) of size \(t\) with all their members negated. So</p>
+    <div class="math">\[ \begin{aligned} D_S[q] &= h_{\,|S\pm q|}(q) = h_u \\ &= \sum_{t}\binom{u}{t}M_t[q] \\ &= \sum_{T \subseteq S} \mathbb 1\big[\text{all of } T \text{ negated in } q\big]\; M_{|T|}[q]. \end{aligned} \]</div>
+    <h3>The inclusion-exclusion</h3>
+    <p>With the shared s vectors \(s_t = \ze(M_t \odot g)\), one StrassenLike multiplication for all \(t\), linearity gives</p>
+    <div class="math">\[ \begin{aligned} s_S[c] &= \sum_{q\subseteq c} D_S[q]\,g[q] \\ &= \sum_{q\subseteq c}\sum_{T\subseteq S}\mathbb 1[q\cap T=\emptyset]\,M_{|T|}[q]\,g[q] \\ &= \sum_{T\subseteq S}\;\sum_{q\subseteq c^{-T}} M_{|T|}[q]\,g[q] \\ &= \sum_{T \subseteq S} s_{|T|}\big[c^{-T}\big]. \end{aligned} \]</div>
+    <p>For \(k=1\), \((M_0, M_1) = (M_+,\, M_- - M_+)\), which are the matrices of \(s_+\) and \(s_R\). For \(k=2\), \((M_0,M_1,M_2) = (M_{++},\, M_{+-}-M_{++},\, M_{++}-2M_{+-}+M_{--})\), which are those of \(s_{++}, s_A, s_Q\). A metric of orders \(k_{\min}\dots k_{\max}\) stacks the \(\sum_k (k+1)\) diagonals of its orders and gets every shared s vector from a single StrassenLike multiplication per leaf.</p>
+    <p>The value 0 used where the cube can't hold a subset is never read. A row \(q\) and a subset \(S\) always pick \(h_u\) with \(u = |S\pm q|\), and that is always feasible. The diagonals are stored as \(M_t\), already differenced at construction, so there is no per-leaf combine step. The covered metrics are <code>GeneralShapleyInteractionValues</code>, <code>GeneralBanzhafInteractionValues</code>, <code>MobiusCoefficients</code> (PDIV of any order), <code>FaithfulShapleyInteractionValues</code>, <code>FaithfulBanzhafInteractionValues</code> and <code>ShapleyTaylorInteractionValues</code>.</p>
+  </section>
+
+  <section id="example">
+    <h2><span class="step">4</span>A worked bit example</h2>
+    <p>A path of \(D=6\) features \(f_1\dots f_6\), the subset \(S=\{f_1,f_3,f_5\}\) and the consumer pattern \(c=\)<span class="bits">101101</span>. The eight terms of \(s_S[c]\) are:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>\(T\)</th><th>\(c^{-T}\)</th><th>term</th></tr></thead>
+        <tbody>
+          <tr><td>\(\emptyset\)</td><td class="mono">101101</td><td>\(s_0[101101]\)</td></tr>
+          <tr><td>\(\{f_1\}\)</td><td class="mono"><span class="neg">0</span>01101</td><td>\(s_1[001101]\)</td></tr>
+          <tr><td>\(\{f_3\}\)</td><td class="mono">10<span class="neg">0</span>101</td><td>\(s_1[100101]\)</td></tr>
+          <tr><td>\(\{f_5\}\)</td><td class="mono">1011<span class="neg">0</span>1</td><td>\(s_1[101101]\)</td></tr>
+          <tr><td>\(\{f_1,f_3\}\)</td><td class="mono"><span class="neg">0</span>0<span class="neg">0</span>101</td><td>\(s_2[000101]\)</td></tr>
+          <tr><td>\(\{f_1,f_5\}\)</td><td class="mono"><span class="neg">0</span>011<span class="neg">0</span>1</td><td>\(s_2[001101]\)</td></tr>
+          <tr><td>\(\{f_3,f_5\}\)</td><td class="mono">10<span class="neg">0</span>1<span class="neg">0</span>1</td><td>\(s_2[100101]\)</td></tr>
+          <tr><td>\(\{f_1,f_3,f_5\}\)</td><td class="mono"><span class="neg">0</span>0<span class="neg">0</span>1<span class="neg">0</span>1</td><td>\(s_3[000101]\)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Bit \(f_5\) is already 0 in \(c\), so clearing it repeats a pattern. The term still counts, because it reads a different shared vector (\(s_1\) after \(s_0\), and so on).</p>
+  </section>
+
+  <section id="precision">
+    <h2><span class="step">5</span>Why float64</h2>
+    <p>Each difference \(M_t\) sums \(2^t\) values of \(h\), so \(|M_t| \le 2^t \max|h|\). The terms of the inclusion-exclusion then add up to</p>
+    <div class="math">\[ \sum_{T\subseteq S}|M_{|T|}| \;\le\; \sum_{t=0}^{k}\binom{k}{t}2^t\,\max|h| \;=\; 3^k \max|h|, \]</div>
+    <p>while the result is of the order of \(\max|h|\). So float32 loses about \(\log_2 3^k\) bits. The diagonals are float64. Measured on any-order Möbius coefficients at \(D=10\), against a float64 reference:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>order</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th></tr></thead>
+        <tbody>
+          <tr><td>float32 max error</td><td>7e-10</td><td>2.4e-8</td><td>2.4e-7</td><td>1.7e-6</td><td>6.9e-6</td><td>1.9e-5</td><td>4.3e-5</td></tr>
+          <tr><td>float64 max error</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>1.4e-14</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="prefix">
+    <h2><span class="step">6</span>The prefix recurrence</h2>
+    <p>Computing every term separately costs \(2^k\) operations per subset and pattern, but subsets that share their first members share most of their terms. Take the members of a subset in path order, and for a prefix \(A\) of a subset define</p>
+    <div class="math">\[ Z_A^{(r)}[c] \;=\; \sum_{T\subseteq A} s_{|T|+r}\big[c^{-T}\big], \qquad 0 \le r \le k-|A| . \]</div>
+    <p>Then \(Z_\emptyset^{(r)} = s_r\) and \(s_S = Z_S^{(0)}\). Splitting \(T\) by whether it contains a new member \(m\) gives one broadcast addition per \(r\):</p>
+    <div class="math">\[ Z_{A\cup\{m\}}^{(r)}[c] = \underbrace{\sum_{T\subseteq A} s_{|T|+r}[c^{-T}]}_{m\notin T} + \underbrace{\sum_{T\subseteq A} s_{|T|+1+r}[c^{-T\cup\{m\}}]}_{m \in T} = Z_A^{(r)}[c] + Z_A^{(r+1)}\big[c^{-m}\big]. \]</div>
+    <p>As a recursive function, with the members of a prefix in path order:</p>
+    <pre class="code"><code>def Z(A, r, c):                       # Z_A^(r)[c]
+    if len(A) == 0:
+        return s[r][c]                # the shared s vectors
+    m, B = A[-1], A[:-1]              # A = B + [m]
+    return Z(B, r, c) + Z(B, r + 1, clear_bit(c, m))
+
+s_S[c] = Z(S, 0, c)</code></pre>
+    <p>For one subset and one pattern, the recursion reaches its base \(2^k\) times, once per term of the inclusion-exclusion. But every subset that starts with \(A\) calls <code>Z</code> on \(A\), each at its own patterns. So instead, every \(Z_A^{(r)}\) is computed once, bottom-up, as a vector over all \(2^D\) patterns, which turns the recursion into a dynamic program over the prefixes.</p>
+    <p>Take one subset \(S=(a_1,\dots,a_k)\), its members in path order, and its prefixes \(A_j=(a_1,\dots,a_j)\). Computing \(Z_{A_j}^{(r)}\) needs \(Z_{A_{j-1}}^{(r)}\) and \(Z_{A_{j-1}}^{(r+1)}\), and \(s_S = Z_{A_k}^{(0)}\) needs only \(r=0\) at the last prefix. Going back from \(s_S\), the prefix \(A_j\) is needed for \(r=0,\dots,k-j\). For \(k=3\):</p>
+    <div class="table-wrap">
+      <table class="tri">
+        <thead><tr><th></th><th>\(r=0\)</th><th>\(r=1\)</th><th>\(r=2\)</th><th>\(r=3\)</th></tr></thead>
+        <tbody>
+          <tr><td>\(A_0=\emptyset\)</td><td>\(s_0\)</td><td>\(s_1\)</td><td>\(s_2\)</td><td>\(s_3\)</td></tr>
+          <tr><td>\(A_1\)</td><td>\(Z_{A_1}^{(0)}\)</td><td>\(Z_{A_1}^{(1)}\)</td><td>\(Z_{A_1}^{(2)}\)</td><td></td></tr>
+          <tr><td>\(A_2\)</td><td>\(Z_{A_2}^{(0)}\)</td><td>\(Z_{A_2}^{(1)}\)</td><td></td><td></td></tr>
+          <tr><td>\(A_3=S\)</td><td>\(s_S\)</td><td></td><td></td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Each vector is the one above it plus the one above and to its right, read at \(c^{-a_j}\): \(Z_{A_j}^{(r)} = Z_{A_{j-1}}^{(r)} + Z_{A_{j-1}}^{(r+1)}\big[c^{-a_j}\big]\). So the row of \(A_j\) is computed after the row of \(A_{j-1}\), and one subset alone takes \(3+2+1=6\) additions, \(k(k+1)/2\) in general, where the inclusion-exclusion takes \(2^k-1\).</p>
+    <p>A row is shared by every subset that starts with its prefix, so the dynamic program computes each row once, level by level, a level being the rows of all the prefixes of one size. Level \(i\) has \(N_i=\binom{D-k+i}{i}\) rows, one per prefix of size \(i\) that leaves room for the other \(k-i\) members, of \(k-i+1\) vectors each. Building every s vector over all \(2^D\) patterns takes</p>
+    <div class="math">\[ \Big(\sum_{i=1}^{k}(k-i+1)\,N_i\Big)\cdot 2^D \;\text{additions, against}\quad \binom{D}{k}2^k\cdot 2^D \text{ term by term, and } \binom{D}{k}\,D\cdot 2^D \text{ in v1.} \]</div>
+    <p>At \(D=14, k=3\) these are 556, 2,912 and 5,096 vectors of \(2^{14}\) values. While \(k\) is small compared with \(D\), most of the work is the last level, one vector per subset, so the dynamic program costs about one addition per subset.</p>
+    <p>Each level is computed in batches. The prefixes of a level are ordered by their last member, so the prefixes that a member \(m\) extends are the leading ones. One NumPy broadcast per (level, member) computes all their extensions by \(m\), for all \(r\): \(O(D\cdot k)\) calls per leaf instead of one per subset. When a level would exceed <code>SUBSETS_BATCH_ELEMENTS</code> values, the prefixes are first split by their next member.</p>
+  </section>
+
+  <section id="route">
+    <h2><span class="step">7</span>Future work: the prefix size \(j\)</h2>
+    <div class="remark">
+      <span class="label">Not in the code</span>
+      <p>The code has only the two ends of this route, \(j=0\) and \(j=k\), and picks the cheaper by \(\mathrm{cost}(0)\) against \(\mathrm{cost}(k)\) below (<code>should_use_inclusion_exclusion</code>). A prototype of the whole route was up to 3 times faster with fewer consumers than about \(2^D\), about 2 times at \(n=10^4\) on paths of 14 to 16 features, and no faster with \(10^5\) consumers or more, where the code always builds the full s vectors. We left it out for now, for simplicity: it is a third route with its own bookkeeping, for a speedup at small \(n\) only. The measurements are at the end of this section.</p>
+    </div>
+    <p>The dynamic program doesn't have to run to the last level. Tabulate only the levels \(1..j\) over all \(2^D\) patterns, and get every \(s_S\) at the consumer patterns by running the recursion of section 6 with its base at level \(j\) instead of the empty prefix:</p>
+    <pre class="code"><code>def Z(A, r, c):                       # route j
+    if len(A) == j:
+        return table[A][r][c]         # level j, tabulated over all 2^D patterns
+    m, B = A[-1], A[:-1]
+    return Z(B, r, c) + Z(B, r + 1, clear_bit(c, m))</code></pre>
+    <p>Write \(S\) as its first \(j\) members \(A\) and the other \(k-j\) members \(R\). The recursion unrolls the members of \(R\), and each of them either keeps \(c\) and \(r\), or clears its bit and raises \(r\) by one. So the calls that reach level \(j\) are one per set \(U\subseteq R\) of cleared members:</p>
+    <div class="math">\[ s_S[c] = Z_S^{(0)}[c] = \sum_{U \subseteq R} Z_A^{(|U|)}\big[c^{-U}\big] \qquad (2^{k-j}\text{ lookups into level } j). \]</div>
+    <p>Both ends are special cases. \(j=0\) tabulates nothing and unrolls everything down to the base \(Z_\emptyset^{(r)} = s_r\), which is the inclusion-exclusion of section 3. \(j=k\) tabulates every level, which is the full dynamic program of section 6, and reads every \(s_S\) once. In the prototype, the unrolled part was the inclusion-exclusion, <code>_inclusion_exclusion_s_vectors_at</code>, run on one prefix's rows, over the completions \(R\) of \(A\). Those completions are a contiguous suffix of the lexicographic subset masks, so it needed no new mask code.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>\(j\)</th><th>tabulated levels</th><th>lookups per consumer and subset</th></tr></thead>
+        <tbody>
+          <tr><td>\(0\)</td><td>none, since \(Z_\emptyset^{(r)}=s_r\)</td><td>\(2^k\)</td></tr>
+          <tr><td>\(j\)</td><td>\(1..j\): \(\sum_{i\le j}(k-i+1)N_i\cdot 2^D\) additions</td><td>\(2^{k-j}\)</td></tr>
+          <tr><td>\(k\)</td><td>all, about \(\binom{D}{k}2^D\) additions</td><td>\(1\)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Choosing \(j\)</h3>
+    <p>With \(n\) consumers, the prototype took the \(j\) of the lowest</p>
+    <div class="math">\[ \mathrm{cost}(j) = 2^D\sum_{i=1}^{j}(k-i+1)N_i \;+\; \frac{\binom{D}{k}\,2^{k-j}\,n}{\rho(D)} , \]</div>
+    <p>where \(\rho(D)\) is how many lookups cost about as much as one addition over the patterns. It was benchmarked as the crossover between \(j=0\) and \(j=k\): about 3 for \(D\le 10\), and about 1.5 for deeper paths, where the lookups into longer vectors miss the cache more often. Each cost is a line in \(n\) whose slope falls as \(j\) grows, so the chosen \(j\) only grows with \(n\), from 0 to \(k\).</p>
+    <p>An example at \(D=14\), \(k=3\), \(n=3000\), timed in background mode:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>\(j\)</th><th>build (additions)</th><th>lookups</th><th>cost model</th><th>measured</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td>0</td><td>8.74 M</td><td>5.82 M</td><td>52.8 ms</td></tr>
+          <tr><td>1</td><td>0.59 M</td><td>4.37 M</td><td class="best">3.50 M</td><td class="best">24.8 ms</td></tr>
+          <tr><td>2</td><td>3.15 M</td><td>2.18 M</td><td>4.60 M</td><td>26.5 ms</td></tr>
+          <tr><td>3</td><td>9.11 M</td><td>1.09 M</td><td>9.84 M</td><td>58.8 ms</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">The code, with only \(j=0\) and \(j=k\), picks \(j=0\) here. Both are more than twice as slow as \(j=1\).</p>
+    <details class="derivation">
+      <summary>Speedup of the prototype</summary>
+      <p>One leaf of \(D\) unique features, \(n\) consumers, in background mode, measured with the prototype before it was removed. Each cell is the time with only \(j=0\) and \(j=k\) divided by the time of the prototype, with the \(j\) the prototype picked in parentheses. With only \(j=0\) and \(j=k\), each cell gets the faster of the two, as measured. The routes are the prototype with its prefix size fixed, timed back to back with it, best of two interleaved rounds. Where the prototype picked \(j=0\) or \(j=k\) it ran one of the two routes itself, so those cells show the noise, about 10%.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>background mode</th><th>\(D\)</th><th>\(n=10^3\)</th><th>\(n=10^4\)</th><th>\(n=10^5\)</th></tr></thead>
+          <tbody>
+            <tr><td>GeneralShapley order 2</td><td>8</td><td>0.99× (2)</td><td>1.08× (2)</td><td>0.97× (2)</td></tr>
+            <tr><td></td><td>10</td><td>1.02× (1)</td><td>0.97× (2)</td><td>0.93× (2)</td></tr>
+            <tr><td></td><td>12</td><td>0.96× (0)</td><td>1.05× (2)</td><td>1.00× (2)</td></tr>
+            <tr><td></td><td>14</td><td>1.00× (0)</td><td class="best">2.2× (1)</td><td>0.99× (2)</td></tr>
+            <tr><td></td><td>16</td><td>0.99× (0)</td><td>0.97× (0)</td><td>1.09× (2)</td></tr>
+            <tr><td>GeneralShapley order 3</td><td>8</td><td>1.01× (3)</td><td>1.04× (3)</td><td>0.99× (3)</td></tr>
+            <tr><td></td><td>10</td><td>1.03× (2)</td><td>0.95× (3)</td><td>0.97× (3)</td></tr>
+            <tr><td></td><td>12</td><td class="best">3.0× (1)</td><td>1.01× (3)</td><td>1.05× (3)</td></tr>
+            <tr><td></td><td>14</td><td class="best">3.0× (1)</td><td class="best">2.0× (2)</td><td>0.92× (3)</td></tr>
+            <tr><td></td><td>16</td><td>0.93× (0)</td><td class="best">1.89× (1)</td><td>0.95× (3)</td></tr>
+            <tr><td>GeneralBanzhaf order 4</td><td>12</td><td class="best">3.0× (2)</td><td>1.04× (4)</td><td>1.00× (4)</td></tr>
+            <tr><td></td><td>14</td><td class="best">2.4× (1)</td><td class="best">1.75× (3)</td><td>1.00× (4)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>An intermediate \(j\) pays when \(n\) is below about \(2^D\): up to 3 times at \(n=10^3\), and about 2 times at \(n=10^4\) on paths of 14 to 16 features. With \(n=10^5\) the prototype always picked \(j=k\), so it changed nothing there.</p>
+    </details>
+  </section>
+
+  <section id="neighbor">
+    <h2><span class="step">8</span>The neighbor leaf</h2>
+    <p>With the neighbor leaf trick, the right sibling's f is the neighbor vector of the left leaf's f, and its consumer patterns are \(c \oplus 1\), the last bit flipped. Both leaves go through the recurrence together, stacked on a leading axis of the same arrays. At \(j=k\) the sibling's s vectors are folded in before the lookup: \(s_S[c] + s'_S[c\oplus 1]\) is the element-pair swap of \(s'_S\) added to \(s_S\), so every consumer is looked up once. At \(j=0\) the sibling's terms are read at \(c\oplus 1\).</p>
+  </section>
+
+  <section id="complexity">
+    <h2><span class="step">9</span>Costs per leaf</h2>
+    <p>For one order \(k\), a path with \(D\) unique features and \(n\) consumers:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>v1</th><th>v2 for CII metrics</th></tr></thead>
+        <tbody>
+          <tr><td>stored diagonals per depth</td><td>\(\binom{D}{k}\cdot 2^D\)</td><td>\((k+1)\cdot 2^D\)</td></tr>
+          <tr><td>StrassenLike multiplication</td><td>\(\binom{D}{k}\cdot D\, 2^D\)</td><td>\((k+1)\cdot D\, 2^D\)</td></tr>
+          <tr><td>s vectors of the subsets</td><td>(in the multiplication)</td><td>\(\min\big(\mathrm{cost}(0), \mathrm{cost}(k)\big)\), at most about \(\binom{D}{k}(2^D + n)\)</td></tr>
+          <tr><td>consumer values</td><td>\(\binom{D}{k}\cdot n\)</td><td>\(\binom{D}{k}\cdot n\) at \(j=k\), \(\binom{D}{k}\cdot 2^k n\) at \(j=0\)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>v2 saves the factor \(\binom{D}{k}/(k+1)\) in the multiplication and in memory. Building the s vectors costs about one addition per subset and pattern where v1 spends \(D\), and with few consumers v2 doesn't build them at all. It cannot beat the output itself: when \(n\gg 2^D\), both are bound by the \(\binom{D}{k}\,n\) values they must write.</p>
+  </section>
+
+  <section id="benchmarks">
+    <h2><span class="step">10</span>Benchmarks</h2>
+    <p>All the timings are on the CPU, on the code without section 7. Per leaf, each row times its variants back to back, best of three interleaved rounds (two in the ablation). The end-to-end runs are single runs, noisy to about 20%.</p>
+    <h3>Per leaf against v1</h3>
+    <p>One leaf of \(D\) unique features, \(n\) consumers. Each cell is the speedup of v2 over v1, the v1 time divided by the v2 time (above 1 means v2 is faster). In background mode both compute in float64, though v1 stores its M matrices in float32.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>background mode</th><th>\(D\)</th><th>\(n=10^3\)</th><th>\(n=10^4\)</th><th>\(n=10^5\)</th></tr></thead>
+        <tbody>
+          <tr><td>GeneralShapley order 2</td><td>8</td><td>0.74×</td><td>0.83×</td><td>0.95×</td></tr>
+          <tr><td></td><td>10</td><td>1.54×</td><td>1.17×</td><td>1.02×</td></tr>
+          <tr><td></td><td>12</td><td>5.8×</td><td>2.6×</td><td>1.29×</td></tr>
+          <tr><td></td><td>14</td><td>19×</td><td>2.5×</td><td>2.1×</td></tr>
+          <tr><td></td><td>16</td><td class="best">29×</td><td>7.7×</td><td>2.8×</td></tr>
+          <tr><td>GeneralShapley order 3</td><td>8</td><td>0.77×</td><td>0.89×</td><td>0.97×</td></tr>
+          <tr><td></td><td>10</td><td>1.48×</td><td>1.31×</td><td>1.02×</td></tr>
+          <tr><td></td><td>12</td><td>2.7×</td><td>2.5×</td><td>1.29×</td></tr>
+          <tr><td></td><td>14</td><td>8.3×</td><td>2.8×</td><td>1.82×</td></tr>
+          <tr><td></td><td>16</td><td>19×</td><td>4.7×</td><td>1.96×</td></tr>
+          <tr><td>GeneralBanzhaf order 4</td><td>12</td><td>2.4×</td><td>2.1×</td><td>1.27×</td></tr>
+          <tr><td></td><td>14</td><td>4.6×</td><td>2.4×</td><td>1.63×</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <details class="derivation">
+      <summary>Speedup from section 6, the prefix recurrence</summary>
+      <p>One leaf of \(D\) unique features, \(n\) consumers, in background mode. Each cell is the time without section 6 divided by the time of the current code. Without section 6, the full route builds every \(s_S\) over all \(2^D\) patterns from its \(2^k\) terms of the inclusion-exclusion, and that code gets the faster of its two routes, as measured. The current code picks its route by the cost model. Both are timed back to back, best of two interleaved rounds. Where the current code reads the \(2^k\) terms at the consumer patterns, it runs the baseline's route itself, so those cells show the noise.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>background mode</th><th>\(D\)</th><th>\(n=10^3\)</th><th>\(n=10^4\)</th><th>\(n=10^5\)</th></tr></thead>
+          <tbody>
+            <tr><td>GeneralShapley order 2</td><td>8</td><td>0.76×</td><td>1.36×</td><td>4.1×</td></tr>
+            <tr><td></td><td>10</td><td>1.05×</td><td>2.3×</td><td>3.4×</td></tr>
+            <tr><td></td><td>12</td><td>1.02×</td><td>4.0×</td><td>5.1×</td></tr>
+            <tr><td></td><td>14</td><td>0.99×</td><td>1.00×</td><td>3.9×</td></tr>
+            <tr><td></td><td>16</td><td>0.98×</td><td>0.96×</td><td>2.2×</td></tr>
+            <tr><td>GeneralShapley order 3</td><td>8</td><td>1.10×</td><td>2.5×</td><td>4.3×</td></tr>
+            <tr><td></td><td>10</td><td>1.76×</td><td>3.3×</td><td>4.4×</td></tr>
+            <tr><td></td><td>12</td><td>1.04×</td><td>6.9×</td><td>7.4×</td></tr>
+            <tr><td></td><td>14</td><td>1.00×</td><td>2.3×</td><td>9.0×</td></tr>
+            <tr><td></td><td>16</td><td>1.02×</td><td>0.99×</td><td>4.5×</td></tr>
+            <tr><td>GeneralBanzhaf order 4</td><td>12</td><td>2.0×</td><td class="best">11×</td><td>7.3×</td></tr>
+            <tr><td></td><td>14</td><td>1.01×</td><td>4.1×</td><td class="best">15×</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Section 6 pays with many consumers, where the s vectors over all the patterns are worth building: 2.2 to 15 times at \(n=10^5\). With few consumers on deep paths both read the \(2^k\) terms at the consumer patterns, and the recurrence isn't used. On the shortest paths, with vectors of 256 values, building them term by term is faster (0.76×).</p>
+    </details>
+    <p>In path-dependent mode v1 computes in float32 and v2 in float64, so with many consumers v2 moves twice the bytes:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>path-dependent mode</th><th>\(D\)</th><th>\(n=10^3\)</th><th>\(n=10^4\)</th><th>\(n=10^5\)</th></tr></thead>
+        <tbody>
+          <tr><td>GeneralShapley order 3</td><td>8</td><td>0.72×</td><td>0.71×</td><td>0.71×</td></tr>
+          <tr><td></td><td>10</td><td>1.22×</td><td>0.96×</td><td>0.56×</td></tr>
+          <tr><td></td><td>12</td><td>1.55×</td><td>1.49×</td><td>0.76×</td></tr>
+          <tr><td></td><td>14</td><td>5.3×</td><td>1.74×</td><td>1.11×</td></tr>
+          <tr><td></td><td>16</td><td class="best">11×</td><td>3.2×</td><td>1.23×</td></tr>
+          <tr><td>Möbius, all orders</td><td>6</td><td>0.32×</td><td>0.51×</td><td>0.73×</td></tr>
+          <tr><td></td><td>8</td><td>0.46×</td><td>0.65×</td><td>0.71×</td></tr>
+          <tr><td></td><td>10</td><td>0.83×</td><td>0.76×</td><td>0.61×</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Möbius of all orders at once is the one case where v2 stays slower. With orders 1 to \(D\), the levels of the prefix recurrence add up to about as much work as v1's one zeta transform per subset.</p>
+    <h3>End to end against sparse WOODELF</h3>
+<p>These are whole-ensemble runs in background mode, which is the only mode <code>woodelf_sparse</code> supports for these metrics. The models are XGBoost regressors on 20 synthetic features. There are \(n=1000\) consumers and \(m\) background rows. <code>woodelf_for_high_depth</code> picks the new class by itself, and <code>woodelf_sparse</code> runs its default MN class and <code>MNBackgroundCIIFasterPathToSVectors</code>. Times are in seconds, from single runs. A method stopped at its time limit shows the limit, as in &gt; 300 s, and X means it ran out of memory. The v2 (CII) and v1 columns were rerun on the code without section 7, and the v2 times of depths 16 to 20 come from one run. The sparse methods agree with v2 to 1e-12 or better. v1 agrees to about 1e-6 on the Shapley metrics, since its M matrices are float32, and to 1e-13 on Banzhaf, whose values are powers of 2.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>\(m\)</th><th>\(D\)</th><th>trees</th><th>leaves</th><th>metric</th><th>v2 (CII)</th><th>sparse</th><th>sparse, faster MN</th><th>v1</th></tr></thead>
+        <tbody>
+          <tr><td>1,000</td><td>6</td><td>10</td><td>637</td><td>GeneralShapley 3</td><td>0.19</td><td>0.5</td><td>0.3</td><td class="best">0.15</td></tr>
+          <tr><td>1,000</td><td>8</td><td>10</td><td>2,389</td><td>GeneralShapley 3</td><td>0.85</td><td>6.9</td><td>3.1</td><td class="best">0.73</td></tr>
+          <tr><td>1,000</td><td>10</td><td>10</td><td>8,198</td><td>GeneralShapley 2</td><td class="best">3.0</td><td>53</td><td>14.3</td><td>3.1</td></tr>
+          <tr><td>1,000</td><td>10</td><td>10</td><td>8,198</td><td>GeneralShapley 3</td><td class="best">4.4</td><td>110</td><td>31.5</td><td>5.0</td></tr>
+          <tr><td>1,000</td><td>10</td><td>10</td><td>8,198</td><td>GeneralBanzhaf 4</td><td class="best">5.5</td><td>151</td><td>61.5</td><td>6.5</td></tr>
+          <tr><td>1,000</td><td>12</td><td>4</td><td>10,645</td><td>GeneralShapley 2</td><td class="best">4.7</td><td>133</td><td>27.3</td><td>4.8</td></tr>
+          <tr><td>1,000</td><td>12</td><td>4</td><td>10,645</td><td>GeneralShapley 3</td><td class="best">7.1</td><td>348</td><td>57.4</td><td>9.2</td></tr>
+          <tr><td>1,000</td><td>12</td><td>4</td><td>10,645</td><td>GeneralShapley 1..3</td><td class="best">10.3</td><td>&gt; 500 s</td><td>177</td><td>14.0</td></tr>
+          <tr><td>1,000</td><td>12</td><td>4</td><td>10,645</td><td>GeneralBanzhaf 4</td><td class="best">9.1</td><td>482</td><td>153</td><td>13.8</td></tr>
+          <tr><td>1,000</td><td>14</td><td>4</td><td>20,247</td><td>GeneralShapley 2</td><td class="best">8.8</td><td>481</td><td>132</td><td>13.7</td></tr>
+          <tr><td>1,000</td><td>14</td><td>2</td><td>10,090</td><td>GeneralShapley 3</td><td class="best">7.6</td><td>&gt; 300 s</td><td>131</td><td>36.1</td></tr>
+          <tr><td>1,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 3</td><td class="best">14.1</td><td>&gt; 300 s</td><td>117</td><td>162</td></tr>
+          <tr><td>1,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 3</td><td class="best">15.1</td><td>&gt; 300 s</td><td>153</td><td>X</td></tr>
+          <tr><td>1,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 3</td><td class="best">16.1</td><td>&gt; 300 s</td><td>151</td><td>X</td></tr>
+          <tr><td>10,000</td><td>8</td><td>10</td><td>2,389</td><td>GeneralShapley 3</td><td class="best">0.98</td><td>15.8</td><td>4.5</td><td>1.5</td></tr>
+          <tr><td>10,000</td><td>12</td><td>2</td><td>5,489</td><td>GeneralShapley 3</td><td class="best">3.7</td><td>&gt; 300 s</td><td>64.8</td><td>9.2</td></tr>
+          <tr><td>10,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 2</td><td class="best">7.6</td><td>1,018</td><td>181</td><td>42.5</td></tr>
+          <tr><td>10,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 2</td><td class="best">8.6</td><td>&gt; 300 s</td><td>117</td><td>196</td></tr>
+          <tr><td>10,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 2</td><td class="best">9.0</td><td>&gt; 300 s</td><td>135</td><td>X</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>v2 is the fastest from depth 10 on. It is at least 1.6 times faster than the faster MN class, and at least 5.8 times from depth 12 on. It is 2.6 to 134 times faster than the default MN class, which takes more than 300 s on all but one model from depth 12 on. The gap grows with the order, and with the depth up to depth 12. At depth 20, v2 takes 14 to 18% longer than at depth 16, on trees with 11% more leaves. v1 falls further behind with the depth. It runs out of memory at order 3 from depth 18 and at order 2 at depth 20, since its memory grows as \(\binom{D}{k}2^D\) against \(k\,2^D\) for v2. <code>hybrid_woodelf</code> currently sends background CII metrics to sparse WOODELF on trees deeper than 12, which these numbers argue against up to depth 20. The cost of v2 depends on \(m\) only through the f histogram of the leaf. The sparse methods grow with the number of distinct background patterns, which is about \(m\) on deep paths.</p>
+    <h3>End to end against LTS, path-dependent</h3>
+    <p>In path-dependent mode <code>woodelf_sparse</code> runs <code>LTSRecursivePathToSVectors</code>, a Linear TreeSHAP. It has no CII metrics: it supports only Shapley values, Banzhaf values and <code>ShapleyInteractionValues</code>, and <code>woodelf_sparse</code> accepts CII metrics only in background mode. So the one CII metric it can be compared on is GeneralShapley of order 2, with the shap convention, which is its <code>ShapleyInteractionValues</code>. The models and the \(n=1000\) consumers are those above. v2 (pairs) is <code>HighDepthWoodelfV2PathToSVectors</code>, the order 2 formula of section 2. Times are in seconds.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>\(D\)</th><th>trees</th><th>leaves</th><th>v2 (CII)</th><th>sparse (LTS)</th><th>v2 (pairs)</th><th>v1</th></tr></thead>
+        <tbody>
+          <tr><td>6</td><td>10</td><td>637</td><td>0.18</td><td>0.49</td><td>0.14</td><td class="best">0.13</td></tr>
+          <tr><td>8</td><td>10</td><td>2,389</td><td>0.73</td><td>3.0</td><td>0.77</td><td class="best">0.63</td></tr>
+          <tr><td>10</td><td>10</td><td>8,198</td><td>3.1</td><td>15.6</td><td>3.6</td><td class="best">3.0</td></tr>
+          <tr><td>12</td><td>4</td><td>10,645</td><td class="best">4.2</td><td>23.8</td><td>5.1</td><td>4.8</td></tr>
+          <tr><td>14</td><td>4</td><td>20,247</td><td class="best">9.5</td><td>53.5</td><td>11.3</td><td>13.1</td></tr>
+          <tr><td>16</td><td>2</td><td>13,346</td><td class="best">6.4</td><td>38.7</td><td>7.9</td><td>26.8</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>v2 (CII) is 2.7 to 6 times faster than LTS, more on deeper trees, and 4 times faster than v1 at depth 16. It is also a little faster than v2 (pairs) from depth 8 on. All four agree to 2e-4 or better. v1 and v2 (pairs) compute in float32 in path-dependent mode, and that is the size of the differences.</p>
+  </section>
+
+  <section id="remark">
+    <h2><span class="step">11</span>A remark for the paper</h2>
+    <div class="remark">
+      <span class="label">Remark</span>
+      <p>Let \(\phi\) be an interaction index of order \(k\) whose value on a cube depends only on how many members of the subset are positive literals. This holds for the Shapley, Banzhaf, Möbius, faithful Shapley and Banzhaf, and Shapley-Taylor indices. Then each of the \(\binom{D}{k}\) M matrices of a path is a sum of row restrictions of \(k+1\) shared matrices, the forward differences of \(\phi\) in the number of negated members. WoodelfHD needs \(k+1\) StrassenLike multiplications per order instead of \(\binom{D}{k}\), and \(O(k\,2^D)\) memory instead of \(O(\binom{D}{k}2^D)\).</p>
+      <p>The s vector of every subset follows by the inclusion-exclusion \(s_S[c]=\sum_{T\subseteq S}s_{|T|}[c^{-T}]\). Evaluated along subset prefixes, this costs \(\sum_{i}(k-i+1)\binom{D-k+i}{i}\) vector additions, about one per subset while \(k\ll D\), against \(D\) per subset in v1.</p>
+    </div>
+  </section>
+</main>
+
+</body></html>
