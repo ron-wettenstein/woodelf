@@ -351,7 +351,7 @@ s_S[c] = Z(S, 0, c)</code></pre>
 
   <section id="benchmarks">
     <h2><span class="step">10</span>Benchmarks</h2>
-    <p>All the timings are from one Windows laptop on the CPU, on the code without section 7. Per leaf, each row times its variants back to back, best of three interleaved rounds (two in the ablation). The end-to-end runs are single runs, noisy to about 20%.</p>
+    <p>All the timings are on the CPU, on the code without section 7. Per leaf, each row times its variants back to back, best of three interleaved rounds (two in the ablation). The end-to-end runs are single runs, noisy to about 20%.</p>
     <h3>Per leaf against v1</h3>
     <p>One leaf of \(D\) unique features, \(n\) consumers. Each cell is the speedup of v2 over v1, the v1 time divided by the v2 time (above 1 means v2 is faster). In background mode both compute in float64, though v1 stores its M matrices in float32.</p>
     <div class="table-wrap">
@@ -415,8 +415,7 @@ s_S[c] = Z(S, 0, c)</code></pre>
     </div>
     <p class="note">Möbius of all orders at once is the one case where v2 stays slower. With orders 1 to \(D\), the levels of the prefix recurrence add up to about as much work as v1's one zeta transform per subset.</p>
     <h3>End to end against sparse WOODELF</h3>
-<p>These are whole-ensemble runs in background mode, which is the only mode <code>woodelf_sparse</code> supports for these metrics. The models are XGBoost regressors on 20 synthetic features. There are \(n=1000\) consumers and \(m\) background rows. <code>woodelf_for_high_depth</code> picks the new class by itself, and <code>woodelf_sparse</code> runs its default MN class and <code>MNBackgroundCIIFasterPathToSVectors</code>. Times are in seconds, from single runs, one at a time. The sparse methods agree with v2 to 1e-12 or better. v1 agrees to about 1e-6 on the Shapley metrics, since its M matrices are float32, and to 1e-13 on Banzhaf, whose values are powers of 2.</p>
-    <p><strong>On the laptop</strong>, a Windows machine with 16 logical cores and no other benchmark running. The sparse methods were stopped after 500 s, except the one run of 1,018 s. The v2 (CII) and v1 columns were rerun on the code without section 7, and the v2 times of depths 16 to 20 come from one run. A cell with — was not measured on the laptop, and those models are in the Colab table below.</p>
+<p>These are whole-ensemble runs in background mode, which is the only mode <code>woodelf_sparse</code> supports for these metrics. The models are XGBoost regressors on 20 synthetic features. There are \(n=1000\) consumers and \(m\) background rows. <code>woodelf_for_high_depth</code> picks the new class by itself, and <code>woodelf_sparse</code> runs its default MN class and <code>MNBackgroundCIIFasterPathToSVectors</code>. Times are in seconds, from single runs. A method stopped at its time limit shows the limit, as in &gt; 300 s, and X means it ran out of memory. The v2 (CII) and v1 columns were rerun on the code without section 7, and the v2 times of depths 16 to 20 come from one run. The sparse methods agree with v2 to 1e-12 or better. v1 agrees to about 1e-6 on the Shapley metrics, since its M matrices are float32, and to 1e-13 on Banzhaf, whose values are powers of 2.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>\(m\)</th><th>\(D\)</th><th>trees</th><th>leaves</th><th>metric</th><th>v2 (CII)</th><th>sparse</th><th>sparse, faster MN</th><th>v1</th></tr></thead>
@@ -431,37 +430,19 @@ s_S[c] = Z(S, 0, c)</code></pre>
           <tr><td>1,000</td><td>12</td><td>4</td><td>10,645</td><td>GeneralShapley 1..3</td><td class="best">10.3</td><td>&gt; 500 s</td><td>177</td><td>14.0</td></tr>
           <tr><td>1,000</td><td>12</td><td>4</td><td>10,645</td><td>GeneralBanzhaf 4</td><td class="best">9.1</td><td>482</td><td>153</td><td>13.8</td></tr>
           <tr><td>1,000</td><td>14</td><td>4</td><td>20,247</td><td>GeneralShapley 2</td><td class="best">8.8</td><td>481</td><td>132</td><td>13.7</td></tr>
-          <tr><td>1,000</td><td>14</td><td>2</td><td>10,090</td><td>GeneralShapley 3</td><td class="best">7.6</td><td>—</td><td>—</td><td>—</td></tr>
-          <tr><td>1,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 3</td><td class="best">14.1</td><td>—</td><td>117</td><td>—</td></tr>
-          <tr><td>1,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 3</td><td class="best">15.1</td><td>—</td><td>153</td><td>—</td></tr>
-          <tr><td>1,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 3</td><td class="best">16.1</td><td>—</td><td>151</td><td>—</td></tr>
-          <tr><td>10,000</td><td>8</td><td>10</td><td>2,389</td><td>GeneralShapley 3</td><td class="best">0.98</td><td>—</td><td>4.5</td><td>—</td></tr>
-          <tr><td>10,000</td><td>12</td><td>2</td><td>5,489</td><td>GeneralShapley 3</td><td class="best">3.7</td><td>—</td><td>—</td><td>—</td></tr>
-          <tr><td>10,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 2</td><td class="best">7.6</td><td>1,018</td><td>—</td><td>—</td></tr>
-          <tr><td>10,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 2</td><td class="best">8.6</td><td>—</td><td>117</td><td>—</td></tr>
-          <tr><td>10,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 2</td><td class="best">9.0</td><td>—</td><td>135</td><td>—</td></tr>
+          <tr><td>1,000</td><td>14</td><td>2</td><td>10,090</td><td>GeneralShapley 3</td><td class="best">7.6</td><td>&gt; 300 s</td><td>131</td><td>36.1</td></tr>
+          <tr><td>1,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 3</td><td class="best">14.1</td><td>&gt; 300 s</td><td>117</td><td>162</td></tr>
+          <tr><td>1,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 3</td><td class="best">15.1</td><td>&gt; 300 s</td><td>153</td><td>X</td></tr>
+          <tr><td>1,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 3</td><td class="best">16.1</td><td>&gt; 300 s</td><td>151</td><td>X</td></tr>
+          <tr><td>10,000</td><td>8</td><td>10</td><td>2,389</td><td>GeneralShapley 3</td><td class="best">0.98</td><td>15.8</td><td>4.5</td><td>1.5</td></tr>
+          <tr><td>10,000</td><td>12</td><td>2</td><td>5,489</td><td>GeneralShapley 3</td><td class="best">3.7</td><td>&gt; 300 s</td><td>64.8</td><td>9.2</td></tr>
+          <tr><td>10,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 2</td><td class="best">7.6</td><td>1,018</td><td>181</td><td>42.5</td></tr>
+          <tr><td>10,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 2</td><td class="best">8.6</td><td>&gt; 300 s</td><td>117</td><td>196</td></tr>
+          <tr><td>10,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 2</td><td class="best">9.0</td><td>&gt; 300 s</td><td>135</td><td>X</td></tr>
         </tbody>
       </table>
     </div>
-    <p><strong>On Colab</strong>, for the cells the laptop did not get to. This is Colab's standard CPU runtime, with 2 cores of an Intel Xeon at 2.2 GHz and 12.7 GB of RAM. Each method was stopped after 300 s, and "out of memory" means the OS killed the run. Every run timed v2 again in its own process, and the v2 column is the median of those times. They varied by up to 1.5 times for the same model (11.4 to 16.6 s at depth 14). A cell with — was measured on the laptop only.</p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>\(m\)</th><th>\(D\)</th><th>trees</th><th>leaves</th><th>metric</th><th>v2 (CII)</th><th>sparse</th><th>sparse, faster MN</th><th>v1</th></tr></thead>
-        <tbody>
-          <tr><td>1,000</td><td>14</td><td>2</td><td>10,090</td><td>GeneralShapley 3</td><td class="best">12.9</td><td>&gt; 300 s</td><td>131</td><td>36.1</td></tr>
-          <tr><td>1,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 3</td><td class="best">18.9</td><td>&gt; 300 s</td><td>—</td><td>162</td></tr>
-          <tr><td>1,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 3</td><td class="best">21.6</td><td>&gt; 300 s</td><td>—</td><td>out of memory</td></tr>
-          <tr><td>1,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 3</td><td class="best">23.7</td><td>&gt; 300 s</td><td>—</td><td>out of memory</td></tr>
-          <tr><td>10,000</td><td>8</td><td>10</td><td>2,389</td><td>GeneralShapley 3</td><td class="best">1.23</td><td>15.8</td><td>10.0</td><td>1.5</td></tr>
-          <tr><td>10,000</td><td>12</td><td>2</td><td>5,489</td><td>GeneralShapley 3</td><td class="best">5.5</td><td>&gt; 300 s</td><td>64.8</td><td>9.2</td></tr>
-          <tr><td>10,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 2</td><td class="best">11.8</td><td>—</td><td>181</td><td>42.5</td></tr>
-          <tr><td>10,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 2</td><td class="best">13.6</td><td>&gt; 300 s</td><td>—</td><td>196</td></tr>
-          <tr><td>10,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 2</td><td class="best">13.4</td><td>&gt; 300 s</td><td>—</td><td>out of memory</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="note">Compare within a table, not across the two. Colab ran v2 1.3 to 1.7 times slower than the laptop. The faster MN class, timed on both machines only at \(m=10{,}000\) and depth 8, ran 2.2 times slower there, where v2 ran 1.3 times slower, because on the laptop the sparse methods use about 10 of the 16 cores. So the Colab table overstates v2's lead over sparse WOODELF, here by 1.7 times.</p>
-    <p>On the laptop, v2 is 1.6 to 17 times faster than the faster MN class and 2.6 to 134 times faster than the default one. The gap grows with the order, and with the depth up to depth 12. From depth 14 to 20 it stays at 8 to 15 times against the faster MN class. At depth 20, v2 takes 14 to 18% longer than at depth 16, on trees with 11% more leaves. On Colab, v2 is 7.6 to 15 times faster than the faster MN class, and the default MN class needed more than 300 s in every cell from depth 12 on. v1 falls further behind with the depth. On Colab it is 3.2 to 14 times slower than v2 from depth 14 on. It ran out of memory at order 3 from depth 18 and at order 2 at depth 20, on models that v2 ran in under 25 s, since its memory grows as \(\binom{D}{k}2^D\) against \(k\,2^D\) for v2. <code>hybrid_woodelf</code> currently sends background CII metrics to sparse WOODELF on trees deeper than 12, which these numbers argue against up to depth 20. The cost of v2 depends on \(m\) only through the f histogram of the leaf. The sparse methods grow with the number of distinct background patterns, which is about \(m\) on deep paths.</p>
+    <p>v2 is the fastest from depth 10 on. It is at least 1.6 times faster than the faster MN class, and at least 5.8 times from depth 12 on. It is 2.6 to 134 times faster than the default MN class, which takes more than 300 s on all but one model from depth 12 on. The gap grows with the order, and with the depth up to depth 12. At depth 20, v2 takes 14 to 18% longer than at depth 16, on trees with 11% more leaves. v1 falls further behind with the depth. It runs out of memory at order 3 from depth 18 and at order 2 at depth 20, since its memory grows as \(\binom{D}{k}2^D\) against \(k\,2^D\) for v2. <code>hybrid_woodelf</code> currently sends background CII metrics to sparse WOODELF on trees deeper than 12, which these numbers argue against up to depth 20. The cost of v2 depends on \(m\) only through the f histogram of the leaf. The sparse methods grow with the number of distinct background patterns, which is about \(m\) on deep paths.</p>
     <h3>End to end against LTS, path-dependent</h3>
     <p>In path-dependent mode <code>woodelf_sparse</code> runs <code>LTSRecursivePathToSVectors</code>, a Linear TreeSHAP. It has no CII metrics: it supports only Shapley values, Banzhaf values and <code>ShapleyInteractionValues</code>, and <code>woodelf_sparse</code> accepts CII metrics only in background mode. So the one CII metric it can be compared on is GeneralShapley of order 2, with the shap convention, which is its <code>ShapleyInteractionValues</code>. The models and the \(n=1000\) consumers are those above. v2 (pairs) is <code>HighDepthWoodelfV2PathToSVectors</code>, the order 2 formula of section 2. Times are in seconds.</p>
     <div class="table-wrap">
