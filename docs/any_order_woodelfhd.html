@@ -415,7 +415,7 @@ s_S[c] = Z(S, 0, c)</code></pre>
     </div>
     <p class="note">Möbius of all orders at once is the one case where v2 stays slower. With orders 1 to \(D\), the levels of the prefix recurrence add up to about as much work as v1's one zeta transform per subset.</p>
     <h3>End to end against sparse WOODELF</h3>
-<p>These are whole-ensemble runs in background mode, which is the only mode <code>woodelf_sparse</code> supports for these metrics. The models are XGBoost regressors on 20 synthetic features. There are \(n=1000\) consumers and \(m\) background rows. <code>woodelf_for_high_depth</code> picks the new class by itself, and <code>woodelf_sparse</code> runs its default MN class and <code>MNBackgroundCIIFasterPathToSVectors</code>. Times are in seconds. The sparse methods agree with v2 to 1e-12 or better. v1 agrees to about 1e-6 on the Shapley metrics, since its M matrices are float32, and to 1e-13 on Banzhaf, whose values are powers of 2. A dash means the method was skipped after an earlier case passed 300 s. The v2 (CII) and v1 columns were rerun on the code without section 7. The sparse columns come from the earlier run, since that code did not change.</p>
+<p>These are whole-ensemble runs in background mode, which is the only mode <code>woodelf_sparse</code> supports for these metrics. The models are XGBoost regressors on 20 synthetic features. There are \(n=1000\) consumers and \(m\) background rows. <code>woodelf_for_high_depth</code> picks the new class by itself, and <code>woodelf_sparse</code> runs its default MN class and <code>MNBackgroundCIIFasterPathToSVectors</code>. Times are in seconds. The sparse methods agree with v2 to 1e-12 or better. v1 agrees to about 1e-6 on the Shapley metrics, since its M matrices are float32, and to 1e-13 on Banzhaf, whose values are powers of 2. A dash means the method was skipped after an earlier case passed 300 s. The v2 (CII) and v1 columns were rerun on the code without section 7, and the rows of depths 16 to 20 come from one run. The sparse columns come from the earlier run, since that code did not change.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>\(m\)</th><th>\(D\)</th><th>trees</th><th>leaves</th><th>metric</th><th>v2 (CII)</th><th>sparse</th><th>sparse, faster MN</th><th>v1</th></tr></thead>
@@ -431,14 +431,18 @@ s_S[c] = Z(S, 0, c)</code></pre>
           <tr><td>1,000</td><td>12</td><td>4</td><td>10,645</td><td>GeneralBanzhaf 4</td><td class="best">9.1</td><td>478</td><td>162</td><td>13.8</td></tr>
           <tr><td>1,000</td><td>14</td><td>4</td><td>20,247</td><td>GeneralShapley 2</td><td class="best">8.8</td><td>566</td><td>160</td><td>13.7</td></tr>
           <tr><td>1,000</td><td>14</td><td>2</td><td>10,090</td><td>GeneralShapley 3</td><td class="best">7.6</td><td>564</td><td>393</td><td>–</td></tr>
-          <tr><td>1,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 3</td><td class="best">12.1</td><td>–</td><td>–</td><td>–</td></tr>
+          <tr><td>1,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 3</td><td class="best">14.1</td><td>–</td><td>–</td><td>–</td></tr>
+          <tr><td>1,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 3</td><td class="best">15.1</td><td>–</td><td>–</td><td>–</td></tr>
+          <tr><td>1,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 3</td><td class="best">16.1</td><td>–</td><td>–</td><td>–</td></tr>
           <tr><td>10,000</td><td>8</td><td>10</td><td>2,389</td><td>GeneralShapley 3</td><td class="best">0.98</td><td>11.1</td><td>5.4</td><td>–</td></tr>
           <tr><td>10,000</td><td>12</td><td>2</td><td>5,489</td><td>GeneralShapley 3</td><td class="best">3.7</td><td>323</td><td>91</td><td>–</td></tr>
-          <tr><td>10,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 2</td><td class="best">7.5</td><td>–</td><td>466</td><td>–</td></tr>
+          <tr><td>10,000</td><td>16</td><td>2</td><td>13,346</td><td>GeneralShapley 2</td><td class="best">7.6</td><td>–</td><td>466</td><td>–</td></tr>
+          <tr><td>10,000</td><td>18</td><td>2</td><td>14,566</td><td>GeneralShapley 2</td><td class="best">8.6</td><td>–</td><td>–</td><td>–</td></tr>
+          <tr><td>10,000</td><td>20</td><td>2</td><td>14,774</td><td>GeneralShapley 2</td><td class="best">9.0</td><td>–</td><td>–</td><td>–</td></tr>
         </tbody>
       </table>
     </div>
-    <p>v2 is 2 to 90 times faster than sparse WOODELF at every depth measured, and the gap grows with the depth. <code>hybrid_woodelf</code> currently sends background CII metrics to sparse WOODELF on trees deeper than 12, which these numbers argue against up to depth 16. The cost of v2 depends on \(m\) only through the f histogram of the leaf. The sparse methods grow with the number of distinct background patterns, which is about \(m\) on deep paths.</p>
+    <p>v2 is 2 to 90 times faster than sparse WOODELF at every depth where both ran, and the gap grows with the depth. At depth 20, v2 takes 14 to 18% longer than at depth 16, on trees with 11% more leaves. <code>hybrid_woodelf</code> currently sends background CII metrics to sparse WOODELF on trees deeper than 12, which these numbers argue against up to depth 20. The cost of v2 depends on \(m\) only through the f histogram of the leaf. The sparse methods grow with the number of distinct background patterns, which is about \(m\) on deep paths.</p>
     <h3>End to end against LTS, path-dependent</h3>
     <p>In path-dependent mode <code>woodelf_sparse</code> runs <code>LTSRecursivePathToSVectors</code>, a Linear TreeSHAP. It has no CII metrics: it supports only Shapley values, Banzhaf values and <code>ShapleyInteractionValues</code>, and <code>woodelf_sparse</code> accepts CII metrics only in background mode. So the one CII metric it can be compared on is GeneralShapley of order 2, with the shap convention, which is its <code>ShapleyInteractionValues</code>. The models and the \(n=1000\) consumers are those above. v2 (pairs) is <code>HighDepthWoodelfV2PathToSVectors</code>, the order 2 formula of section 2. Times are in seconds.</p>
     <div class="table-wrap">
