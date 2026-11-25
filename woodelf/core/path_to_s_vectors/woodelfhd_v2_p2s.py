@@ -10,7 +10,7 @@ import numpy as np
 from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, ShapleyInteractionValues, \
     BanzhafInteractionValues, CardinalityInteractionIndicesMetric, nCk
 from woodelf.core.decision_patterns import get_value_keys_and_decision_pattern_bits
-from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors, compute_f_from_patterns
+from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors, compute_f_from_patterns, strided_pass_bits
 from woodelf.core.utils import safe_bitwise_count
 
 try:
@@ -152,9 +152,15 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
     @staticmethod
     def _prepare_f(depth, f, GPU):
         f = f.copy() # the updates below are in-place and the caller may reuse f (the neighbor leaf trick does)
+        strided_bits = strided_pass_bits(f.size, GPU)
         for d in range(depth - 1, -1, -1):
             v = f.reshape(-1, 2, 2 ** d) # view only: split each index into (higher bits, bit d, lower bits)
-            v[:, 0] += v[:, 1] # elements with bit d = 0 get the element with bit d = 1 added to them
+            if d < strided_bits:
+                # Equivalent to 'v[:, 0] += v[:, 1]' but faster: one strided addition per value of the lower bits
+                for low in range(2 ** d):
+                    v[:, 0, low] += v[:, 1, low]
+            else:
+                v[:, 0] += v[:, 1] # elements with bit d = 0 get the element with bit d = 1 added to them
         return f
 
     def _get_shared_s_vectors(self, depth: int, f: np.ndarray, w: float) -> Tuple:
@@ -174,9 +180,15 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
         # the product: the reshapes below must be views, a reshape that copies would silently lose the in-place updates
         s_matrix = self.diagonals[depth] * f[::-1] # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
         num_rows = s_matrix.shape[0]
+        strided_bits = strided_pass_bits(s_matrix.size, self.GPU)
         for d in range(0, depth, 1):
             v = s_matrix.reshape(num_rows, -1, 2, 2 ** d) # view only: split each index into (higher bits, bit d, lower bits)
-            v[:, :, 1] += v[:, :, 0] # elements with bit d = 1 get the element with bit d = 0 added to them
+            if d < strided_bits:
+                # Equivalent to 'v[:, :, 1] += v[:, :, 0]' but faster: one strided addition per value of the lower bits
+                for low in range(2 ** d):
+                    v[:, :, 1, low] += v[:, :, 0, low]
+            else:
+                v[:, :, 1] += v[:, :, 0] # elements with bit d = 1 get the element with bit d = 0 added to them
 
         s_matrix *= w
 

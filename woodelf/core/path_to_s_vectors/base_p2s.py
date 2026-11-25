@@ -68,6 +68,21 @@ class PathToSVectors:
         pass
 
 
+# The passes of the StrassenLike multiplication over the bits d < STRIDED_PASS_BITS run as 2^d strided additions on CPU,
+# on arrays of at least STRIDED_PASS_MIN_ELEMENTS elements: a pass over bit d works on runs of 2^d consecutive elements,
+# and NumPy is slow on such short inner loops. On smaller arrays the extra calls cost more. Benchmarked
+STRIDED_PASS_BITS = 3
+STRIDED_PASS_MIN_ELEMENTS = 4096
+
+
+def strided_pass_bits(num_elements: int, GPU: bool) -> int:
+    """
+    On an array of num_elements elements, the passes over the bits d < strided_pass_bits(num_elements, GPU) run as 2^d
+    strided additions (see STRIDED_PASS_BITS).
+    """
+    return STRIDED_PASS_BITS if num_elements >= STRIDED_PASS_MIN_ELEMENTS and not GPU else 0
+
+
 def compute_f_from_patterns(patterns, depth: int, GPU: bool = False) -> np.ndarray:
     """Compute the dense f vector (normalised histogram) from integer decision patterns."""
     if GPU:
