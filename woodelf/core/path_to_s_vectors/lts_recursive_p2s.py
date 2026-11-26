@@ -122,24 +122,31 @@ def linear_tree_shap_magic_for_banzhaf(
 ############################################################################################################################################################
 
 
+# poly_mul_y_plus_q_inplace works row by row on a P of at least POLY_MUL_ROW_BY_ROW_MIN_COLUMNS columns: no work arrays,
+# and every row stays in the cache. On fewer columns the per-row calls cost more than one whole-array expression.
+# Benchmarked: the crossover is at about 2048 columns for 6 to 30 rows
+POLY_MUL_ROW_BY_ROW_MIN_COLUMNS = 2048
+
+
 def poly_mul_y_plus_q_inplace(P: np.ndarray, q: np.ndarray) -> None:
     """
     In-place multiply polynomial P(y) by (y + q) for many columns at once.
 
     P: shape (k, n). Row t = coefficient of y^t, same convention as your code.
-    q: shape (n, 1) broadcast across rows.
+    q: shape (n,) broadcast across rows.
 
     Keeps degree capped at k-1 by dropping the last coefficient on shift (same as your code).
     """
-    q_part = P * q
-
-    # y_part: shift coefficients up by 1: new[t] = old[t-1]
-    # do it in-place safely by shifting "down" in memory
-    P[1:] = P[:-1]
-    P[0] = 0.0
-
-    # add q_part (which corresponds to q * old_P)
-    P += q_part
+    # Row t of P(y) * (y + q) is P[t - 1] + q * P[t]
+    if P.shape[1] < POLY_MUL_ROW_BY_ROW_MIN_COLUMNS:
+        P[1:] = P[:-1] + q * P[1:] # the right side is computed from the old rows before it is assigned
+    else:
+        # From the last row up, so row t - 1 is still the old one when row t reads it: no work arrays, the rows stay in
+        # the cache
+        for row, previous_row in zip(P[:0:-1], P[-2::-1]):
+            row *= q
+            row += previous_row
+    P[0] *= q
 
 
 def compute_P(
