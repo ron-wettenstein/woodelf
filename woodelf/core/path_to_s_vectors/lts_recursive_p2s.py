@@ -52,9 +52,7 @@ class LTSRecursivePathToSVectors(PathToSVectors):
             if w_neighbor is not None:
                 s_matrix_left = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
                 covers_of_right = np.array(list(covers[:-1]) + [1 - covers[-1]])
-                consumer_patterns_right = consumer_patterns.copy()
-                consumer_patterns_right[consumer_patterns % 2 == 0] += 1
-                consumer_patterns_right[consumer_patterns % 2 == 1] -= 1
+                consumer_patterns_right = consumer_patterns ^ 1
                 s_matrix_right = linear_tree_shap_magic_for_banzhaf(covers_of_right, consumer_patterns_right.astype(np.uint64), w_neighbor)
                 s_matrix = s_matrix_left + s_matrix_right
             else:
