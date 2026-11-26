@@ -185,7 +185,8 @@ def compute_contribution_vectors_from_initial_P(
             poly_mul_y_plus_q_inplace(M_f_i, q_M[j])
 
         # Compute Shapley/Banzhaf values using the constructed polynomial
-        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0) * w
+        # Equivalent to '(M_f_i * f_w).sum(axis=0) * w' but faster: a matrix-vector product, without the (k, n) product array
+        game_theory_metric_vector = (f_w[:, 0] @ M_f_i) * w
         constitutions_vectors.append(game_theory_metric_vector)
 
     return np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
@@ -232,11 +233,12 @@ def get_neighbors_shap_from_polynomials(
 ):
     M_left = M_f_i.copy()
     poly_mul_y_plus_q_inplace(M_left, q_M_left)
-    left_game_theory_metric_vector = (M_left * f_w).sum(axis=0) * left_leaf_weight * R_i
+    # Equivalent to '(M_left * f_w).sum(axis=0) * left_leaf_weight * R_i' but faster: a matrix-vector product
+    left_game_theory_metric_vector = (f_w[:, 0] @ M_left) * left_leaf_weight * R_i
 
     M_right = M_f_i.copy()
     poly_mul_y_plus_q_inplace(M_right, q_M_right)
-    right_game_theory_metric_vector = (M_right * f_w).sum(axis=0) * right_leaf_weight * (1 - R_i)
+    right_game_theory_metric_vector = (f_w[:, 0] @ M_right) * right_leaf_weight * (1 - R_i)
 
     return left_game_theory_metric_vector, right_game_theory_metric_vector
 
@@ -272,8 +274,10 @@ def compute_contribution_vectors_from_initial_P_for_neighbors(
 
     if end_index + 1 == len(f_w):
         poly_mul_y_plus_q_inplace(P_shared, q_M[-2])
-        left_constitutions_vectors.append((P_shared * f_w).sum(axis=0) * left_leaf_weight * R_last)
-        right_constitutions_vectors.append((P_shared * f_w).sum(axis=0) * right_leaf_weight * (1-R_last))
+        # Equivalent to '(P_shared * f_w).sum(axis=0)' but faster: a matrix-vector product, computed once for both leaves
+        weighted_P_shared = f_w[:, 0] @ P_shared
+        left_constitutions_vectors.append(weighted_P_shared * left_leaf_weight * R_last)
+        right_constitutions_vectors.append(weighted_P_shared * right_leaf_weight * (1-R_last))
 
     M_left = np.array(left_constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
     M_right = np.array(right_constitutions_vectors)
@@ -351,9 +355,8 @@ def improved_linear_tree_shap_iv(r: np.array, p: np.array, f_w: np.array, w: flo
         extracted_patterns = extract_bit(p, len(r) - 1 - i)
         new_r = np.concatenate([r[:i], r[i+1:]])
         shap_excluding_i = improved_linear_tree_shap_magic(new_r, extracted_patterns, f_w, w)
-        q_i = (np.tile(q_M[i], (q_M.shape[0] - 1, 1))).T
         # The interaction values (i,j) are the shapley values of j in the game excluding i, times '(q_i - 1) * ratio'
         # The '/ 2' is to fit the shap package logic, splitting the interaction between the two features.
-        shaps_i = (shap_excluding_i * (q_i - 1) * ratio / 2).copy()
+        shaps_i = shap_excluding_i * (q_M[i] - 1)[:, None] * ratio / 2
         shaps.append(shaps_i)
     return shaps
