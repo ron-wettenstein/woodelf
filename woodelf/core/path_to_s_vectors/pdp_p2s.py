@@ -64,12 +64,11 @@ class PDPPathToSVectors(PathToSVectors):
         f: np.ndarray, only_positive_literals: float, w: float
     ) -> Dict:
         D = len(features_in_path)
-        bm_consumer = bits_matrix(consumer_patterns, D).T
-        s_matrix = bm_consumer * f
-        if only_positive_literals != 0:
-            s_matrix[bm_consumer == 0] = -1 * only_positive_literals
-        s_matrix = w * s_matrix
-        return {feature: s_matrix[:, i].astype(np.float32) for i, feature in enumerate(features_in_path)}
+        bm_consumer = bits_matrix(consumer_patterns, D)                                                # (D, n)
+        bit_1_values = (w * (1 * f)).astype(np.float32)                                               # (D,)
+        bit_0_values = w * (np.full(D, -1 * only_positive_literals) if only_positive_literals != 0 else 0 * f)
+        s_matrix = np.where(bm_consumer, bit_1_values[:, None], bit_0_values.astype(np.float32)[:, None])  # (D, n)
+        return {feature: s_matrix[i] for i, feature in enumerate(features_in_path)}
 
     def get_background_s_matrix(
         self, features_in_path: List, consumer_patterns: np.ndarray,
@@ -166,19 +165,24 @@ class PDPIVPathToSVectors(PDPPathToSVectors):
             return {}
         start_time = time.time()
         D = len(features_in_path)
-        bm_consumer = bits_matrix(consumer_patterns, D).T
+        bm_consumer = bits_matrix(consumer_patterns, D)                    # (D, n), contiguous rows
         i_idx, j_idx = np.triu_indices(D, k=1)
-        c_v = 2 * bm_consumer[:, i_idx] + bm_consumer[:, j_idx]
         f_start = time.time()
         only_positive_literals, b_v_1, b_v_2, b_v_3 = self.get_needed_b_vectors(background_patterns, D)
         self.compute_f_time += time.time() - f_start
-        s_matrix = (
-            only_positive_literals * (c_v == 0)
-            - b_v_1 * (c_v == 1)
-            - b_v_2 * (c_v == 2)
-            + b_v_3 * (c_v == 3)
+        c_v = 2 * bm_consumer[i_idx] + bm_consumer[j_idx]                 # (pairs, n)
+        # The s value of a pair depends only on c_v, the consumer's bits of the two features, so it is computed once per
+        # value of c_v (a (4, pairs) table) and every consumer reads it from there. The s matrix is (pairs, n), so the s
+        # vector of a pair is a contiguous row
+        c_v_values = np.arange(4)[:, None]
+        s_by_c_v = (
+            only_positive_literals * (c_v_values == 0)
+            - b_v_1 * (c_v_values == 1)
+            - b_v_2 * (c_v_values == 2)
+            + b_v_3 * (c_v_values == 3)
         )
-        s_matrix = (w * s_matrix).astype(np.float32)
+        s_by_c_v = (w * s_by_c_v).astype(np.float32)                       # (4, pairs)
+        s_matrix = s_by_c_v[c_v, np.arange(len(i_idx))[:, None]]          # (pairs, n)
         self.computation_time += time.time() - start_time
 
         results = {}
@@ -188,9 +192,9 @@ class PDPIVPathToSVectors(PDPPathToSVectors):
                     continue
                 idx = triu_pair_to_index(index1, index2, D)
                 if (feature1, feature2) not in results:
-                    results[(feature1, feature2)] = s_matrix[:, idx].copy()
+                    results[(feature1, feature2)] = s_matrix[idx].copy()
                 else:
-                    results[(feature1, feature2)] += s_matrix[:, idx]
+                    results[(feature1, feature2)] += s_matrix[idx]
         return results
 
     def get_path_dependent_s_matrix(
