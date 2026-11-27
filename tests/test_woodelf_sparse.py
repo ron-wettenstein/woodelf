@@ -20,6 +20,8 @@ from woodelf.core.cube_metric import (
 )
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode, DecisionTreesEnsemble
 from woodelf.high_depth_woodelf import woodelf_for_high_depth
+import woodelf.woodelf_sparse as woodelf_sparse_module
+from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
 from woodelf.woodelf_sparse import woodelf_sparse, hybrid_woodelf
 from woodelf.simple_woodelf import calculate_path_dependent_metric, calculate_background_metric
 
@@ -295,3 +297,18 @@ def test_fsii_fbii_and_stii_match_the_ones_rebuilt_from_the_mobius_coefficients(
         np.testing.assert_allclose(
             woodelf_values[subset], rebuilt_values[subset], atol=TOLERANCE
         )
+
+
+def test_hybrid_woodelf_measures_depth_as_the_longest_decision_pattern(monkeypatch, testset, xgb_model_depth_22):
+    # max_depth is 22, the longest decision pattern is 21. Sparse WOODELF takes over above 11 + log2(m): 21.55 for
+    # m = 1,500 (WoodelfHD by the pattern, sparse WOODELF by the max depth) and 20.97 for m = 1,000 (sparse by both).
+    calls = []
+    monkeypatch.setattr(woodelf_sparse_module, "woodelf_sparse", lambda *args, **kwargs: calls.append("sparse"))
+    monkeypatch.setattr(woodelf_sparse_module, "woodelf_for_high_depth", lambda *args, **kwargs: calls.append("hd"))
+    model = load_decision_tree_ensemble_model(xgb_model_depth_22, list(testset.columns))
+    background_1500 = pd.concat([testset, testset.iloc[:500]], ignore_index=True)
+    background_1500_dict = {feature: background_1500[feature].to_numpy() for feature in background_1500.columns}
+
+    for background in [background_1500, background_1500_dict, testset]:
+        hybrid_woodelf(model, testset, background, ShapleyValues(), model_was_loaded=True, verbose=False)
+    assert calls == ["hd", "hd", "sparse"]

@@ -149,10 +149,13 @@ def woodelf_for_high_depth(
     consumer_data, background_data = consumer_and_background_to_dict(consumer_data, background_data, GPU, model_obj)
 
     data_len = len(next(iter(consumer_data.values()))) + (0 if background_data is None else len(next(iter(background_data.values()))))
-    if model_obj.max_depth > 12 or data_len < 10 * (2 ** model_obj.max_depth):
+    if GPU and (model_obj.max_depth > 12 or data_len < 10 * (2 ** model_obj.max_depth)):
         # If the max depth is too large or the data size is smaller than (or within the same order of magnitude as)
         # the number of patterns - skip the neighbor leaf trick. It will be slower to apply it than to return the
         # regular computation.
+        # On CPU the trick is always applied: in the benchmarks (docs/woodelf_hybrid_thresholds.html) it was faster in
+        # 74 of 138 configs, within 5% in 59 and at most ~17% slower in the other 5, also for small data and deep
+        # trees. The GPU keeps this cutoff until it is benchmarked on a GPU.
         use_neighbor_leaf_trick = False
 
 

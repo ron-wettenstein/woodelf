@@ -824,8 +824,9 @@ total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="
     </div>
 
     <p>
-      This is why <code>hybrid_woodelf</code> switches to MN when $D > 12$
-      (where $2^D$ becomes prohibitively large for the HighDepth backend).
+      This is why <code>hybrid_woodelf</code> switches to MN for deep trees. $U_b$ grows with the number of
+      background rows $m$, so for Shapley and Banzhaf values it switches when $D > 11 + \log_2 m$
+      (see <a href="woodelf_hybrid_thresholds.html">the benchmarks</a>).
     </p>
   </section>
 
