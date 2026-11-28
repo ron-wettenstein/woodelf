@@ -178,7 +178,7 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
             v = s_matrix.reshape(num_rows, -1, 2, 2 ** d) # view only: split each index into (higher bits, bit d, lower bits)
             v[:, :, 1] += v[:, :, 0] # elements with bit d = 1 get the element with bit d = 0 added to them
 
-        s_matrix = s_matrix * w
+        s_matrix *= w
 
         self.s_computation_time += time.time() - start_time
         return tuple(s_matrix)
