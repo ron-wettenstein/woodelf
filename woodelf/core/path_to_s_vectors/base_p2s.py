@@ -106,21 +106,11 @@ class WoodelfPathToSVectors(PathToSVectors):
         Implements improvement 3 of Sec. 9.1: for a pair of sibling leaves, the neighbor's
         frequency array is a specific interleaved swap of the current leaf's array.
         """
-        if GPU:
-            idx = cp.arange(len(f))
-            neighbor_f = cp.zeros_like(f)
-        else:
-            idx = np.arange(len(f))
-            neighbor_f = np.zeros_like(f)
-
-        neighbor_f_shift_left = neighbor_f.copy()
-        neighbor_f_shift_left[1:] = f[:-1]
-        neighbor_f_shift_left[(idx & 1) == 0] = 0
-
-        neighbor_f_shift_right = neighbor_f.copy()
-        neighbor_f_shift_right[:-1] = f[1:]
-        neighbor_f_shift_right[(idx & 1) == 1] = 0
-        return neighbor_f_shift_left + neighbor_f_shift_right
+        # The neighbor's array is f with the two elements of every pair (2k, 2k+1) swapped: its element i is f[i ^ 1].
+        # We do reshape(-1, 2), which views f as a matrix with one row per pair, then [:, ::-1], which reverses every
+        # row (still a view, nothing is copied yet), and finally flatten(), which copies the rows back into a new 1D
+        # array, so f itself is not changed. Works for NumPy and CuPy arrays alike
+        return f.reshape(-1, 2)[:, ::-1].flatten()
 
     def compose_with_neighbor_trick(
         self, features_in_path: List, f: np.ndarray, w: float, w_neighbor: float = None

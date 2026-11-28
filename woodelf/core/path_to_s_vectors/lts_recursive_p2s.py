@@ -52,9 +52,7 @@ class LTSRecursivePathToSVectors(PathToSVectors):
             if w_neighbor is not None:
                 s_matrix_left = linear_tree_shap_magic_for_banzhaf(covers, consumer_patterns, w)
                 covers_of_right = np.array(list(covers[:-1]) + [1 - covers[-1]])
-                consumer_patterns_right = consumer_patterns.copy()
-                consumer_patterns_right[consumer_patterns % 2 == 0] += 1
-                consumer_patterns_right[consumer_patterns % 2 == 1] -= 1
+                consumer_patterns_right = consumer_patterns ^ 1
                 s_matrix_right = linear_tree_shap_magic_for_banzhaf(covers_of_right, consumer_patterns_right.astype(np.uint64), w_neighbor)
                 s_matrix = s_matrix_left + s_matrix_right
             else:
@@ -124,24 +122,31 @@ def linear_tree_shap_magic_for_banzhaf(
 ############################################################################################################################################################
 
 
+# poly_mul_y_plus_q_inplace works row by row on a P of at least POLY_MUL_ROW_BY_ROW_MIN_COLUMNS columns: no work arrays,
+# and every row stays in the cache. On fewer columns the per-row calls cost more than one whole-array expression.
+# Benchmarked: the crossover is at about 2048 columns for 6 to 30 rows
+POLY_MUL_ROW_BY_ROW_MIN_COLUMNS = 2048
+
+
 def poly_mul_y_plus_q_inplace(P: np.ndarray, q: np.ndarray) -> None:
     """
     In-place multiply polynomial P(y) by (y + q) for many columns at once.
 
     P: shape (k, n). Row t = coefficient of y^t, same convention as your code.
-    q: shape (n, 1) broadcast across rows.
+    q: shape (n,) broadcast across rows.
 
     Keeps degree capped at k-1 by dropping the last coefficient on shift (same as your code).
     """
-    q_part = P * q
-
-    # y_part: shift coefficients up by 1: new[t] = old[t-1]
-    # do it in-place safely by shifting "down" in memory
-    P[1:] = P[:-1]
-    P[0] = 0.0
-
-    # add q_part (which corresponds to q * old_P)
-    P += q_part
+    # Row t of P(y) * (y + q) is P[t - 1] + q * P[t]
+    if P.shape[1] < POLY_MUL_ROW_BY_ROW_MIN_COLUMNS:
+        P[1:] = P[:-1] + q * P[1:] # the right side is computed from the old rows before it is assigned
+    else:
+        # From the last row up, so row t - 1 is still the old one when row t reads it: no work arrays, the rows stay in
+        # the cache
+        for row, previous_row in zip(P[:0:-1], P[-2::-1]):
+            row *= q
+            row += previous_row
+    P[0] *= q
 
 
 def compute_P(
@@ -187,7 +192,8 @@ def compute_contribution_vectors_from_initial_P(
             poly_mul_y_plus_q_inplace(M_f_i, q_M[j])
 
         # Compute Shapley/Banzhaf values using the constructed polynomial
-        game_theory_metric_vector = (M_f_i * f_w).sum(axis=0) * w
+        # Equivalent to '(M_f_i * f_w).sum(axis=0) * w' but faster: a matrix-vector product, without the (k, n) product array
+        game_theory_metric_vector = (f_w[:, 0] @ M_f_i) * w
         constitutions_vectors.append(game_theory_metric_vector)
 
     return np.array(constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
@@ -234,11 +240,12 @@ def get_neighbors_shap_from_polynomials(
 ):
     M_left = M_f_i.copy()
     poly_mul_y_plus_q_inplace(M_left, q_M_left)
-    left_game_theory_metric_vector = (M_left * f_w).sum(axis=0) * left_leaf_weight * R_i
+    # Equivalent to '(M_left * f_w).sum(axis=0) * left_leaf_weight * R_i' but faster: a matrix-vector product
+    left_game_theory_metric_vector = (f_w[:, 0] @ M_left) * left_leaf_weight * R_i
 
     M_right = M_f_i.copy()
     poly_mul_y_plus_q_inplace(M_right, q_M_right)
-    right_game_theory_metric_vector = (M_right * f_w).sum(axis=0) * right_leaf_weight * (1 - R_i)
+    right_game_theory_metric_vector = (f_w[:, 0] @ M_right) * right_leaf_weight * (1 - R_i)
 
     return left_game_theory_metric_vector, right_game_theory_metric_vector
 
@@ -274,8 +281,10 @@ def compute_contribution_vectors_from_initial_P_for_neighbors(
 
     if end_index + 1 == len(f_w):
         poly_mul_y_plus_q_inplace(P_shared, q_M[-2])
-        left_constitutions_vectors.append((P_shared * f_w).sum(axis=0) * left_leaf_weight * R_last)
-        right_constitutions_vectors.append((P_shared * f_w).sum(axis=0) * right_leaf_weight * (1-R_last))
+        # Equivalent to '(P_shared * f_w).sum(axis=0)' but faster: a matrix-vector product, computed once for both leaves
+        weighted_P_shared = f_w[:, 0] @ P_shared
+        left_constitutions_vectors.append(weighted_P_shared * left_leaf_weight * R_last)
+        right_constitutions_vectors.append(weighted_P_shared * right_leaf_weight * (1-R_last))
 
     M_left = np.array(left_constitutions_vectors) # Now M become a |n| columns and |r| rows matrix
     M_right = np.array(right_constitutions_vectors)
@@ -353,9 +362,8 @@ def improved_linear_tree_shap_iv(r: np.array, p: np.array, f_w: np.array, w: flo
         extracted_patterns = extract_bit(p, len(r) - 1 - i)
         new_r = np.concatenate([r[:i], r[i+1:]])
         shap_excluding_i = improved_linear_tree_shap_magic(new_r, extracted_patterns, f_w, w)
-        q_i = (np.tile(q_M[i], (q_M.shape[0] - 1, 1))).T
         # The interaction values (i,j) are the shapley values of j in the game excluding i, times '(q_i - 1) * ratio'
         # The '/ 2' is to fit the shap package logic, splitting the interaction between the two features.
-        shaps_i = (shap_excluding_i * (q_i - 1) * ratio / 2).copy()
+        shaps_i = shap_excluding_i * (q_M[i] - 1)[:, None] * ratio / 2
         shaps.append(shaps_i)
     return shaps

@@ -102,11 +102,13 @@ def build_points_for_joint_pdp(points_df: pd.DataFrame):
     data = {f: [] for f in points_df.columns}
     k = len(points_df)
     for i, f in enumerate(points_df.columns):
+        parts = []
         for b in bits(i, D):
             if b == 0:
-                data[f].extend(np.tile(points_df[f].values, k))
+                parts.append(np.tile(points_df[f].values, k))
             elif b == 1:
-                data[f].extend(np.repeat(points_df[f].values, k))
+                parts.append(np.repeat(points_df[f].values, k))
+        data[f] = np.concatenate(parts) if parts else []
     return pd.DataFrame(data)
 
 def first_different_bit(n1, n2, D):

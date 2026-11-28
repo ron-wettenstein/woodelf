@@ -10,7 +10,8 @@ from woodelf.core.path_to_s_vectors.woodelfhd_v2_p2s import HighDepthWoodelfV2Pa
     HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors
 from woodelf.core.path_to_s_vectors.archive.woodelfhd_paper_version_p2s import HighDepthWoodelfPaperVersionPathToSVectors, \
     HighDepthWoodelfOriginalVersionPathToSVectors
-from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundPathToSVectors, MNBackgroundFasterPathToSVectors
+from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundPathToSVectors, \
+    MNBackgroundMatrixMultiplicationPathToSVectors, MNBackgroundMatrixMultiplicationFasterPathToSVectors
 from woodelf.core.path_to_s_vectors.mn_background_cii_p2s import MNBackgroundCIIPathToSVectors
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
 
@@ -49,6 +50,8 @@ class V2CIIDynamicProgramming(V2CII):
 class V2CIISmallBatches(V2CII):
     """Computes the s vectors a few subsets at a time, and splits the dynamic programming by the first members."""
     SUBSETS_BATCH_ELEMENTS = 1000
+    INCLUSION_EXCLUSION_BATCH_ELEMENTS = 1000
+    INCLUSION_EXCLUSION_MIN_BATCH_SUBSETS = 1
 
 
 class V2CIIDynamicProgrammingInBatchesOfOne(V2CIIDynamicProgramming):
@@ -81,11 +84,11 @@ _P2S_SUPPORT = {
     HighDepthWoodelfOriginalVersionPathToSVectors: (_ALL_METRICS, _BOTH_MODES),
     HighDepthWoodelfPaperVersionPathToSVectors: (_ALL_METRICS, _BOTH_MODES),
     MNBackgroundPathToSVectors: ([ShapleyValues, BanzhafValues], ["background"]),
-    MNBackgroundFasterPathToSVectors: ([ShapleyValues, BanzhafValues], ["background"]),
+    MNBackgroundMatrixMultiplicationPathToSVectors: ([ShapleyValues, BanzhafValues], ["background"]),
     LTSRecursivePathToSVectors: ([ShapleyValues, BanzhafValues, ShapleyInteractionValues], ["path_dependent"]),
 }
 # These return the values of the given consumer patterns (by position), the rest return s vectors indexed by pattern value
-_POSITIONAL_P2S = (MNBackgroundPathToSVectors, MNBackgroundFasterPathToSVectors, LTSRecursivePathToSVectors)
+_POSITIONAL_P2S = (MNBackgroundPathToSVectors, MNBackgroundMatrixMultiplicationPathToSVectors, LTSRecursivePathToSVectors)
 # (reference, candidate). V2 has two ways to get the consumers values (see FULL_S_VECTOR_CONSUMERS_RATIO), its two
 # variants above force each of them
 _P2S_PAIRS = [
@@ -93,7 +96,8 @@ _P2S_PAIRS = [
     (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2FullSVectorsPathToSVectors),
     (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors),
     (HighDepthWoodelfV2PathToSVectors, MNBackgroundPathToSVectors),
-    (MNBackgroundPathToSVectors, MNBackgroundFasterPathToSVectors),
+    (MNBackgroundPathToSVectors, MNBackgroundMatrixMultiplicationPathToSVectors),
+    (MNBackgroundPathToSVectors, MNBackgroundMatrixMultiplicationFasterPathToSVectors),
     (HighDepthWoodelfV2PathToSVectors, LTSRecursivePathToSVectors),
     (HighDepthWoodelfV1PathToSVectors, SimpleWoodelfPathToSVectors),
     (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfOriginalVersionPathToSVectors),

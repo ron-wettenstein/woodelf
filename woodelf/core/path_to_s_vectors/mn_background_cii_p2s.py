@@ -102,6 +102,11 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
 
         Returns shape (n_subsets, batch), one s-vector row per reported subset of the path features
         (rows ordered as self._all_subsets(D)).
+
+        Per subset only (batch,) and (U_b,) vectors are computed: S is covered when the background differs from the
+        consumer on all of S, and in a pair that covers S the bits of S that are positive literals are those where the
+        consumer is 1, so a = |S ∩ positive literals| is a function of the consumer alone. The table lookups and the
+        multiplication by base are done once per order, for every a.
         """
         diff     = consumer_batch[:, None] ^ unique_b[None, :]       # (batch, U_b)
         positive = consumer_batch[:, None] & diff                     # s_plus bits per pair
@@ -114,15 +119,31 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
         n = safe_bitwise_count(unique_b[None, :] & diff)                # (batch, U_b)
 
         base = b_freqs * valid                                        # (batch, U_b)
+        # The position of [p, n] in a flattened (max_depth + 1, max_depth + 1) table, computed once for all the tables
+        pn = p.astype(np.intp) * (self.max_depth + 1) + n             # (batch, U_b)
+        consumers = np.arange(len(consumer_batch))
 
         s = np.empty((self._num_subsets(D), len(consumer_batch)), dtype=np.float64)
-        for s_index, subset in enumerate(self._all_subsets(D)):
-            subset_mask = 0
-            for d in subset:
-                subset_mask |= 1 << (D - 1 - d)                       # row d of bits_matrix is bit D-1-d
-            covered = (diff & subset_mask) == subset_mask             # S is fully inside the cube
-            a = safe_bitwise_count(positive & subset_mask)              # |S ∩ positive literals|
-            s[s_index] = (self.contribution_tables[len(subset)][a, p, n] * base * covered).sum(axis=1)
+        # !!! The code below is equivalent to the code commented out here, but much faster !!!
+        # for s_index, subset in enumerate(self._all_subsets(D)):
+        #     subset_mask = 0
+        #     for d in subset:
+        #         subset_mask |= 1 << (D - 1 - d)                       # row d of bits_matrix is bit D-1-d
+        #     covered = (diff & subset_mask) == subset_mask             # S is fully inside the cube
+        #     a = safe_bitwise_count(positive & subset_mask)              # |S ∩ positive literals|
+        #     s[s_index] = (self.contribution_tables[len(subset)][a, p, n] * base * covered).sum(axis=1)
+        for k, block_start, n_subsets in self._order_row_blocks(D):
+            # contributions[a] = tables[k][a, p, n] * base, for every number a of S's bits that are positive literals
+            contributions = np.stack([self.contribution_tables[k][a].ravel()[pn] * base for a in range(k + 1)])  # (k + 1, batch, U_b)
+            # The bits of every subset (row d of bits_matrix is bit D-1-d), in the dtype of the patterns
+            subset_masks = (1 << (D - 1 - self._subsets(D, k))).sum(axis=1).astype(consumer_batch.dtype)
+            for s_index, subset_mask in enumerate(subset_masks, start=block_start):
+                consumer_bits = consumer_batch & subset_mask                  # (batch,), the consumer's bits of S
+                # S is fully inside the cube when the background's bits of S are the complement of the consumer's
+                covered = (unique_b & subset_mask)[None, :] == (consumer_bits ^ subset_mask)[:, None]  # (batch, U_b)
+                # In a pair that covers S, the bits of S that are positive literals are those where the consumer is 1
+                a = safe_bitwise_count(consumer_bits)                         # (batch,), |S ∩ positive literals|
+                s[s_index] = (contributions[a, consumers] * covered).sum(axis=1)
         return s * w
 
     def get_background_s_matrix(
@@ -186,7 +207,7 @@ class MNBackgroundCIIFasterPathToSVectors(MNBackgroundCIIPathToSVectors):
 
     Faster variant of MNBackgroundCIIPathToSVectors.
     Overrides _compute_s_batch so that the sum over backgrounds becomes dense matrix multiplications,
-    the same restructuring MNBackgroundFasterPathToSVectors applies to the order-1 case.
+    the same restructuring MNBackgroundMatrixMultiplicationPathToSVectors applies to the order-1 case.
 
     The key identity: for a k-subset S of the path features, S is fully contained in the cube of a valid
     pair (pc, pb) with S ∩ (positive literals) = A iff

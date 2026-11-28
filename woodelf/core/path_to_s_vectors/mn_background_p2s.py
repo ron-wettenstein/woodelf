@@ -138,7 +138,7 @@ class MNBackgroundPathToSVectors(PathToSVectors):
         raise NotImplementedError("MNBackgroundPathToSVectors does not support the path-dependent case.")
 
 
-class MNBackgroundFasterPathToSVectors(MNBackgroundPathToSVectors):
+class MNBackgroundMatrixMultiplicationPathToSVectors(MNBackgroundPathToSVectors):
     """
     Faster variant of MNBackgroundPathToSVectors.
     Overrides _compute_s_batch to avoid the O(D * batch * U_b) 3D intermediate by
@@ -191,4 +191,54 @@ class MNBackgroundFasterPathToSVectors(MNBackgroundPathToSVectors):
         BPW = b_bits @ pos_weighted.T                                  # (D, batch)
         BNW = b_bits @ neg_weighted.T                                  # (D, batch)
         total_pos = pos_weighted.sum(axis=1)                           # (batch,)
+        return (BNW + c_bits * (total_pos - BPW - BNW)) * w           # (D, batch)
+
+
+class MNBackgroundMatrixMultiplicationFasterPathToSVectors(MNBackgroundMatrixMultiplicationPathToSVectors):
+    """
+    The same idea as MNBackgroundMatrixMultiplicationPathToSVectors (matrix multiplication), just faster numpy
+    operations, about 2x faster.
+    """
+
+    def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
+        super().__init__(metric, max_depth, GPU)
+        # The key of a pair with p positive and n negative literals is p * key_stride + n: its position in the flattened
+        # (max_depth + 1, max_depth + 1) contribution tables. The tables by key have a 0 appended at invalid_key, the
+        # key of the pairs that are not valid
+        self.key_stride = max_depth + 1
+        self.invalid_key = self.key_stride ** 2
+        self.pos_contributions_by_key = np.append(self.pos_contributions.ravel(), 0.0)
+        self.neg_contributions_by_key = np.append(self.neg_contributions.ravel(), 0.0)
+
+    def _compute_s_batch(
+        self, consumer_batch: np.ndarray, unique_b: np.ndarray,
+        b_freqs: np.ndarray, D: int, w: float
+    ) -> np.ndarray:
+        """
+        The computation of MNBackgroundMatrixMultiplicationPathToSVectors with faster numpy operations:
+        1. In a valid pair every bit is 1 in the consumer or in the background, so its positive literals (consumer=1,
+           background=0) are exactly the zero bits of the background and its negative literals (consumer=0,
+           background=1) exactly the zero bits of the consumer: p = D - popcount(b) and n = D - popcount(c). The table
+           key p * key_stride + n is then the sum of a (U_b,) and a (batch,) vector, so no (batch, U_b) bits are counted.
+        2. Both tables are read with this single key, and the pairs that are not valid read the 0 at invalid_key instead
+           of being multiplied by valid.
+        3. pos_weighted[c,b] = pos_contributions[p, n] * b_freqs[b], so b_freqs is multiplied into the (D, U_b)
+           background bits instead of the (batch, U_b) arrays:
+               BPW = (b_bits * b_freqs) @ pos_contributions.T,    total_pos = pos_contributions @ b_freqs
+        """
+        valid = (consumer_batch[:, None] | unique_b[None, :]) == ((1 << D) - 1)  # (batch, U_b)
+
+        p_keys = (D - safe_bitwise_count(unique_b).astype(np.intp)) * self.key_stride   # (U_b,), p * key_stride of the valid pairs
+        n_keys = D - safe_bitwise_count(consumer_batch).astype(np.intp)                 # (batch,), n of the valid pairs
+        key = np.where(valid, p_keys[None, :] + n_keys[:, None], self.invalid_key)     # (batch, U_b)
+
+        pos_contributions = self.pos_contributions_by_key[key]        # (batch, U_b), pos_weighted without b_freqs
+        neg_contributions = self.neg_contributions_by_key[key]        # (batch, U_b), neg_weighted without b_freqs
+
+        c_bits = bits_matrix(consumer_batch, D).astype(np.float64)    # (D, batch)
+        weighted_b_bits = bits_matrix(unique_b, D) * b_freqs          # (D, U_b)
+
+        BPW = weighted_b_bits @ pos_contributions.T                    # (D, batch)
+        BNW = weighted_b_bits @ neg_contributions.T                    # (D, batch)
+        total_pos = pos_contributions @ b_freqs                        # (batch,)
         return (BNW + c_bits * (total_pos - BPW - BNW)) * w           # (D, batch)

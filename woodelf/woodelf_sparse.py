@@ -10,7 +10,8 @@ from woodelf.core.cube_metric import CubeMetric, ShapleyValues, BanzhafValues, S
 from woodelf.core.decision_patterns import decision_patterns_generator, ignore_right_neighbor
 from woodelf.core.path_to_s_vectors.base_p2s import PathToSVectors
 from woodelf.core.path_to_s_vectors.lts_recursive_p2s import LTSRecursivePathToSVectors
-from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundFasterPathToSVectors, MNBackgroundPathToSVectors
+from woodelf.core.path_to_s_vectors.mn_background_p2s import MNBackgroundMatrixMultiplicationFasterPathToSVectors, \
+    MNBackgroundPathToSVectors
 from woodelf.core.path_to_s_vectors.mn_background_cii_p2s import MNBackgroundCIIPathToSVectors
 from woodelf.core.trees.decision_trees_ensemble import DecisionTreeNode
 from woodelf.core.trees.parse_models import load_decision_tree_ensemble_model
@@ -134,7 +135,7 @@ def woodelf_sparse(
     """
     Sparse WOODELF: uses pattern-factorized sparse algorithms for all leaves.
 
-    Background mode (background_data provided): MNBackgroundFasterPathToSVectors (default),
+    Background mode (background_data provided): MNBackgroundMatrixMultiplicationFasterPathToSVectors (default),
     MNBackgroundCIIPathToSVectors (default for CardinalitySymmetricInteractionMetric metrics)
     or mn_p2s_class. The pairwise interaction metrics (ShapleyInteractionValues, BanzhafInteractionValues)
     are computed through their order 2 CII equivalent, followed by mirroring.
@@ -167,7 +168,7 @@ def woodelf_sparse(
             if isinstance(metric, CardinalityInteractionIndicesMetric):
                 mn_p2s_class = MNBackgroundCIIPathToSVectors
             else:
-                mn_p2s_class = MNBackgroundFasterPathToSVectors
+                mn_p2s_class = MNBackgroundMatrixMultiplicationFasterPathToSVectors
         mn_p2s  = mn_p2s_class(metric=metric, max_depth=effective_depth)
     else:
         lts_p2s = LTSRecursivePathToSVectors(metric=metric, max_depth=effective_depth, GPU=GPU)

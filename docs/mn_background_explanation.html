@@ -290,7 +290,7 @@
       <li><a href="#tables">Precomputed Contribution Tables</a></li>
       <li><a href="#base">Base Algorithm — <code>MNBackgroundPathToSVectors</code></a></li>
       <li><a href="#batching">Batching to Avoid Memory Explosion</a></li>
-      <li><a href="#faster">Faster Algorithm — <code>MNBackgroundFasterPathToSVectors</code></a></li>
+      <li><a href="#faster">Faster Algorithm — <code>MNBackgroundMatrixMultiplicationPathToSVectors</code></a></li>
       <li><a href="#derivation">Full Derivation of the Factorization</a></li>
       <li><a href="#neighbor">Neighbor Leaf Trick</a></li>
       <li><a href="#complexity">Complexity Summary</a></li>
@@ -612,7 +612,7 @@
         $D \times \text{BATCH_SIZE}$ entries, regardless of $U_c$.
       </p>
       <p style="margin-top:0.6rem;">
-        The faster class (<code>MNBackgroundFasterPathToSVectors</code>) never allocates the 3D
+        The faster class (<code>MNBackgroundMatrixMultiplicationPathToSVectors</code>) never allocates the 3D
         tensor at all, so it can afford a 10× larger <code>BATCH_SIZE</code> and still uses far
         less peak memory than the base class at its smaller limit.
       </p>
@@ -622,10 +622,10 @@
 
   <!-- ============================================================ -->
   <section id="faster">
-    <h2>6 · Faster Algorithm — <code>MNBackgroundFasterPathToSVectors</code></h2>
+    <h2>6 · Faster Algorithm — <code>MNBackgroundMatrixMultiplicationPathToSVectors</code></h2>
 
     <p>
-      <code>MNBackgroundFasterPathToSVectors</code> overrides only <code>_compute_s_batch</code>.
+      <code>MNBackgroundMatrixMultiplicationPathToSVectors</code> overrides only <code>_compute_s_batch</code>.
       Everything else — construction, uniquification, batching, neighbor trick — is inherited unchanged.
       The key improvement is <strong>eliminating the 3D tensor</strong> by factorizing bit spreading
       into two matrix multiplications.
@@ -794,7 +794,7 @@ total_pos = pos_weighted.sum(axis=<span class="nm">1</span>)       <span class="
       <div>$O(mTL + nTLD + \mathbf{U_c \cdot U_b \cdot T \cdot L \cdot D})$</div>
     </div>
     <div class="complexity-row v2">
-      <div class="complexity-label"><code>MNBackgroundFasterPathToSVectors</code></div>
+      <div class="complexity-label"><code>MNBackgroundMatrixMultiplicationPathToSVectors</code></div>
       <div>$O(mTL + nTLD + \mathbf{U_c \cdot U_b \cdot T \cdot L \cdot D})$</div>
     </div>
 
