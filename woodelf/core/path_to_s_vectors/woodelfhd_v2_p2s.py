@@ -525,8 +525,13 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
            of Z vectors is PrefixesZ), about one vector addition per subset where v1 takes D of them, and then one
            lookup per consumer.
     """
-    # Both inclusion-exclusion and dynamic programming work in batches of up to SUBSETS_BATCH_ELEMENTS values
+    # The dynamic programming works in batches of up to SUBSETS_BATCH_ELEMENTS values
     SUBSETS_BATCH_ELEMENTS = 2 ** 22
+    # Inclusion-exclusion reads the subsets at the consumer patterns in batches of about INCLUSION_EXCLUSION_BATCH_ELEMENTS
+    # values, small enough for its work arrays to stay in the cache, and of at least INCLUSION_EXCLUSION_MIN_BATCH_SUBSETS
+    # subsets. Benchmarked
+    INCLUSION_EXCLUSION_BATCH_ELEMENTS = 2 ** 16
+    INCLUSION_EXCLUSION_MIN_BATCH_SUBSETS = 4
     # c(depth) of should_use_inclusion_exclusion: how many lookups at the consumer patterns cost about as much as one
     # vector addition over the 2^D patterns. Benchmarked as the crossover between inclusion-exclusion and dynamic
     # programming for orders 2 to 4: about 1.5 on paths deeper than SHORT_PATHS_MAX_DEPTH, where the lookups into the
@@ -685,7 +690,10 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
             # The right neighbor leaf: its f is the neighbor vector of f and its decision patterns flip the last bit
             leaves.append(self._get_shared_s_vectors(depth, self.neighbor_vector(f, self.GPU), w_neighbor))
             neighbor_consumer_patterns = consumer_patterns ^ 1
-        batch_size = max(1, self.SUBSETS_BATCH_ELEMENTS // max(len(consumer_patterns), 1))
+        inclusion_exclusion_batch_size = max(
+            self.INCLUSION_EXCLUSION_MIN_BATCH_SUBSETS,
+            self.INCLUSION_EXCLUSION_BATCH_ELEMENTS // max(len(consumer_patterns), 1)
+        )
         start_time = time.time()
 
         for order, rows in self.order_rows[depth]:
@@ -693,8 +701,8 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
             if self.should_use_inclusion_exclusion(depth, order, len(consumer_patterns)):
                 masks, sizes = self._subset_masks(depth, order)
                 subsets = list(combinations(range(depth), order)) # in the order of the columns of masks
-                for start in range(0, len(subsets), batch_size):
-                    batch_masks = masks[:, start:start + batch_size]
+                for start in range(0, len(subsets), inclusion_exclusion_batch_size):
+                    batch_masks = masks[:, start:start + inclusion_exclusion_batch_size]
                     # The neighbor leaf's s_0, ..., s_order are read at its decision patterns, which flip the last bit
                     batch_values = self._inclusion_exclusion_s_vectors_at(z[0], batch_masks, sizes, consumer_patterns)
                     if len(z) == 2:
@@ -702,7 +710,7 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
                             z[1], batch_masks, sizes, neighbor_consumer_patterns
                         )
                     # Each row of batch_values is a view of a new array of this batch only, so it can be stored as is
-                    for members, feature_values in zip(subsets[start:start + batch_size], batch_values):
+                    for members, feature_values in zip(subsets[start:start + inclusion_exclusion_batch_size], batch_values):
                         key = tuple(sorted(features_in_path[member] for member in members))
                         if key in values:
                             values[key] += feature_values

@@ -49,6 +49,8 @@ class V2CIIDynamicProgramming(V2CII):
 class V2CIISmallBatches(V2CII):
     """Computes the s vectors a few subsets at a time, and splits the dynamic programming by the first members."""
     SUBSETS_BATCH_ELEMENTS = 1000
+    INCLUSION_EXCLUSION_BATCH_ELEMENTS = 1000
+    INCLUSION_EXCLUSION_MIN_BATCH_SUBSETS = 1
 
 
 class V2CIIDynamicProgrammingInBatchesOfOne(V2CIIDynamicProgramming):
