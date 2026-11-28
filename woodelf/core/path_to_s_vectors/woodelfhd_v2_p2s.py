@@ -102,6 +102,11 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
     # The ratios are the benchmarked crossovers: a pair takes 3 lookups per consumer in the direct way, a feature only 1
     FULL_S_VECTOR_CONSUMERS_RATIO = 1.0
     FULL_PAIR_S_VECTOR_CONSUMERS_RATIO = 0.5
+    # The right neighbor leaf is folded into the s vectors (see _fold_neighbor), so the consumer patterns are indexed once
+    # for both leaves. Always with many consumers. With few consumers only when the lookups this saves, num_consumers
+    # per term of every key (1 for a feature, 3 for a pair), are more than FOLD_NEIGHBOR_LOOKUPS_RATIO * 2^D: folding
+    # takes a few vector additions over all the 2^D patterns. The ratio is the benchmarked crossover
+    FOLD_NEIGHBOR_LOOKUPS_RATIO = 1.0
 
     def __init__(self, metric: CubeMetric, max_depth: int, GPU: bool = False):
         super().__init__(metric, max_depth, GPU)
@@ -204,46 +209,88 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
         s_P -= s_plus_plus
         return s_plus_plus, s_P, s_Q
 
-    def _build_s_vector(self, combined_s_vectors: Tuple, bits: Tuple, out: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def _fold_neighbor(combined_s_vectors: Tuple, neighbor_combined_s_vectors: Tuple) -> Tuple[Tuple, Tuple]:
+        """
+        Folds the right neighbor leaf into the combined s vectors of the leaf, so the consumer patterns are indexed once for
+        both leaves, not once per leaf. Where the leaf reads a term of its formula at c^-T (T is the feature, the pair, one
+        of its two features, or the empty set for s+ and s++), the neighbor, whose decision patterns flip the last bit,
+        reads it at
+            (c^1)^-T = (c^-T)^1        if T does not hold the last feature of the path
+            (c^1)^-T = c^-T            if it does (its bit is set to 0 anyway)
+        So the terms whose T does not hold the last feature read s + swap(s^N), where swap(s^N) is the neighbor's vector with
+        the two elements of every pair (2k, 2k+1) swapped, and the terms whose T holds it read s + s^N.
+        Returns the combined s vectors, updated in place to s + swap(s^N), and the last bit s vectors: s + s^N of the
+        vectors that the terms clearing the last bit read, (s_R,) or (s_A, s_Q). s+ and s++ are never read there.
+        """
+        # Computed first, the in-place updates below change the combined s vectors
+        last_bit_s_vectors = tuple(
+            s_vector + neighbor_s_vector
+            for s_vector, neighbor_s_vector in zip(combined_s_vectors[1:], neighbor_combined_s_vectors[1:])
+        )
+        for s_vector, neighbor_s_vector in zip(combined_s_vectors, neighbor_combined_s_vectors):
+            s_vector_pairs = s_vector.reshape(-1, 2) # view only
+            s_vector_pairs += neighbor_s_vector.reshape(-1, 2)[:, ::-1]
+        return combined_s_vectors, last_bit_s_vectors
+
+    def _build_s_vector(
+            self, combined_s_vectors: Tuple, bits: Tuple, out: np.ndarray, last_bit_s_vectors: Optional[Tuple] = None
+    ) -> np.ndarray:
         """
         The s vector of a feature (pair) over all the 2^D decision patterns, written to out:
         s_i[c] = s+[c] + s_R[c^-i]  or  s_ij[c] = s++[c] + s_A[c^-i] + s_A[c^-j] + s_Q[c^-ij]
+        last_bit_s_vectors: None, or with the right neighbor leaf folded in (see _fold_neighbor) the vectors that the terms
+        clearing the last bit read. bits[0] is the lowest bit, so it is the only one that can be the last bit.
         """
+        reads_last_bit_s_vectors = last_bit_s_vectors is not None and bits[0] == 1
         if len(bits) == 1:
             s_plus, s_r = combined_s_vectors
+            if reads_last_bit_s_vectors:
+                s_r, = last_bit_s_vectors # c^-i clears the last bit
             shape = (-1, 2, bits[0]) # split each index into (higher bits, the bit of i, lower bits)
             # s_R[:, :1] is s_R with the bit of i set to 0, broadcast to both values of the bit
             self.xp.add(s_plus.reshape(shape), s_r.reshape(shape)[:, :1], out=out.reshape(shape))
             return out
         s_plus_plus, s_a, s_q = combined_s_vectors
+        low_bit_s_a = s_a
+        if reads_last_bit_s_vectors:
+            low_bit_s_a, s_q = last_bit_s_vectors # c^-i and c^-ij clear the last bit, c^-j does not
         low_bit, high_bit = bits
         shape = (-1, 2, high_bit // (2 * low_bit), 2, low_bit) # split each index into (higher bits, high bit, middle bits, low bit, lower bits)
         out_view = out.reshape(shape)
         s_a_view = s_a.reshape(shape)
-        self.xp.add(s_plus_plus.reshape(shape), s_a_view[:, :, :, :1], out=out_view) # s_A with the low bit set to 0
+        self.xp.add(s_plus_plus.reshape(shape), low_bit_s_a.reshape(shape)[:, :, :, :1], out=out_view) # s_A with the low bit set to 0
         out_view += s_a_view[:, :1] # s_A with the high bit set to 0
         out_view += s_q.reshape(shape)[:, :1, :, :1] # s_Q with both bits set to 0
         return out
 
     def _s_vector_at(
-            self, combined_s_vectors: Tuple, bits: Tuple, consumer_patterns: np.ndarray, first_values: np.ndarray,
-            indices: np.ndarray
+            self, combined_s_vectors: Tuple, last_bit_s_vectors: Optional[Tuple], bits: Tuple,
+            consumer_patterns: np.ndarray, first_values: np.ndarray, indices: np.ndarray
     ) -> np.ndarray:
         """
         The s vector of a feature (pair) only at the consumer patterns, as a new array. first_values is s+ (s++) at the
         consumer patterns, shared by all the features. indices is a reused work array.
+        last_bit_s_vectors: None, or with the right neighbor leaf folded in (see _fold_neighbor) the vectors that the terms
+        clearing the last bit read. bits[0] is the lowest bit, so it is the only one that can be the last bit.
         Indexing with intp indices is used and not np.take(out=...): it is faster even though it allocates the result.
         """
         all_bits = np.intp(len(combined_s_vectors[0]) - 1) # the consumer patterns are intp (see _consumer_values_given_f)
+        reads_last_bit_s_vectors = last_bit_s_vectors is not None and bits[0] == 1
         if len(bits) == 1:
             s_plus, s_r = combined_s_vectors
+            if reads_last_bit_s_vectors:
+                s_r, = last_bit_s_vectors # c^-i clears the last bit
             self.xp.bitwise_and(consumer_patterns, all_bits ^ bits[0], out=indices) # c^-i
             values = s_r[indices]
         else:
             s_plus_plus, s_a, s_q = combined_s_vectors
+            low_bit_s_a = s_a
+            if reads_last_bit_s_vectors:
+                low_bit_s_a, s_q = last_bit_s_vectors # c^-i and c^-ij clear the last bit, c^-j does not
             low_bit, high_bit = bits
             self.xp.bitwise_and(consumer_patterns, all_bits ^ low_bit, out=indices) # c^-i
-            values = s_a[indices]
+            values = low_bit_s_a[indices]
             self.xp.bitwise_and(consumer_patterns, all_bits ^ high_bit, out=indices) # c^-j
             values += s_a[indices]
             self.xp.bitwise_and(consumer_patterns, all_bits ^ low_bit ^ high_bit, out=indices) # c^-ij
@@ -254,12 +301,20 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
     def _uses_full_s_vectors(self, num_consumers: int, depth: int) -> bool:
         return num_consumers > self.full_s_vector_consumers_ratio * 2 ** depth
 
+    def _folds_neighbor(self, num_consumers: int, depth: int, num_keys: int) -> bool:
+        """Whether the right neighbor leaf is folded into the s vectors (see FOLD_NEIGHBOR_LOOKUPS_RATIO)."""
+        if self._uses_full_s_vectors(num_consumers, depth):
+            return True
+        lookups_per_key = 3 if self.metric.INTERACTION_VALUE else 1
+        return num_consumers * lookups_per_key * num_keys > self.FOLD_NEIGHBOR_LOOKUPS_RATIO * 2 ** depth
+
     def _add_consumer_values(
             self, features_in_path: List, consumer_patterns: np.ndarray, f: np.ndarray, w: float, values: Dict,
             w_neighbor: Optional[float] = None
     ):
         depth = len(features_in_path)
-        if w_neighbor is not None and not self._uses_full_s_vectors(len(consumer_patterns), depth):
+        keys_and_bits = get_value_keys_and_decision_pattern_bits(features_in_path, self.metric.INTERACTION_VALUE)
+        if w_neighbor is not None and not self._folds_neighbor(len(consumer_patterns), depth, len(keys_and_bits)):
             # Few consumers: add the leaf and the right neighbor leaf one after the other. The neighbor's f is the
             # neighbor vector of f and its decision patterns flip the last bit
             self._add_consumer_values(features_in_path, consumer_patterns, f, w, values)
@@ -272,26 +327,21 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
         combined_s_vectors = self._combine_shared_s_vectors(self._get_shared_s_vectors(depth, f, w))
         neighbor_combined_s_vectors = None
         if w_neighbor is not None:
-            # Many consumers: the right neighbor leaf (its f is the neighbor vector of f) is folded into the s vectors
-            # below, so its consumers are not indexed again
+            # The right neighbor leaf (its f is the neighbor vector of f) is folded into the s vectors below, so its
+            # consumers are not indexed again
             neighbor_combined_s_vectors = self._combine_shared_s_vectors(
                 self._get_shared_s_vectors(depth, self.neighbor_vector(f, self.GPU), w_neighbor)
             )
         start_time = time.time()
+        last_bit_s_vectors = None
+        if neighbor_combined_s_vectors is not None:
+            combined_s_vectors, last_bit_s_vectors = self._fold_neighbor(combined_s_vectors, neighbor_combined_s_vectors)
 
         if self._uses_full_s_vectors(len(consumer_patterns), depth):
             # Many consumers: build every s vector over all the 2^D patterns (reusing one array) and index it once
             s_vector = self.xp.empty(2 ** depth, dtype=combined_s_vectors[0].dtype)
-            neighbor_s_vector = None if neighbor_combined_s_vectors is None else self.xp.empty_like(s_vector)
-            for key, bits in get_value_keys_and_decision_pattern_bits(features_in_path, self.metric.INTERACTION_VALUE):
-                self._build_s_vector(combined_s_vectors, bits, s_vector)
-                if neighbor_s_vector is not None:
-                    self._build_s_vector(neighbor_combined_s_vectors, bits, neighbor_s_vector)
-                    # The neighbor's decision patterns flip the last bit, so the consumer with pattern c gets its s vector
-                    # at c^1: add it with the two elements of every pair (2k, 2k+1) swapped. The consumer patterns are
-                    # then indexed once for both leaves, not once per leaf
-                    s_vector_pairs = s_vector.reshape(-1, 2) # view only
-                    s_vector_pairs += neighbor_s_vector.reshape(-1, 2)[:, ::-1]
+            for key, bits in keys_and_bits:
+                self._build_s_vector(combined_s_vectors, bits, s_vector, last_bit_s_vectors)
                 feature_values = s_vector[consumer_patterns] # a new array (not the reused s_vector), so it can be stored as is
                 if key in values:
                     values[key] += feature_values
@@ -301,8 +351,10 @@ class HighDepthWoodelfV2PathToSVectors(WoodelfPathToSVectors):
             # Few consumers: compute every s vector only at the consumer patterns
             first_values = combined_s_vectors[0][consumer_patterns]
             indices = self.xp.empty_like(consumer_patterns)
-            for key, bits in get_value_keys_and_decision_pattern_bits(features_in_path, self.metric.INTERACTION_VALUE):
-                feature_values = self._s_vector_at(combined_s_vectors, bits, consumer_patterns, first_values, indices) # a new array, so it can be stored as is
+            for key, bits in keys_and_bits:
+                feature_values = self._s_vector_at(
+                    combined_s_vectors, last_bit_s_vectors, bits, consumer_patterns, first_values, indices
+                ) # a new array, so it can be stored as is
                 if key in values:
                     values[key] += feature_values
                 else:
@@ -389,22 +441,22 @@ class PrefixesZ:
     """
     The Z vectors of prefixes of the subsets, the table of the dynamic programming of
     HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors:
-        Z[l, r, i] = Z_A^(r) over all the 2^depth patterns, for the prefix A = As[i], of the leaf l
-    A prefix A is a tuple of path indices, increasing, and all the prefixes have the same size |A|. The leaves are the
-    leaf, and the neighbor leaf if any. The prefixes are sorted by their last member, so the ones that a member extends
-    (those that end before it) are the leading ones.
+        Z[r, i] = Z_A^(r) over all the patterns, for the prefix A = As[i]
+    A prefix A is a tuple of path indices, increasing, and all the prefixes have the same size |A|. The patterns are the
+    2^depth decision patterns, or with the right neighbor leaf folded in (neighbor_folded) 2^(depth + 1) patterns: the Z
+    vectors of the rows s~ and then of the rows s^ (see _fold_neighbor_into_rows). The prefixes are sorted by their last
+    member, so the ones that a member extends (those that end before it) are the leading ones.
     """
 
-    def __init__(self, As: List[Tuple], Z: np.ndarray, depth: int, xp):
-        self.As, self.Z, self.depth, self.xp = As, Z, depth, xp
+    def __init__(self, As: List[Tuple], Z: np.ndarray, depth: int, xp, neighbor_folded: bool = False):
+        self.As, self.Z, self.depth, self.xp, self.neighbor_folded = As, Z, depth, xp, neighbor_folded
         self.last_members = [A[-1] if A else -1 for A in As]
         self.A_index = None # A -> its position in As, filled by the first get
-        self.neighbor_folded = False
 
     @classmethod
-    def of_prefix(cls, A: Tuple, Z_A: np.ndarray, depth: int, xp) -> "PrefixesZ":
-        """A single prefix A, with Z_A the (L, num_r, 2^depth) array of its Z vectors."""
-        return cls([A], Z_A[:, :, None], depth, xp) # (L, r, prefixes, 2^D), a single prefix
+    def of_prefix(cls, A: Tuple, Z_A: np.ndarray, depth: int, xp, neighbor_folded: bool = False) -> "PrefixesZ":
+        """A single prefix A, with Z_A the (num_r, patterns) array of its Z vectors."""
+        return cls([A], Z_A[:, None], depth, xp, neighbor_folded) # (r, prefixes, patterns), a single prefix
 
     @property
     def size(self) -> int:
@@ -414,13 +466,13 @@ class PrefixesZ:
     @property
     def num_r(self) -> int:
         """How many Z vectors every prefix has: r = 0, ..., num_r - 1."""
-        return self.Z.shape[1]
+        return self.Z.shape[0]
 
-    def get(self, A: Tuple, r: int, leaf: int = 0) -> np.ndarray:
-        """Z_A^(r) of the leaf (0, or 1 for the neighbor leaf), over all the 2^depth patterns."""
+    def get(self, A: Tuple, r: int) -> np.ndarray:
+        """Z_A^(r) over all the patterns."""
         if self.A_index is None:
             self.A_index = {prefix: i for i, prefix in enumerate(self.As)}
-        return self.Z[leaf, r, self.A_index[A]]
+        return self.Z[r, self.A_index[A]]
 
     def next_members(self, order: int) -> range:
         """The members that extend the prefixes and leave room for the rest of a subset of size order after them."""
@@ -434,19 +486,46 @@ class PrefixesZ:
         """
         One step of the dynamic programming: the prefixes A that member extends, with member added, and their
             Z_{A + {member}}^(r)[c] = Z_A^(r)[c] + Z_A^(r + 1)[c^-member]        r = 0, ..., num_r - 2
-        written to out, an (L, num_r - 1, count, 2^depth) array, when given.
+        written to out, an (num_r - 1, count, patterns) array, when given.
         """
         count = self.count_extended_by(member)
-        num_leaves, num_r, _, num_patterns = self.Z.shape
+        num_r, _, num_patterns = self.Z.shape
         bit = 1 << (self.depth - 1 - member) # the first feature in the path is the most significant bit
         # split each pattern into (higher bits, the bit of member, lower bits). Views only, the reshape of out in
         # particular must not copy, or the result would not reach out
         split = (num_patterns // (2 * bit), 2, bit)
-        source = self.Z[:, :, :count].reshape((num_leaves, num_r, count) + split)
+        source = self.Z[:, :count].reshape((num_r, count) + split)
         if out is None:
-            out = self.xp.empty((num_leaves, num_r - 1, count, num_patterns), dtype=self.Z.dtype)
+            out = self.xp.empty((num_r - 1, count, num_patterns), dtype=self.Z.dtype)
         # source[..., :1, :] is Z_A^(r + 1) with the bit of member set to 0, broadcast to both values of the bit
-        self.xp.add(source[:, :-1], source[:, 1:, :, :, :1], out=out.reshape((num_leaves, num_r - 1, count) + split))
+        self.xp.add(source[:-1], source[1:, :, :, :1], out=out.reshape((num_r - 1, count) + split))
+        return PrefixesZ([A + (member,) for A in self.As[:count]], out, self.depth, self.xp, self.neighbor_folded)
+
+    def extend_to_subsets(self, member: int) -> "PrefixesZ":
+        """
+        extend(member) for the last level of the dynamic programming, whose prefixes are the subsets themselves (from
+        num_r = 2, so only Z^(0), the s vector of each subset, is computed). With the right neighbor leaf folded in, it
+        is computed over the 2^depth decision patterns only: a subset S = A + {member} reads the rows s~ in the terms of
+        the T that do not hold the last member of the path, and the rows s^ in the others (see _fold_neighbor_into_rows),
+        so with Z~ and Z^ the Z vectors of the rows s~ and s^ (the two halves of the patterns):
+            Z_S^(0)[c] = Z~_A^(0)[c] + Z~_A^(1)[c^-member]      when member is not the last member of the path
+            Z_S^(0)[c] = Z~_A^(0)[c] + Z^_A^(1)[c^-member]      when it is (A does not hold it)
+        """
+        if not self.neighbor_folded:
+            return self.extend(member)
+        num_patterns = 2 ** self.depth
+        if member < self.depth - 1:
+            # Only the rows s~: the first half of the patterns (a view)
+            return PrefixesZ(self.As, self.Z[:, :, :num_patterns], self.depth, self.xp).extend(member)
+        count = self.count_extended_by(member)
+        out = self.xp.empty((1, count, num_patterns), dtype=self.Z.dtype)
+        # The last member is bit 0: split each pattern into (higher bits, bit 0). Views only, see extend
+        split = (count, num_patterns // 2, 2)
+        # the [..., :1] is Z^_A^(1) with bit 0 set to 0, broadcast to both values of the bit
+        self.xp.add(
+            self.Z[0, :count, :num_patterns].reshape(split), self.Z[1, :count, num_patterns:].reshape(split)[:, :, :1],
+            out=out[0].reshape(split)
+        )
         return PrefixesZ([A + (member,) for A in self.As[:count]], out, self.depth, self.xp)
 
     def next_level(self, order: int) -> "PrefixesZ":
@@ -459,20 +538,20 @@ class PrefixesZ:
         # Extend the prefixes of this size by one member, leaving room for the order - size - 1 members after it
         members = self.next_members(order)
         counts = [self.count_extended_by(member) for member in members] # the prefixes that end before member
-        num_leaves, num_r, _, num_patterns = self.Z.shape
-        Z = self.xp.empty((num_leaves, num_r - 1, sum(counts), num_patterns), dtype=self.Z.dtype)
+        num_r, _, num_patterns = self.Z.shape
+        Z = self.xp.empty((num_r - 1, sum(counts), num_patterns), dtype=self.Z.dtype)
         As, start = [], 0
         for member, count in zip(members, counts):
-            As += self.extend(member, out=Z[:, :, start:start + count]).As
+            As += self.extend(member, out=Z[:, start:start + count]).As
             start += count
-        return PrefixesZ(As, Z, self.depth, self.xp)
+        return PrefixesZ(As, Z, self.depth, self.xp, self.neighbor_folded)
 
     def memory_usage(self, order: int) -> int:
         """
         The memory the dynamic programming from this single prefix A would need: the number of values in its largest
         level, among the levels of the prefixes of sizes len(A) + 1, ..., order - 1 that extend A (the last level, the
-        subsets themselves, is yielded in batches and never held whole). A level holds every leaf, every r and all
-        the 2^depth patterns of each of its prefixes. 0 when there is no such level.
+        subsets themselves, is yielded in batches and never held whole). A level holds every r and all the patterns
+        of each of its prefixes. 0 when there is no such level.
         """
         A = self.As[0]
         first_member = self.last_members[0] + 1
@@ -482,22 +561,15 @@ class PrefixesZ:
             (order - j + 1) * nCk(self.depth - first_member - (order - j), j - len(A))
             for j in range(len(A) + 1, order)
         ], default=0)
-        num_leaves, _, _, num_patterns = self.Z.shape
-        return num_leaves * largest_level * num_patterns
+        num_patterns = self.Z.shape[-1]
+        return largest_level * num_patterns
 
     def s_vectors(self) -> np.ndarray:
         """
-        When the prefixes are whole subsets (a single Z vector each, their Z^(0)): their s vectors over all the 2^depth
-        patterns, a (len(As), 2^depth) array. With the neighbor leaf, its s vectors are folded in.
+        When the prefixes are whole subsets (a single Z vector each, their Z^(0), see extend_to_subsets): their s vectors
+        over all the 2^depth patterns, a (len(As), 2^depth) array. With the neighbor leaf, its s vectors are folded in.
         """
-        s_vectors = self.Z[0, 0]
-        if len(self.Z) == 2 and not self.neighbor_folded:
-            # The consumer with pattern c gets the neighbor's s vector at c^1: add it with the two elements
-            # of every pair (2k, 2k+1) swapped, so the consumer patterns are indexed once for both leaves
-            s_vector_pairs = s_vectors.reshape(len(self.As), -1, 2) # view only
-            s_vector_pairs += self.Z[1, 0].reshape(len(self.As), -1, 2)[:, :, ::-1]
-            self.neighbor_folded = True
-        return s_vectors
+        return self.Z[0]
 
 
 class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoodelfV2PathToSVectors):
@@ -524,6 +596,8 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
         2. Dynamic programming: the s vectors over all the 2^D patterns (see _dynamic_programming_s_vectors, its table
            of Z vectors is PrefixesZ), about one vector addition per subset where v1 takes D of them, and then one
            lookup per consumer.
+    Both fold the right neighbor leaf into the shared s vectors (see _fold_neighbor_into_rows), so the consumer patterns
+    are read once for both leaves.
     """
     # The dynamic programming works in batches of up to SUBSETS_BATCH_ELEMENTS values
     SUBSETS_BATCH_ELEMENTS = 2 ** 22
@@ -546,7 +620,7 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
         # super().__init__ calls, so it must exist before it
         self.order_rows = {}
         super().__init__(metric, max_depth, GPU)
-        self.subset_masks = {} # (depth, order) -> _subset_masks, filled on first use
+        self.subset_masks = {} # (depth, order, neighbor_folded) -> _subset_masks, filled on first use
 
     @staticmethod
     def supports_metric(metric: CubeMetric) -> bool:
@@ -604,7 +678,7 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
         subsets_lookups = nCk(depth, order) * num_consumers / crossover
         return 2 ** order * subsets_lookups <= build + subsets_lookups
 
-    def _subset_masks(self, depth: int, order: int) -> Tuple[np.ndarray, List[int]]:
+    def _subset_masks(self, depth: int, order: int, neighbor_folded: bool = False) -> Tuple[np.ndarray, List[int]]:
         """
         The inclusion-exclusion terms of the subsets of size order of a path with depth unique features, for
         _inclusion_exclusion_s_vectors_at. For the i-th subset S_i of combinations(range(depth), order) and every
@@ -612,21 +686,30 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
             c & masks[j, i] = c^-T_j        for every decision pattern c
             sizes[j] = |T_j|
         where T_j is the subset of S_i that the set bits of j pick (bit m picks the member of S_i with the m-th lowest
-        bit). masks is a (2^order, number of subsets) array. Cached per (depth, order).
+        bit). masks is a (2^order, number of subsets) array. Cached per (depth, order, neighbor_folded).
+        With neighbor_folded, for the rows of 2^(depth + 1) values of _fold_neighbor_into_rows: masks[j, i] also has bit
+        depth set when T_j holds the last member of the path, so that (c with bit depth set) & masks[j, i] is c^-T_j in
+        the half of the rows that T_j reads.
         """
-        if (depth, order) not in self.subset_masks:
-            # members_bits[i, m] is the bit of the m-th member of the i-th subset, from the lowest bit (the first feature
-            # in the path is the most significant bit)
-            members_bits = 1 << (depth - 1 - np.array(list(combinations(range(depth), order)), dtype=np.intp)[:, ::-1])
-            in_t = (np.arange(2 ** order)[:, None] >> np.arange(order)) & 1 # in_t[j, m]: is the m-th member in T_j
-            # the bits of the members are distinct, so their sum is the bits of T_j
-            masks = (2 ** depth - 1) ^ (in_t @ members_bits.T)
-            sizes = in_t.sum(axis=1).tolist()
-            self.subset_masks[(depth, order)] = (self.xp.asarray(masks), sizes)
-        return self.subset_masks[(depth, order)]
+        if (depth, order, neighbor_folded) not in self.subset_masks:
+            if neighbor_folded:
+                masks, sizes = self._subset_masks(depth, order)
+                # The last member is bit 0, which the masks of the T_j that hold it clear
+                masks = masks | (((~masks) & 1) << depth)
+            else:
+                # members_bits[i, m] is the bit of the m-th member of the i-th subset, from the lowest bit (the first feature
+                # in the path is the most significant bit)
+                members_bits = 1 << (depth - 1 - np.array(list(combinations(range(depth), order)), dtype=np.intp)[:, ::-1])
+                in_t = (np.arange(2 ** order)[:, None] >> np.arange(order)) & 1 # in_t[j, m]: is the m-th member in T_j
+                # the bits of the members are distinct, so their sum is the bits of T_j
+                masks = self.xp.asarray((2 ** depth - 1) ^ (in_t @ members_bits.T))
+                sizes = in_t.sum(axis=1).tolist()
+            self.subset_masks[(depth, order, neighbor_folded)] = (masks, sizes)
+        return self.subset_masks[(depth, order, neighbor_folded)]
 
     def _inclusion_exclusion_s_vectors_at(
-            self, s_vectors: Tuple, masks: np.ndarray, sizes: List[int], patterns: np.ndarray
+            self, s_vectors: Tuple, masks: np.ndarray, sizes: List[int], patterns: np.ndarray,
+            folded_patterns: Optional[np.ndarray] = None
     ) -> np.ndarray:
         """
         The s vectors of many subsets of the same order k at the given patterns, by inclusion-exclusion and all
@@ -634,16 +717,19 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
             s_S[c] = sum over T subset of S of s_|T|[c^-T]
         s_vectors are s_0, ..., s_k, and masks and sizes are those of the subsets (see _subset_masks). The 2^k terms are
         2^k indexing steps over all the subsets and patterns, not a loop over the subsets.
+        With the right neighbor leaf folded in, s_vectors are the rows of _fold_neighbor_into_rows, masks are the
+        neighbor_folded masks and folded_patterns is patterns with bit depth set.
         """
+        masked_patterns = patterns if folded_patterns is None else folded_patterns
         indices = self.xp.empty((masks.shape[1], len(patterns)), dtype=np.intp)
         values = None
         for j in range(1, len(sizes)):
-            self.xp.bitwise_and(patterns, masks[j][:, None], out=indices) # c^-T_j of every subset at every pattern
+            self.xp.bitwise_and(masked_patterns, masks[j][:, None], out=indices) # c^-T_j of every subset at every pattern
             if values is None:
                 values = s_vectors[sizes[j]][indices]
             else:
                 values += s_vectors[sizes[j]][indices]
-        values += s_vectors[0][patterns] # T is the empty set, the same term for all the subsets
+        values += s_vectors[0][patterns] # T is the empty set, the same term for all the subsets (in the first half of folded rows)
         return values
 
     def _dynamic_programming_s_vectors(self, start: PrefixesZ, order: int) -> Iterator[PrefixesZ]:
@@ -652,13 +738,14 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
         prefix of start by later members, by dynamic programming over the prefixes (see PrefixesZ). Yields them in
         batches of subsets (see PrefixesZ.s_vectors).
         Level i holds the prefixes of size i that leave room for the other order - i members (see PrefixesZ.next_level).
-        The last level is yielded one last member at a time. If a level before it would exceed SUBSETS_BATCH_ELEMENTS
-        values, the prefixes are first split by their next member.
+        The last level is yielded one last member at a time (see PrefixesZ.extend_to_subsets). If a level before it would
+        exceed SUBSETS_BATCH_ELEMENTS values, the prefixes are first split by their next member.
         """
         if start.size == order:
             yield start
             return
         if start.memory_usage(order) > self.SUBSETS_BATCH_ELEMENTS:
+            # memory_usage is 0 from size order - 1 on, so these extend to prefixes of size order - 1 at most
             for member in start.next_members(order):
                 yield from self._dynamic_programming_s_vectors(start.extend(member), order)
             return
@@ -667,7 +754,29 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
         while level.size < order - 1:
             level = level.next_level(order)
         for member in level.next_members(order):
-            yield level.extend(member)
+            yield level.extend_to_subsets(member)
+
+    def _fold_neighbor_into_rows(self, s_vectors: np.ndarray, neighbor_s_vectors: np.ndarray) -> np.ndarray:
+        """
+        The rows s_0, ..., s_k of the leaf with the right neighbor leaf folded in, so the consumer patterns are read once
+        for both leaves, not once per leaf: the (k + 1, 2^(depth + 1)) array of the rows
+            s~_t = s_t + swap(s^N_t)  and then  s^_t = s_t + s^N_t
+        where s^N_t are the rows of the neighbor and swap(s^N_t) is s^N_t with the two elements of every pair (2k, 2k+1)
+        swapped. The neighbor's decision patterns flip the last bit, so where the leaf reads the term of T at c^-T, the
+        neighbor reads it at (c^1)^-T = (c^-T)^1 if T does not hold the last member of the path, and at c^-T if it does
+        (its bit is set to 0 anyway). Hence the values of both leaves are
+            s_S[c] + s^N_S[c^1] = sum over T subset of S of (s~_|T|[c^-T] if T does not hold the last member, else s^_|T|[c^-T])
+        and bit depth of a pattern of the rows picks the half: s~ when it is 0, s^ when it is 1.
+        """
+        num_rows, num_patterns = s_vectors.shape
+        rows = self.xp.empty((num_rows, 2, num_patterns), dtype=s_vectors.dtype)
+        self.xp.add(s_vectors, neighbor_s_vectors, out=rows[:, 1])
+        # The pairs (2k, 2k+1) of the s~ half. Views only, rows is a new C-contiguous array
+        self.xp.add(
+            s_vectors.reshape(num_rows, -1, 2), neighbor_s_vectors.reshape(num_rows, -1, 2)[:, :, ::-1],
+            out=rows.reshape(num_rows, 2, -1, 2)[:, 0]
+        )
+        return rows.reshape(num_rows, 2 * num_patterns)
 
     def _add_consumer_values(
             self, features_in_path: List, consumer_patterns: np.ndarray, f: np.ndarray, w: float, values: Dict,
@@ -678,18 +787,18 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
         Then for every order, as should_use_inclusion_exclusion picks: inclusion-exclusion, the 2^k terms of every subset
         at the consumer patterns only (see _inclusion_exclusion_s_vectors_at), or dynamic programming, the s vectors of
         the subsets over all the 2^D patterns (see _dynamic_programming_s_vectors) indexed by the consumer patterns.
+        The right neighbor leaf, if any, is folded into the shared s vectors (see _fold_neighbor_into_rows).
         """
         depth = len(features_in_path)
         if not self.order_rows[depth]:
             return # the path has fewer features than the lowest order, so it has no subsets
 
         shared_s_vectors = self._get_shared_s_vectors(depth, f, w)
-        leaves = [shared_s_vectors]
-        neighbor_consumer_patterns = None
+        neighbor_shared_s_vectors, folded_patterns = None, None
         if w_neighbor is not None:
             # The right neighbor leaf: its f is the neighbor vector of f and its decision patterns flip the last bit
-            leaves.append(self._get_shared_s_vectors(depth, self.neighbor_vector(f, self.GPU), w_neighbor))
-            neighbor_consumer_patterns = consumer_patterns ^ 1
+            neighbor_shared_s_vectors = self._get_shared_s_vectors(depth, self.neighbor_vector(f, self.GPU), w_neighbor)
+            folded_patterns = consumer_patterns | (1 << depth) # for the neighbor_folded masks of inclusion-exclusion
         inclusion_exclusion_batch_size = max(
             self.INCLUSION_EXCLUSION_MIN_BATCH_SUBSETS,
             self.INCLUSION_EXCLUSION_BATCH_ELEMENTS // max(len(consumer_patterns), 1)
@@ -697,18 +806,17 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
         start_time = time.time()
 
         for order, rows in self.order_rows[depth]:
-            z = self.xp.stack([self.xp.stack(leaf_s_vectors[rows]) for leaf_s_vectors in leaves]) # (L, order + 1, 2^D)
+            z = self.xp.stack(shared_s_vectors[rows]) # (order + 1, 2^D)
+            if neighbor_shared_s_vectors is not None:
+                z = self._fold_neighbor_into_rows(z, self.xp.stack(neighbor_shared_s_vectors[rows])) # (order + 1, 2^(D + 1))
             if self.should_use_inclusion_exclusion(depth, order, len(consumer_patterns)):
-                masks, sizes = self._subset_masks(depth, order)
+                masks, sizes = self._subset_masks(depth, order, neighbor_folded=w_neighbor is not None)
                 subsets = list(combinations(range(depth), order)) # in the order of the columns of masks
                 for start in range(0, len(subsets), inclusion_exclusion_batch_size):
                     batch_masks = masks[:, start:start + inclusion_exclusion_batch_size]
-                    # The neighbor leaf's s_0, ..., s_order are read at its decision patterns, which flip the last bit
-                    batch_values = self._inclusion_exclusion_s_vectors_at(z[0], batch_masks, sizes, consumer_patterns)
-                    if len(z) == 2:
-                        batch_values += self._inclusion_exclusion_s_vectors_at(
-                            z[1], batch_masks, sizes, neighbor_consumer_patterns
-                        )
+                    batch_values = self._inclusion_exclusion_s_vectors_at(
+                        z, batch_masks, sizes, consumer_patterns, folded_patterns
+                    )
                     # Each row of batch_values is a view of a new array of this batch only, so it can be stored as is
                     for members, feature_values in zip(subsets[start:start + inclusion_exclusion_batch_size], batch_values):
                         key = tuple(sorted(features_in_path[member] for member in members))
@@ -718,7 +826,8 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
                             values[key] = feature_values
                 continue
 
-            for subsets in self._dynamic_programming_s_vectors(PrefixesZ.of_prefix((), z, depth, self.xp), order):
+            empty_prefix = PrefixesZ.of_prefix((), z, depth, self.xp, neighbor_folded=w_neighbor is not None)
+            for subsets in self._dynamic_programming_s_vectors(empty_prefix, order):
                 # The prefixes are the subsets, and their Z^(0) are their s vectors over all the 2^D patterns
                 for members, s_vector in zip(subsets.As, subsets.s_vectors()):
                     key = tuple(sorted(features_in_path[member] for member in members))
@@ -742,7 +851,7 @@ class HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors(HighDepthWoo
         shared_s_vectors = self._get_shared_s_vectors(depth, f, w)
         s_vectors = {}
         for order, rows in self.order_rows[depth]:
-            z = self.xp.stack(shared_s_vectors[rows])[None] # a single leaf
+            z = self.xp.stack(shared_s_vectors[rows])
             for subsets in self._dynamic_programming_s_vectors(PrefixesZ.of_prefix((), z, depth, self.xp), order):
                 for members, s_vector in zip(subsets.As, subsets.s_vectors()):
                     s_vectors[tuple(sorted(features_in_path[member] for member in members))] = s_vector

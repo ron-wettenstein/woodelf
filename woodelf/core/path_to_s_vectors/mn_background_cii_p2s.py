@@ -23,6 +23,9 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
     """
 
     BATCH_SIZE = 1_000_000
+    # True when _compute_s_batch_with_neighbor adds the right neighbor leaf in the same pass over the (consumer, background)
+    # pairs. Otherwise get_background_s_matrix computes the neighbor leaf by a second call
+    NEIGHBOR_IN_THE_SAME_PASS = True
 
     def __init__(self, metric: CardinalityInteractionIndicesMetric, max_depth: int, GPU: bool = False):
         assert isinstance(metric, CardinalityInteractionIndicesMetric), (
@@ -146,6 +149,63 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
                 s[s_index] = (contributions[a, consumers] * covered).sum(axis=1)
         return s * w
 
+    def _compute_s_batch_with_neighbor(
+        self, consumer_batch: np.ndarray, unique_b: np.ndarray,
+        b_freqs: np.ndarray, D: int, w: float, w_neighbor: float
+    ) -> np.ndarray:
+        """
+        _compute_s_batch of the leaf plus the right neighbor leaf, in the same pass over the pairs. The neighbor's
+        patterns flip bit 0, so its pair of (c, b) is (c^1, b^1), with the same background frequencies. Both pairs differ
+        on the same bits, so they cover the same subsets S. For an S without bit 0 the neighbor's pair has the same
+        a = |S ∩ positive literals| too, so S reads the contributions of both leaves, added up, with one lookup. For an S
+        with bit 0 the neighbor's a is a - 1 when the consumer's bit 0 is 1 (a counts it) and a + 1 when it is 0, so the
+        contributions of both leaves are added up with this shift once per order, and S reads them with one lookup as well.
+        The leaf weights multiply the contributions, before the leaves are added up.
+        Per subset only (batch,) and (U_b,) vectors are computed: S is covered when the background differs from the
+        consumer on all of S, and in a pair that covers S the bits of S that are positive literals are those where the
+        consumer is 1, so a is a function of the consumer alone.
+        """
+        diff = consumer_batch[:, None] ^ unique_b[None, :]           # (batch, U_b), the same in the neighbor's pairs
+        bit_0 = consumer_batch.dtype.type(1)
+
+        def keys_and_base(consumers_batch: np.ndarray, backgrounds: np.ndarray, weight: float):
+            """The position of [p, n] in a flattened (max_depth + 1, max_depth + 1) table, and base times the leaf weight, of the pairs of these patterns."""
+            valid = (consumers_batch[:, None] | backgrounds[None, :]) == ((1 << D) - 1)          # (batch, U_b)
+            p = safe_bitwise_count(consumers_batch[:, None] & diff)                             # (batch, U_b)
+            n = safe_bitwise_count(backgrounds[None, :] & diff)                                 # (batch, U_b)
+            return p.astype(np.intp) * (self.max_depth + 1) + n, b_freqs * valid * weight
+
+        pn, base = keys_and_base(consumer_batch, unique_b, w)
+        neighbor_pn, neighbor_base = keys_and_base(consumer_batch ^ bit_0, unique_b ^ bit_0, w_neighbor)
+        consumers = np.arange(len(consumer_batch))
+        not_consumer_batch = ~consumer_batch
+        consumer_bit_0 = (consumer_batch & bit_0).astype(bool)        # (batch,)
+
+        s = np.empty((self._num_subsets(D), len(consumer_batch)), dtype=np.float64)
+        for k, block_start, n_subsets in self._order_row_blocks(D):
+            tables = [self.contribution_tables[k][a].ravel() for a in range(k + 1)]
+            contributions = np.stack([tables[a][pn] * base for a in range(k + 1)])                          # (k + 1, batch, U_b)
+            neighbor_contributions = np.stack([tables[a][neighbor_pn] * neighbor_base for a in range(k + 1)])  # (k + 1, batch, U_b)
+            # For the subsets with bit 0: the neighbor's contributions at a - 1 (consumer bit 0 is 1) or a + 1 (it is 0)
+            contributions_with_bit_0 = contributions.copy()
+            contributions_with_bit_0[1:, consumer_bit_0] += neighbor_contributions[:-1, consumer_bit_0]
+            contributions_with_bit_0[:-1, ~consumer_bit_0] += neighbor_contributions[1:, ~consumer_bit_0]
+            # For the subsets without bit 0: the neighbor's contributions at the same a
+            contributions += neighbor_contributions
+            del neighbor_contributions
+            for s_index, subset in enumerate(self._subsets(D, k), start=block_start):
+                subset_mask = 0
+                for d in subset:
+                    subset_mask |= 1 << (D - 1 - d)                       # row d of bits_matrix is bit D-1-d
+                subset_mask = consumer_batch.dtype.type(subset_mask)
+                # S is fully inside the cube: the background differs from the consumer on all of S
+                covered = (unique_b & subset_mask)[None, :] == (not_consumer_batch & subset_mask)[:, None]  # (batch, U_b)
+                a = safe_bitwise_count(consumer_batch & subset_mask)    # (batch,), |S ∩ positive literals| of the leaf's pairs
+                both_leaves_contributions = contributions_with_bit_0 if subset_mask & bit_0 else contributions
+                # contributions[a, consumers] is the row of every consumer
+                s[s_index] = (both_leaves_contributions[a, consumers] * covered).sum(axis=1)
+        return s
+
     def get_background_s_matrix(
         self, features_in_path: List, consumer_patterns: np.ndarray,
         background_patterns: np.ndarray, w: float, w_neighbor: float = None,
@@ -159,6 +219,7 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
         If w_neighbor is provided, also adds the neighbor leaf's contribution: the neighbor leaf has
         patterns where the LSB is flipped (sibling in the tree), so we recurse with consumer_patterns ^ 1,
         background_patterns ^ 1, and w=w_neighbor.
+        With NEIGHBOR_IN_THE_SAME_PASS, the neighbor leaf is added by _compute_s_batch_with_neighbor instead.
 
         Returns Dict[feature tuple -> np.ndarray of shape (U_c,)], one entry per subset of the features in
         the path whose size is a reported order. Keys are canonically sorted feature tuples, each holding
@@ -174,21 +235,28 @@ class MNBackgroundCIIPathToSVectors(PathToSVectors):
         U_c = len(consumer_patterns)
         U_b = len(unique_b)
 
+        neighbor_in_the_same_pass = w_neighbor is not None and self.NEIGHBOR_IN_THE_SAME_PASS
+
+        def compute_s_batch(consumer_batch: np.ndarray) -> np.ndarray:
+            if neighbor_in_the_same_pass:
+                return self._compute_s_batch_with_neighbor(consumer_batch, unique_b, b_freqs, D, w, w_neighbor)
+            return self._compute_s_batch(consumer_batch, unique_b, b_freqs, D, w)
+
         batch_size = max(1, self.BATCH_SIZE // U_b)
         if U_c <= batch_size:
-            s = self._compute_s_batch(consumer_patterns, unique_b, b_freqs, D, w)
+            s = compute_s_batch(consumer_patterns)
         else:
             s = np.empty((self._num_subsets(D), U_c), dtype=np.float64)
             for start in range(0, U_c, batch_size):
                 end = min(start + batch_size, U_c)
-                s[:, start:end] = self._compute_s_batch(consumer_patterns[start:end], unique_b, b_freqs, D, w)
+                s[:, start:end] = compute_s_batch(consumer_patterns[start:end])
 
         result = {
             tuple(sorted(features_in_path[d] for d in subset)): s[s_index]
             for s_index, subset in enumerate(self._all_subsets(D))
         }
 
-        if w_neighbor is not None:
+        if w_neighbor is not None and not neighbor_in_the_same_pass:
             neighbor = self.get_background_s_matrix(
                 features_in_path, consumer_patterns ^ 1, background_patterns ^ 1, w_neighbor,
             )
@@ -245,6 +313,7 @@ class MNBackgroundCIIFasterPathToSVectors(MNBackgroundCIIPathToSVectors):
     """
 
     BATCH_SIZE = 10_000_000
+    NEIGHBOR_IN_THE_SAME_PASS = False # its _compute_s_batch has no neighbor version, the neighbor leaf takes a second call
     # Bounds the (rows, U_b) / (rows, batch) mask and matmul intermediates: subsets are processed in chunks
     # of whole-S row groups such that rows_per_chunk * max(U_b, batch) <= MASK_BATCH.
     MASK_BATCH = 2_000_000

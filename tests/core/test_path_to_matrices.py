@@ -30,6 +30,16 @@ class HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors(HighDepthWoodelfV2Pat
     FULL_PAIR_S_VECTOR_CONSUMERS_RATIO = np.inf
 
 
+class HighDepthWoodelfV2ConsumerPatternsOnlyFoldedNeighborPathToSVectors(HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors):
+    """V2 at the consumer patterns only, that always folds the neighbor leaf into the s vectors."""
+    FOLD_NEIGHBOR_LOOKUPS_RATIO = 0
+
+
+class HighDepthWoodelfV2ConsumerPatternsOnlyUnfoldedNeighborPathToSVectors(HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors):
+    """V2 at the consumer patterns only, that adds the neighbor leaf with a second pass over the consumer patterns."""
+    FOLD_NEIGHBOR_LOOKUPS_RATIO = np.inf
+
+
 V2CII = HighDepthWoodelfV2CardinalityInteractionIndicesPathToSVectors
 
 
@@ -95,6 +105,8 @@ _P2S_PAIRS = [
     (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2PathToSVectors),
     (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2FullSVectorsPathToSVectors),
     (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2ConsumerPatternsOnlyPathToSVectors),
+    (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2ConsumerPatternsOnlyFoldedNeighborPathToSVectors),
+    (HighDepthWoodelfV1PathToSVectors, HighDepthWoodelfV2ConsumerPatternsOnlyUnfoldedNeighborPathToSVectors),
     (HighDepthWoodelfV2PathToSVectors, MNBackgroundPathToSVectors),
     (MNBackgroundPathToSVectors, MNBackgroundMatrixMultiplicationPathToSVectors),
     (MNBackgroundPathToSVectors, MNBackgroundMatrixMultiplicationFasterPathToSVectors),
