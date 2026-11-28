@@ -6,7 +6,7 @@ from typing import List, Dict
 import numpy as np
 
 from woodelf.core.cube_metric import CubeMetric
-from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors
+from woodelf.core.path_to_s_vectors.base_p2s import WoodelfPathToSVectors, strided_pass_bits
 
 try:
     import cupy as cp
@@ -114,9 +114,15 @@ class HighDepthWoodelfV1PathToSVectors(WoodelfPathToSVectors):
         # C-contiguous array: the reshapes below must be views, a reshape that copies would silently lose the in-place updates
         s_matrix = matrix_diagonals.T * f[::-1] # reversed as this is not the (0,0)-(1,1)-..-(n,n) diagonal but the (0,n)-(1,n-1)-..-(n,0) diagonal
         num_frs_subsets = s_matrix.shape[0]
+        strided_bits = strided_pass_bits(s_matrix.size, self.GPU)
         for d in range(0, depth, 1):
             v = s_matrix.reshape(num_frs_subsets, -1, 2, 2 ** d) # view only: split each index into (higher bits, bit d, lower bits)
-            v[:, :, 1] += v[:, :, 0] # elements with bit d = 1 get the element with bit d = 0 added to them
+            if d < strided_bits:
+                # Equivalent to 'v[:, :, 1] += v[:, :, 0]' but faster: one strided addition per value of the lower bits
+                for low in range(2 ** d):
+                    v[:, :, 1, low] += v[:, :, 0, low]
+            else:
+                v[:, :, 1] += v[:, :, 0] # elements with bit d = 1 get the element with bit d = 0 added to them
 
         s_matrix *= w
 
@@ -143,9 +149,15 @@ class HighDepthWoodelfV1PathToSVectors(WoodelfPathToSVectors):
     @staticmethod
     def _prepare_f(depth, f, GPU):
         f = f.copy() # the updates below are in-place and the caller may reuse f (the neighbor leaf trick does)
+        strided_bits = strided_pass_bits(f.size, GPU)
         for d in range(depth - 1, -1, -1):
             v = f.reshape(-1, 2, 2 ** d) # view only: split each index into (higher bits, bit d, lower bits)
-            v[:, 0] += v[:, 1] # elements with bit d = 0 get the element with bit d = 1 added to them
+            if d < strided_bits:
+                # Equivalent to 'v[:, 0] += v[:, 1]' but faster: one strided addition per value of the lower bits
+                for low in range(2 ** d):
+                    v[:, 0, low] += v[:, 1, low]
+            else:
+                v[:, 0] += v[:, 1] # elements with bit d = 0 get the element with bit d = 1 added to them
         return f
 
     def present_statistics(self):
