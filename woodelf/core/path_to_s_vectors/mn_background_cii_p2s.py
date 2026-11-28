@@ -186,7 +186,7 @@ class MNBackgroundCIIFasterPathToSVectors(MNBackgroundCIIPathToSVectors):
 
     Faster variant of MNBackgroundCIIPathToSVectors.
     Overrides _compute_s_batch so that the sum over backgrounds becomes dense matrix multiplications,
-    the same restructuring MNBackgroundFasterPathToSVectors applies to the order-1 case.
+    the same restructuring MNBackgroundMatrixMultiplicationPathToSVectors applies to the order-1 case.
 
     The key identity: for a k-subset S of the path features, S is fully contained in the cube of a valid
     pair (pc, pb) with S ∩ (positive literals) = A iff
